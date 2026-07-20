@@ -4,7 +4,8 @@
  * small, focused, presentational piece driven by the analysis object.
  */
 import React from "react";
-import { Download, Share2, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Download, Share2, FileText, Upload } from "lucide-react";
 import { Card, Badge, Button, QualityRing, GradeStamp, Eyebrow } from "../ui";
 
 /* Findings as auditor's marginalia: mark · red rule · entry */
@@ -33,6 +34,37 @@ export function InsightRow({ ins }) {
 }
 
 export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
+  // v20.1 demo path: no AI report was generated — this tab becomes the
+  // honest pitch. Value first (everything else on screen was free/instant),
+  // conversion second.
+  if (a.demo && !a.analysis) {
+    return (
+      <Card>
+        <div className="flex items-center gap-2.5 mb-4">
+          <Eyebrow>รายงานผู้ตรวจ · AI</Eyebrow>
+          {a.quality && <GradeStamp score={a.quality.score}/>}
+        </div>
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
+          <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">
+            ทุกอย่างที่เห็นอยู่ — insights, คะแนนคุณภาพ, กราฟ, correlation — มาจาก{" "}
+            <span className="font-medium">Insights Engine</span> ล้วน ๆ: คำนวณจากสถิติ ได้ผลทันที และฟรี
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 leading-7">
+            อัปโหลดไฟล์ของคุณเองเพื่อรับ<span className="font-medium">บทวิเคราะห์ AI ภาษาไทยฉบับเต็ม</span>{" "}
+            ตรงแท็บนี้ พร้อมถาม-ตอบเจาะลึกต่อได้
+          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button size="sm" onClick={() => document.getElementById("fileIn")?.click()}>
+              <Upload size={13}/> อัปโหลดไฟล์ของฉัน
+            </Button>
+            <Link to="/auth" className="font-mono text-[11px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors">
+              สมัครฟรี — เก็บประวัติ + แชร์รายงาน
+            </Link>
+          </div>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">

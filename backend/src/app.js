@@ -44,6 +44,7 @@ import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
+import { mountDemoRoutes }      from "./routes/demo.js";
 import { startScheduler }        from "./services/scheduler.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
 import { requestMetrics, metricsHandler, errorHandler } from "./middleware/monitoring.js";
@@ -156,6 +157,9 @@ export function createApp() {
 
   // ── History → routes/history.js (v16) ─────────────────────
   mountHistoryRoutes(app);
+
+  // ── Public demo — no auth, no AI → routes/demo.js (v20.1) ─
+  mountDemoRoutes(app);
 
   // ── System ────────────────────────────────────────────────
   app.get("/api/metrics", metricsHandler);

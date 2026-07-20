@@ -1,4 +1,4 @@
-# 📊 Data Analysis Bot v20 — Messy File Layer
+# 📊 Data Analysis Bot v20.1 — First 10 Seconds
 
 React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + scheduled reports + team workspaces — now parsing the files Thai shops *actually* export.
 
@@ -44,6 +44,7 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
+| **⚡ Instant Demo (v20.1)** | Public no-auth landing demo: tap a sample → full Insights Engine results with zero AI calls, cached in-process. The messy Thai sample doubles as a live v20 showcase, and the AI-report slot becomes the conversion CTA |
 | **🧹 Messy File Layer (v20)** | TIS-620/UTF-16 encoding detection, delimiter sniffing (`;` tab `\|`), banner-row/header detection, Thai numbers (`฿1,234.50`, `(500)`, `๑๒๓`), พ.ศ. → ค.ศ. dates (`14 ม.ค. 2569`), date columns no longer masquerade as numeric. 45 new tests |
 | **React Dashboard** | Vite + Tailwind + Recharts |
 | **AI Chat** | Chat with your dataset context |

@@ -155,3 +155,48 @@ describe("Collaboration routes (real router)", () => {
     assert.equal((await agent.get("/api/collab/notifications")).status, 401);
   });
 });
+
+describe("Demo routes (public, no auth, no AI)", () => {
+  test("lists samples without any auth header", async () => {
+    const res = await agent.get("/api/demo/samples");
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.ok(res.body.samples.length >= 3);
+    const shop = res.body.samples.find(s => s.id === "thai-shop");
+    assert.ok(shop, "thai-shop sample listed");
+    assert.ok(shop.rows > 0 && shop.quality > 0, "cards carry real numbers");
+  });
+
+  test("returns a full stats bundle with analysis:null and no auth", async () => {
+    const res = await agent.get("/api/demo/samples/thai-shop/analysis");
+    assert.equal(res.status, 200);
+    assert.equal(res.body.demo, true);
+    assert.equal(res.body.analysis, null, "no AI call happens on the demo path");
+    assert.equal(res.body.savedId, null);
+    assert.ok(res.body.insights.length > 0, "Insights Engine findings present");
+    assert.ok(res.body.quality?.score >= 0);
+    assert.ok(res.body.suggestions?.length > 0);
+  });
+
+  test("thai-shop showcases the v20 messy-file layer end to end", async () => {
+    const res = await agent.get("/api/demo/samples/thai-shop/analysis");
+    assert.equal(res.body.normalization.skippedPreHeaderRows, 1, "banner row skipped");
+    const dateCol = res.body.colAnalysis.find(c => c.semantic === "date");
+    assert.ok(dateCol, "date column detected semantically");
+    assert.equal(dateCol.buddhistEra, true, "พ.ศ. years recognized");
+    assert.ok(dateCol.dateRange.min.startsWith("2026-"), "BE converted to CE");
+    assert.ok(res.body.insights.some(i => i.id.startsWith("daterange:")), "date insight fires");
+    const sales = res.body.colAnalysis.find(c => c.col === "ยอดขาย");
+    assert.equal(sales.type, "numeric", "฿-formatted amounts parsed as numbers");
+    assert.ok(sales.min < 0, "(36) refund parsed as negative");
+  });
+
+  test("second hit is served from the in-process cache", async () => {
+    const res = await agent.get("/api/demo/samples/thai-shop/analysis");
+    assert.equal(res.body.cached, true);
+  });
+
+  test("unknown sample id is a 404, and ids never touch the filesystem", async () => {
+    assert.equal((await agent.get("/api/demo/samples/nope/analysis")).status, 404);
+    assert.equal((await agent.get("/api/demo/samples/..%2F..%2Fpackage.json/analysis")).status, 404);
+  });
+});

@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef, Suspense, lazy } from "react";
 import { Upload, MessageSquare } from "lucide-react";
 import { useAppStore } from "../../store";
+import { getJSON } from "../../lib/api";
 import { useAnalysis } from "../../hooks/useAnalysis";
 import { Button, Card, Readout, Skeleton, Kbd } from "../ui";
 import Tour, { tourDone } from "../tour";
@@ -40,7 +41,17 @@ const TABS = ["analysis", "insights", "charts", "quality", "correlation", "forec
 
 export default function Dashboard() {
   const accessToken = useAppStore(s => s.accessToken);
-  const { file, loading, exporting, analysis: a, selectFile, analyze, exportReport, shareReport } = useAnalysis();
+  const { file, loading, exporting, analysis: a, selectFile, analyze, runDemo, exportReport, shareReport } = useAnalysis();
+
+  // v20.1: first-10-seconds demo — sample catalogue for the empty state.
+  const [samples, setSamples] = useState(null);
+  useEffect(() => {
+    getJSON("/api/demo/samples").then(d => setSamples(d.samples)).catch(() => setSamples([]));
+  }, []);
+  const runDemoCard = async (s) => {
+    const d = await runDemo(s.id, `${s.title} (ตัวอย่าง)`);
+    if (d) setActiveTab("insights");   // the wow tab — AI text is null on the demo path
+  };
 
   const [dragging,  setDragging]  = useState(false);
   const [prompt,    setPrompt]    = useState(QUICK_PROMPTS[0].prompt);
@@ -118,22 +129,51 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Empty state */}
+        {/* Empty state → first-10-seconds demo (v20.1) */}
         {!a && !loading && (
           <Card padding={false}>
-            <div className="px-6 py-10 text-center">
-              <p className="eyebrow mb-2">ยังไม่มีรายการตรวจ</p>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">เริ่มหน้าแรกของสมุดตรวจ</h2>
+            <div className="px-6 py-8 text-center">
+              <p className="eyebrow mb-2">ลองก่อน · ไม่ต้องสมัคร ไม่ต้องอัปโหลด</p>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">เห็นผลตรวจจริงใน 10 วินาทีแรก</h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5 max-w-md mx-auto">
-                วางไฟล์ CSV/Excel ด้านบน ตั้งคำถาม แล้วกดวิเคราะห์ — หรือทดลองด้วยข้อมูลตัวอย่างก่อนก็ได้
+                แตะชุดข้อมูลตัวอย่าง — Insights Engine ตรวจสถิติให้ทันที แล้วค่อยอัปโหลดไฟล์ของคุณเองเมื่อพร้อม
               </p>
-              <div className="flex items-center justify-center gap-2 mt-5">
-                <Button size="sm" onClick={() => onPick(makeSampleFile())}>ใช้ข้อมูลตัวอย่าง</Button>
-                <Button size="sm" variant="secondary" onClick={() => setTourOpen(true)}>ดูทัวร์แนะนำ</Button>
+
+              {samples === null && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5 max-w-2xl mx-auto" aria-busy="true">
+                  {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 w-full"/>)}
+                </div>
+              )}
+
+              {samples?.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5 max-w-2xl mx-auto">
+                  {samples.map(s => (
+                    <button key={s.id} onClick={() => runDemoCard(s)}
+                      className="group text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-brand-400 hover:shadow-sm transition">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xl" aria-hidden="true">{s.emoji}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-brand-600 dark:group-hover:text-brand-300 transition-colors">{s.title}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{s.desc}</p>
+                      <p className="num text-[10px] text-gray-400 dark:text-gray-500 mt-2">{s.rows?.toLocaleString()} แถว · คุณภาพ {s.quality}/100</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {samples?.length === 0 && (
+                <div className="flex items-center justify-center gap-2 mt-5">
+                  <Button size="sm" onClick={() => onPick(makeSampleFile())}>ใช้ข้อมูลตัวอย่าง</Button>
+                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-3 mt-5">
+                <button onClick={() => setTourOpen(true)} className="text-xs text-gray-500 dark:text-gray-400 underline underline-offset-2 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">ดูทัวร์แนะนำ</button>
+                <p className="num text-[10px] text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                  <Kbd>Ctrl K</Kbd> palette · <Kbd>?</Kbd> ปุ่มลัด
+                </p>
               </div>
-              <p className="num text-[10px] text-gray-400 dark:text-gray-500 mt-5 flex items-center justify-center gap-1.5">
-                ทางลัด: <Kbd>Ctrl K</Kbd> เปิด palette · <Kbd>?</Kbd> ดูปุ่มลัด
-              </p>
             </div>
           </Card>
         )}

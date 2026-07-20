@@ -7,7 +7,7 @@
  */
 import { useState, useCallback } from "react";
 import { useAppStore } from "../store";
-import { apiFetch, postJSON } from "../lib/api";
+import { apiFetch, getJSON, postJSON } from "../lib/api";
 import { startSpan } from "../lib/perf";
 
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
@@ -45,6 +45,24 @@ export function useAnalysis() {
     finally { setLoading(false); }
   }, [file, toast, setCurrentAnalysis]);
 
+  // v20.1: the demo path — no file, no AI, no auth. The server returns the
+  // same analysisResponse shape with analysis:null, so every tab downstream
+  // renders with zero special plumbing.
+  const runDemo = useCallback(async (id, displayName) => {
+    setLoading(true);
+    setFile(null);
+    setCurrentAnalysis(null);
+    const endSpan = startSpan("demo");
+    try {
+      const data = await getJSON(`/api/demo/samples/${id}/analysis`);
+      const perceivedMs = endSpan();
+      setCurrentAnalysis({ ...data, fileName: displayName || id, perceivedMs });
+      toast(`ตรวจเสร็จใน ${data.durationMs} ms — สถิติล้วน ไม่ใช้ AI ⚡`);
+      return data;
+    } catch (err) { endSpan(); toast(err.message, "error"); }
+    finally { setLoading(false); }
+  }, [toast, setCurrentAnalysis]);
+
   const exportReport = useCallback(async (format, question) => {
     if (!file) return;
     setExporting(format);
@@ -74,5 +92,5 @@ export function useAnalysis() {
     } catch (err) { toast(err.message, "error"); }
   }, [currentAnalysis, file, toast]);
 
-  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, exportReport, shareReport };
+  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, runDemo, exportReport, shareReport };
 }
