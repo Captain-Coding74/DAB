@@ -195,3 +195,31 @@ export async function auditLog({ userId, workspaceId, action, resource, ipAddres
   await query(`INSERT INTO audit_log (id,user_id,workspace_id,action,resource,ip_address,user_agent,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     [uuid(),userId||null,workspaceId||null,action,resource||null,ipAddress||null,userAgent||null,now()]).catch(()=>{});
 }
+
+// ── Upload telemetry (v20.2) — see services/telemetry.js for the privacy contract ──
+export async function saveUploadMetadata(m) {
+  await query(`INSERT INTO upload_metadata (id,source,file_type,row_count,col_count,size_kb,numeric_cols,text_cols,date_cols,buddhist_era,encoding,delimiter,skipped_rows,categories,segment,segment_score,sample_id,user_id,created_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+    [uuid(), m.source, m.fileType, m.rowCount, m.colCount, m.sizeKb, m.numericCols, m.textCols, m.dateCols,
+     m.buddhistEra ? 1 : 0, m.encoding, m.delimiter, m.skippedRows, JSON.stringify(m.categories || []),
+     m.segment, m.segmentScore || 0, m.sampleId || null, m.userId || null, now()]);
+}
+
+/** Aggregates in JS over the newest rows — one portable query, no dialect-specific JSON SQL. */
+export async function getTelemetrySummary({ limit = 5000 } = {}) {
+  const rows = await query(
+    `SELECT source,file_type,segment,categories,encoding,buddhist_era,skipped_rows,sample_id
+       FROM upload_metadata ORDER BY created_at DESC LIMIT $1`, [limit]);
+  const bump = (o, k) => { if (k != null && k !== "") o[k] = (o[k] || 0) + 1; };
+  const s = { total: rows.length, bySource: {}, bySegment: {}, byFileType: {}, byEncoding: {},
+              categories: {}, demoTaps: {}, messy: { buddhistEra: 0, skippedHeaderRows: 0 } };
+  for (const r of rows) {
+    bump(s.bySource, r.source); bump(s.bySegment, r.segment);
+    bump(s.byFileType, r.file_type); bump(s.byEncoding, r.encoding);
+    if (r.sample_id) bump(s.demoTaps, r.sample_id);
+    if (r.buddhist_era) s.messy.buddhistEra++;
+    if (r.skipped_rows > 0) s.messy.skippedHeaderRows++;
+    try { for (const t of JSON.parse(r.categories || "[]")) bump(s.categories, t); } catch { /* tolerate bad rows */ }
+  }
+  return s;
+}

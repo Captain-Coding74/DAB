@@ -45,6 +45,7 @@ import { mountShareRoutes }     from "./routes/shares.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
+import { mountTelemetryRoutes } from "./routes/telemetry.js";
 import { startScheduler }        from "./services/scheduler.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
 import { requestMetrics, metricsHandler, errorHandler } from "./middleware/monitoring.js";
@@ -160,6 +161,9 @@ export function createApp() {
 
   // ── Public demo — no auth, no AI → routes/demo.js (v20.1) ─
   mountDemoRoutes(app);
+
+  // ── Upload telemetry summary (auth) → routes/telemetry.js (v20.2) ─
+  mountTelemetryRoutes(app);
 
   // ── System ────────────────────────────────────────────────
   app.get("/api/metrics", metricsHandler);

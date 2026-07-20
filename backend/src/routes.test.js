@@ -200,3 +200,51 @@ describe("Demo routes (public, no auth, no AI)", () => {
     assert.equal((await agent.get("/api/demo/samples/..%2F..%2Fpackage.json/analysis")).status, 404);
   });
 });
+
+describe("Upload telemetry (privacy-safe, v20.2)", () => {
+  const PHARMACY_CSV = "วันที่,ชื่อยา,ล็อต,วันหมดอายุ,คงเหลือ,ราคา\n" +
+    "14/01/2569,พาราเซตามอล,L42,30/06/2569,120,15\n" +
+    "15/01/2569,ยาแก้ไอน้ำดำ,L43,31/12/2569,40,55\n";
+
+  test("summary endpoint requires auth", async () => {
+    assert.equal((await agent.get("/api/telemetry/summary")).status, 401);
+  });
+
+  test("an anonymous /api/analyze upload leaves a segment fingerprint", async () => {
+    const up = await agent.post("/api/analyze")
+      .attach("file", Buffer.from(PHARMACY_CSV), "ยาร้านป้าศรี.csv")
+      .field("question", "สรุปหน่อย");
+    assert.equal(up.status, 200, JSON.stringify(up.body).slice(0, 200));
+
+    const res = await auth(agent.get("/api/telemetry/summary"));
+    assert.equal(res.status, 200);
+    assert.ok(res.body.bySegment.pharmacy >= 1, `pharmacy counted: ${JSON.stringify(res.body.bySegment)}`);
+    assert.ok(res.body.bySource.analyze >= 1);
+    assert.ok(res.body.categories.expiry >= 1);
+    assert.ok(res.body.messy.buddhistEra >= 1, "พ.ศ. dates flagged");
+  });
+
+  test("demo taps are counted per sample", async () => {
+    await agent.get("/api/demo/samples/thai-shop/analysis");
+    const res = await auth(agent.get("/api/telemetry/summary"));
+    assert.ok(res.body.demoTaps["thai-shop"] >= 1);
+    assert.ok(res.body.bySource.demo >= 1);
+    assert.ok(res.body.bySegment.retail_shop >= 1, "thai-shop sample reads as retail");
+  });
+
+  test("dataset uploads are counted too", async () => {
+    const up = await auth(agent.post("/api/datasets"))
+      .attach("file", Buffer.from(PHARMACY_CSV), "stock.csv");
+    assert.equal(up.status, 201);
+    const res = await auth(agent.get("/api/telemetry/summary"));
+    assert.ok(res.body.bySource.dataset >= 1);
+  });
+
+  test("the summary leaks NO raw column names or filenames", async () => {
+    const res = await auth(agent.get("/api/telemetry/summary"));
+    const json = JSON.stringify(res.body);
+    for (const leak of ["ชื่อยา", "วันหมดอายุ", "คงเหลือ", "ป้าศรี", "stock.csv"]) {
+      assert.ok(!json.includes(leak), `summary leaked: ${leak}`);
+    }
+  });
+});

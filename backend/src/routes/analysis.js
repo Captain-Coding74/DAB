@@ -10,6 +10,7 @@ import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
 import { parseFileStreaming } from "../services/streaming.js";
 import { cache, cacheKey }     from "../services/cache.js";
 import { computeStatsBundle, buildAnalysisPrompt, analysisResponse } from "../services/analysisPipeline.js";
+import { recordUpload } from "../services/telemetry.js";
 import { serviceLogger, requestLogger } from "../logger.js";
 
 const log = serviceLogger("analyze");
@@ -70,12 +71,16 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const workspaceId = req.body.workspaceId || null;
       const datasetId   = req.body.datasetId   || null;
 
-      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, parseMs } =
+      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, normalization } =
         await parseFileStreaming(req.file.buffer, req.file.originalname);
 
       const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows };
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
+
+      // v20.2: privacy-safe usage fingerprint — shapes + dictionary tags only
+      recordUpload({ source: "analyze", fileType, sizeBytes: req.file.size,
+                     parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user?.userId });
 
       const msg = await ai.messages.create({
         model: "claude-sonnet-4-6", max_tokens: 1500,

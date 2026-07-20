@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { parseFileStreaming } from "../services/streaming.js";
 import { computeStatsBundle, analysisResponse } from "../services/analysisPipeline.js";
 import { serviceLogger } from "../logger.js";
+import { recordUpload } from "../services/telemetry.js";
 
 const log = serviceLogger("demo");
 const DATA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "sample-data");
@@ -95,7 +96,12 @@ export function mountDemoRoutes(app) {
       if (!Object.prototype.hasOwnProperty.call(SAMPLES, req.params.id)) {
         return res.status(404).json({ error: "ไม่พบชุดข้อมูลตัวอย่างนี้" });
       }
-      res.json(await analyzeSample(req.params.id));
+      const payload = await analyzeSample(req.params.id);
+      // v20.2: a demo tap is top-of-funnel signal — record it like an upload
+      recordUpload({ source: "demo", fileType: "csv",
+                     parsed: { colAnalysis: payload.colAnalysis, totalRows: payload.rows, normalization: payload.normalization },
+                     sampleId: req.params.id, userId: req.user?.userId });
+      res.json(payload);
     } catch (err) { next(err); }
   });
 }

@@ -3,6 +3,7 @@
  * Google Drive-style: store, version, rename, delete, preview, filter, folders, tags
  */
 import express from "express";
+import { recordUpload } from "../services/telemetry.js";
 import multer  from "multer";
 import { requireAuth } from "../auth.js";
 import { parseFileStreaming } from "../services/streaming.js";
@@ -56,8 +57,10 @@ router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const { name, description, folderId, workspaceId } = req.body;
     const fileContent = req.file.buffer.toString("utf-8");
-    const { headers, colAnalysis, totalRows, dupeCount } = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
+    recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
+                   parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
 
     const ds = await DR.createDataset({
       workspaceId: workspaceId || null,
@@ -242,8 +245,10 @@ router.post("/:id/versions", requireAuth, upload.single("file"), async (req, res
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const fileContent = req.file.buffer.toString("utf-8");
-    const { headers, colAnalysis, totalRows, dupeCount } = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
+    recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
+                   parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
 
     const v = await DR.addDatasetVersion({
       datasetId: req.params.id, fileName: req.file.originalname, fileContent,

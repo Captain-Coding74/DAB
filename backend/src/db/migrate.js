@@ -177,6 +177,31 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_analyses_dataset     ON analyses(dataset_id)`,
   `CREATE INDEX IF NOT EXISTS idx_analyses_created     ON analyses(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_refresh_hash         ON refresh_tokens(token_hash)`,
+
+  // ── Upload telemetry (v20.2) — shapes and dictionary tags ONLY ──
+  // No filenames, no raw column names, no cell values (see services/telemetry.js).
+  `CREATE TABLE IF NOT EXISTS upload_metadata (
+    id            TEXT PRIMARY KEY,
+    source        TEXT NOT NULL,
+    file_type     TEXT,
+    row_count     INTEGER NOT NULL DEFAULT 0,
+    col_count     INTEGER NOT NULL DEFAULT 0,
+    size_kb       INTEGER NOT NULL DEFAULT 0,
+    numeric_cols  INTEGER NOT NULL DEFAULT 0,
+    text_cols     INTEGER NOT NULL DEFAULT 0,
+    date_cols     INTEGER NOT NULL DEFAULT 0,
+    buddhist_era  INTEGER NOT NULL DEFAULT 0,
+    encoding      TEXT,
+    delimiter     TEXT,
+    skipped_rows  INTEGER NOT NULL DEFAULT 0,
+    categories    TEXT,
+    segment       TEXT,
+    segment_score REAL,
+    sample_id     TEXT,
+    user_id       TEXT,
+    created_at    TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_uploadmeta_created   ON upload_metadata(created_at DESC)`,
 ];
 
 export async function migrate() {
