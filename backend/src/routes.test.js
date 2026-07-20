@@ -248,3 +248,47 @@ describe("Upload telemetry (privacy-safe, v20.2)", () => {
     }
   });
 });
+
+describe("AI gating + daily budget (v20.3)", () => {
+  const CSV2 = "region,units\nBKK,10\nCNX,20\n";
+
+  test("anonymous /api/analyze gets full stats but no AI prose", async () => {
+    const res = await agent.post("/api/analyze").attach("file", Buffer.from(CSV2), "anon.csv");
+    assert.equal(res.status, 200, JSON.stringify(res.body).slice(0, 200));
+    assert.equal(res.body.aiGated, true);
+    assert.equal(res.body.analysis, null);
+    assert.ok(Array.isArray(res.body.insights), "deterministic bundle intact");
+    assert.ok(res.body.quality, "quality score intact");
+    assert.equal(res.body.savedId, null);
+  });
+
+  test("signed-in /api/analyze gets the AI report within budget", async () => {
+    const res = await auth(agent.post("/api/analyze")).attach("file", Buffer.from(CSV2), "authed.csv");
+    assert.equal(res.status, 200);
+    assert.equal(res.body.aiGated, false);
+    assert.ok(res.body.analysis.includes("[MOCK]"), "AI (mock) prose present");
+    assert.ok(res.body.savedId);
+  });
+
+  test("budget exhaustion degrades gracefully — stats served, history saved", async () => {
+    process.env.AI_DAILY_BUDGET = "0";
+    try {
+      const res = await auth(agent.post("/api/analyze")).attach("file", Buffer.from(CSV2), "budget.csv");
+      assert.equal(res.status, 200);
+      assert.equal(res.body.aiBudget, "exceeded");
+      assert.equal(res.body.analysis, null);
+      assert.ok(Array.isArray(res.body.insights));
+      assert.ok(res.body.savedId, "stats still saved to history");
+    } finally { delete process.env.AI_DAILY_BUDGET; }
+  });
+
+  test("stored-dataset re-analysis respects the budget too", async () => {
+    process.env.AI_DAILY_BUDGET = "0";
+    try {
+      const res = await auth(agent.post(`/api/datasets/${datasetId}/analyze`)).send({ question: "สรุป" });
+      assert.equal(res.status, 200);
+      assert.equal(res.body.aiBudget, "exceeded");
+      assert.equal(res.body.analysis, null);
+    } finally { delete process.env.AI_DAILY_BUDGET; }
+  });
+});

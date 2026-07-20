@@ -1,11 +1,11 @@
 {
   "name": "@dab/backend",
-  "version": "20.2.0",
+  "version": "20.3.0",
   "type": "module",
   "scripts": {
     "start": "cross-env NODE_ENV=production node src/server.js",
     "dev": "cross-env NODE_ENV=development node --watch src/server.js",
-    "test": "node --test src/stats.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js",
+    "test": "node --test src/stats.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js",
     "test:integration": "cross-env JWT_SECRET=test-secret-32chars-long!!!! JWT_REFRESH_SECRET=test-refresh-32chars-long! NODE_ENV=test node --test --test-concurrency=1 src/integration.test.js src/routes.test.js",
     "test:all": "npm test && npm run test:integration",
     "test:smoke": "echo 'Requires a running server on :3099 — see src/scripts/smoketest.mjs header for full boot command' && node src/scripts/smoketest.mjs",

@@ -11,6 +11,7 @@ import { parseFileStreaming } from "../services/streaming.js";
 import { cache, cacheKey }     from "../services/cache.js";
 import { computeStatsBundle, buildAnalysisPrompt, analysisResponse } from "../services/analysisPipeline.js";
 import { recordUpload } from "../services/telemetry.js";
+import { tryConsumeAI } from "../services/aiBudget.js";
 import { serviceLogger, requestLogger } from "../logger.js";
 
 const log = serviceLogger("analyze");
@@ -21,7 +22,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
     const t0  = performance.now();
     const log = requestLogger(req);
     try {
-      const { getUserDatasetRole, getDatasetWithContent } = await import("./db/datasetRepository.js");
+      const { getUserDatasetRole, getDatasetWithContent } = await import("../db/datasetRepository.js");
       const role = await getUserDatasetRole(req.params.id, req.user.userId);
       if (!role) return res.status(403).json({ error: "No access to this dataset" });
 
@@ -36,27 +37,35 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
 
-      const msg = await ai.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 1500,
-        messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, bundle, sampleRows }) }],
-      });
-      const aiAnalysis = msg.content[0].text;
+      // v20.3: the global daily AI budget applies here too
+      let aiAnalysis = null, aiBudget = null;
+      const b = await tryConsumeAI();
+      if (!b.allowed) {
+        aiBudget = "exceeded";
+        log.warn({ used: b.used, budget: b.budget }, "AI daily budget exhausted — serving stats-only");
+      } else {
+        const msg = await ai.messages.create({
+          model: "claude-sonnet-4-6", max_tokens: 1500,
+          messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, bundle, sampleRows }) }],
+        });
+        aiAnalysis = msg.content[0].text;
+      }
       const durationMs = Math.round(performance.now() - t0);
 
       const rec = await R.saveAnalysis({
         userId: req.user.userId, workspaceId: ds.workspace_id, datasetId: ds.id,
         fileName: ds.version.file_name, fileType: ds.version.file_type,
-        totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis,
+        totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis ?? "",
         statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0],
         qualityScore: quality?.score, durationMs, ipAddress: req.ip,
       });
       await cache.delPattern(`user:${req.user.userId}:history:`);
 
-      const { logActivity } = await import("./db/collabRepository.js");
+      const { logActivity } = await import("../db/collabRepository.js");
       await logActivity({ workspaceId: ds.workspace_id, datasetId: ds.id, userId: req.user.userId, action: "analysis_created", metadata: { name: ds.name } });
 
       log.info({ datasetId: ds.id, rows: totalRows, durationMs }, "Re-analyzed stored dataset (no upload)");
-      res.json(analysisResponse({ aiAnalysis, totalRows, headers, durationMs, parsed, bundle, savedId: rec.id }));
+      res.json({ ...analysisResponse({ aiAnalysis, totalRows, headers, durationMs, parsed, bundle, savedId: rec.id }), aiBudget });
     } catch (err) { next(err); }
   });
 
@@ -82,22 +91,38 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       recordUpload({ source: "analyze", fileType, sizeBytes: req.file.size,
                      parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user?.userId });
 
-      const msg = await ai.messages.create({
-        model: "claude-sonnet-4-6", max_tokens: 1500,
-        messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle, sampleRows }) }],
-      });
-      const aiAnalysis = msg.content[0].text;
+      // v20.3 launch safety: AI prose is the signed-in tier of this endpoint.
+      //   anonymous → full deterministic bundle, analysis:null, aiGated flag
+      //   signed-in → AI within the global daily budget, else graceful degrade
+      // Either way the user gets instant statistical results — the product
+      // never returns less than the demo promised.
+      let aiAnalysis = null, aiGated = false, aiBudget = null;
+      if (!req.user) {
+        aiGated = true;
+      } else {
+        const b = await tryConsumeAI();
+        if (!b.allowed) {
+          aiBudget = "exceeded";
+          log.warn({ used: b.used, budget: b.budget }, "AI daily budget exhausted — serving stats-only");
+        } else {
+          const msg = await ai.messages.create({
+            model: "claude-sonnet-4-6", max_tokens: 1500,
+            messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle, sampleRows }) }],
+          });
+          aiAnalysis = msg.content[0].text;
+        }
+      }
       const durationMs = Math.round(performance.now() - t0);
 
       let savedId = null;
       if (req.user) {
-        const rec = await R.saveAnalysis({ userId: req.user.userId, workspaceId, datasetId, fileName: req.file.originalname, fileType, totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis, statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0], qualityScore: quality?.score, durationMs, ipAddress: req.ip });
+        const rec = await R.saveAnalysis({ userId: req.user.userId, workspaceId, datasetId, fileName: req.file.originalname, fileType, totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis ?? "", statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0], qualityScore: quality?.score, durationMs, ipAddress: req.ip });
         savedId = rec.id;
         await cache.delPattern(`user:${req.user.userId}:history:`);
       }
 
       log.info({ rows: totalRows, durationMs, quality: quality?.score, savedId }, "Analyze complete");
-      res.json(analysisResponse({ aiAnalysis, totalRows, headers, durationMs, parsed, bundle, savedId }));
+      res.json({ ...analysisResponse({ aiAnalysis, totalRows, headers, durationMs, parsed, bundle, savedId }), aiGated, aiBudget });
     } catch (err) { next(err); }
   });
 }

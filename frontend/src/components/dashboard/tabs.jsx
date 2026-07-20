@@ -34,10 +34,11 @@ export function InsightRow({ ins }) {
 }
 
 export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
-  // v20.1 demo path: no AI report was generated — this tab becomes the
-  // honest pitch. Value first (everything else on screen was free/instant),
-  // conversion second.
-  if (a.demo && !a.analysis) {
+  // No AI prose to show — three honest reasons, one shared shell:
+  //   demo     → pitch uploading your own file (v20.1)
+  //   aiGated  → anonymous upload: stats were free, AI is the signed-in tier (v20.3)
+  //   aiBudget → global daily cap reached: degrade gracefully, never go down (v20.3)
+  if (!a.analysis && (a.demo || a.aiGated || a.aiBudget)) {
     return (
       <Card>
         <div className="flex items-center gap-2.5 mb-4">
@@ -45,21 +46,41 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
           {a.quality && <GradeStamp score={a.quality.score}/>}
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
-          <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">
-            ทุกอย่างที่เห็นอยู่ — insights, คะแนนคุณภาพ, กราฟ, correlation — มาจาก{" "}
-            <span className="font-medium">Insights Engine</span> ล้วน ๆ: คำนวณจากสถิติ ได้ผลทันที และฟรี
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-300 leading-7">
-            อัปโหลดไฟล์ของคุณเองเพื่อรับ<span className="font-medium">บทวิเคราะห์ AI ภาษาไทยฉบับเต็ม</span>{" "}
-            ตรงแท็บนี้ พร้อมถาม-ตอบเจาะลึกต่อได้
-          </p>
+          {a.aiBudget ? (
+            <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">
+              วันนี้โควต้าบทวิเคราะห์ AI ของระบบเต็มแล้ว 🙏 ผลตรวจเชิงสถิติทั้งหมด —
+              insights, คุณภาพ, กราฟ, correlation — ยังครบถ้วนตามปกติ พรุ่งนี้บทวิเคราะห์ AI จะกลับมาให้อัตโนมัติ
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">
+                ทุกอย่างที่เห็นอยู่ — insights, คะแนนคุณภาพ, กราฟ, correlation — มาจาก{" "}
+                <span className="font-medium">Insights Engine</span> ล้วน ๆ: คำนวณจากสถิติ ได้ผลทันที และฟรี
+              </p>
+              {a.demo ? (
+                <p className="text-sm text-gray-600 dark:text-gray-300 leading-7">
+                  อัปโหลดไฟล์ของคุณเองเพื่อรับ<span className="font-medium">บทวิเคราะห์ AI ภาษาไทยฉบับเต็ม</span>{" "}
+                  ตรงแท็บนี้ พร้อมถาม-ตอบเจาะลึกต่อได้
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600 dark:text-gray-300 leading-7">
+                  เข้าสู่ระบบ (ฟรี) เพื่อรับ<span className="font-medium">บทวิเคราะห์ AI ภาษาไทยฉบับเต็ม</span>{" "}
+                  ของไฟล์นี้ พร้อมเก็บประวัติ แชร์รายงาน และถาม-ตอบต่อได้
+                </p>
+              )}
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <Button size="sm" onClick={() => document.getElementById("fileIn")?.click()}>
-              <Upload size={13}/> อัปโหลดไฟล์ของฉัน
-            </Button>
-            <Link to="/auth" className="font-mono text-[11px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors">
-              สมัครฟรี — เก็บประวัติ + แชร์รายงาน
-            </Link>
+            {a.demo && (
+              <Button size="sm" onClick={() => document.getElementById("fileIn")?.click()}>
+                <Upload size={13}/> อัปโหลดไฟล์ของฉัน
+              </Button>
+            )}
+            {!a.aiBudget && (
+              <Link to="/auth" className="font-mono text-[11px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors">
+                {a.demo ? "สมัครฟรี — เก็บประวัติ + แชร์รายงาน" : "เข้าสู่ระบบ / สมัครฟรี"}
+              </Link>
+            )}
           </div>
         </div>
       </Card>

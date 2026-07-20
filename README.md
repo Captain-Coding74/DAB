@@ -1,4 +1,4 @@
-# 📊 Data Analysis Bot v20.2 — Usage Picks the Segment
+# 📊 Data Analysis Bot v20.3 — Launch Safe
 
 React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + scheduled reports + team workspaces — now parsing the files Thai shops *actually* export.
 
@@ -44,6 +44,7 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
+| **🛡️ Launch Safety (v20.3)** | AI prose is the signed-in tier: anonymous uploads get the full instant Insights Engine, zero Anthropic calls. Global `AI_DAILY_BUDGET` caps the daily bill with graceful stats-only degradation. Fixed a dead-since-v16 import bug in stored-dataset re-analysis (first test to ever hit it) |
 | **📡 Upload Telemetry (v20.2)** | Privacy-safe usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). No filenames, no raw column names, no cell values — enforced by tests. `npm run telemetry` prints the "which vertical showed up" report |
 | **⚡ Instant Demo (v20.1)** | Public no-auth landing demo: tap a sample → full Insights Engine results with zero AI calls, cached in-process. The messy Thai sample doubles as a live v20 showcase, and the AI-report slot becomes the conversion CTA |
 | **🧹 Messy File Layer (v20)** | TIS-620/UTF-16 encoding detection, delimiter sniffing (`;` tab `\|`), banner-row/header detection, Thai numbers (`฿1,234.50`, `(500)`, `๑๒๓`), พ.ศ. → ค.ศ. dates (`14 ม.ค. 2569`), date columns no longer masquerade as numeric. 45 new tests |
@@ -540,3 +541,11 @@ This is an npm **workspaces** monorepo. Run `npm install` **once at the root** �
 
 ### ✅ `npm run verify` — exit 0
 **154 automated checks** · 8 quality gates · 3 bundle budgets · 3 render targets · API latency budgets · **security audit now covering both advisories *and* vulnerable deprecated dependencies**.
+
+## 🚀 Going public — launch checklist (v20.3)
+
+1. `cp .env.example .env` — set **real** `JWT_SECRET` / `JWT_REFRESH_SECRET` (`openssl rand -hex 32` each) and `ANTHROPIC_API_KEY`. The app refuses to boot in production without the secrets, and refuses `AI_MOCK=1`.
+2. Set `AI_DAILY_BUDGET` (default 300). This is the hard ceiling on your daily Anthropic bill: anonymous visitors **never** trigger AI calls (they get the instant Insights Engine on their own files), signed-in users share the daily pool, and when it runs out the product degrades to stats-only instead of going down.
+3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml`; leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
+4. Put TLS in front (Caddy: two lines, or your PaaS does it). Rate limits, helmet, and upload caps are already on.
+5. Watch what arrives: `npm run telemetry -w backend` — the segment table is the vertical decision.
