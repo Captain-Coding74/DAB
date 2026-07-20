@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Analysis Bot — Thai-first data inspector · เครื่องตรวจข้อมูลภาษาไทย</title>
+<meta name="description" content="อัปโหลดไฟล์เละ ๆ จากหน้าร้าน แล้วเห็นผลตรวจใน 10 วินาที · Upload messy Thai spreadsheets, get insights in 10 seconds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0B1220; --panel: #121C30; --panel-2: #0E1728; --edge: #1F2B45;
+    --amber: #F5A00B; --red: #E0563E; --green: #34D399; --warn: #F5C044;
+    --txt: #E9EEF7; --mute: #8C99B5; --faint: #5E6B80;
+    --sans: "IBM Plex Sans Thai", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--sans); background: var(--ink); color: var(--txt);
+    line-height: 1.65; -webkit-font-smoothing: antialiased;
+    background-image: repeating-linear-gradient(to bottom, transparent 0 31px, rgba(140,153,181,.04) 31px 32px);
+  }
+  a { color: inherit; text-decoration: none; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--amber); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  nav { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px);
+        background: rgba(11,18,32,.86); border-bottom: 1px solid var(--edge); }
+  .nav-in { display: flex; align-items: center; gap: 14px; height: 60px; }
+  .stamp { display: inline-flex; align-items: center; border: 1.5px solid var(--amber); border-radius: 7px;
+           padding: 4px 10px; font-family: var(--mono); font-weight: 500; color: var(--amber); font-size: 14px; }
+  .nav-title { font-weight: 600; font-size: 15px; }
+  .nav-sub { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; color: var(--mute); }
+  .chip { font-family: var(--mono); font-size: 10px; color: var(--mute);
+          border: 1px solid var(--edge); border-radius: 6px; padding: 2px 7px; }
+  .lang { margin-left: auto; display: flex; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; }
+  .lang button { font-family: var(--mono); font-size: 11px; padding: 6px 11px; background: none;
+                 border: 0; color: var(--faint); cursor: pointer; transition: color .15s, background .15s; }
+  .lang button.on { background: var(--amber); color: var(--ink); font-weight: 500; }
+  .nav-cta { background: var(--amber); color: var(--ink); font-weight: 700;
+             padding: 9px 18px; border-radius: 10px; font-size: 14px; transition: transform .15s, box-shadow .15s; }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 22px rgba(245,160,11,.3); }
+
+  .hero { padding: 76px 0 70px; text-align: center; }
+  h1 { font-size: clamp(30px, 5.2vw, 52px); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+  h1 .hl { color: var(--amber); }
+  .hero p.sub { color: var(--mute); font-size: clamp(15px, 2vw, 18px); max-width: 620px; margin: 16px auto 0; }
+  .cta-row { display: flex; gap: 12px; justify-content: center; margin-top: 28px; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; border-radius: 12px; padding: 13px 26px;
+         font-weight: 700; font-size: 15px; transition: transform .15s, box-shadow .15s, border-color .15s; }
+  .btn-amber { background: var(--amber); color: var(--ink); }
+  .btn-amber:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(245,160,11,.35); }
+  .btn-ghost { border: 1px solid var(--edge); color: var(--mute); font-family: var(--mono); font-size: 13px; font-weight: 500; }
+  .btn-ghost:hover { border-color: var(--amber); color: var(--amber); }
+  .trust { margin-top: 14px; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+
+  .console { max-width: 780px; margin: 52px auto 0; text-align: left;
+             background: var(--panel); border: 1px solid var(--edge); border-radius: 16px;
+             box-shadow: 0 30px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(245,160,11,.06); overflow: hidden; }
+  .console-bar { display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+                 border-bottom: 1px solid var(--edge); background: var(--panel-2); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--edge); }
+  .console-file { font-family: var(--mono); font-size: 12px; color: var(--mute); margin-left: 4px; }
+  .console-live { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--amber);
+                  display: flex; align-items: center; gap: 6px; letter-spacing: .15em; }
+  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  .console-body { padding: 18px 20px 16px; font-family: var(--mono); font-size: 13.5px; min-height: 178px; }
+  .ln { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; min-height: 30px;
+        border-bottom: 1px dashed rgba(31,43,69,.7); }
+  .ln:last-child { border-bottom: 0; }
+  .ln .no { color: var(--faint); font-size: 11px; width: 18px; flex: none; }
+  .ln .src { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln.skipped .src { text-decoration: line-through; color: var(--faint); }
+  .tag { flex: none; margin-left: auto; font-size: 9px; letter-spacing: .12em; padding: 2px 7px;
+         border-radius: 5px; border: 1px solid; opacity: 0; transform: translateY(4px);
+         transition: opacity .3s, transform .3s; }
+  .tag.show { opacity: 1; transform: none; }
+  .tag.t-skip { color: var(--faint); border-color: var(--edge); }
+  .tag.t-fix  { color: var(--amber); border-color: rgba(245,160,11,.5); }
+  .tag.t-ok   { color: var(--green); border-color: rgba(52,211,153,.45); }
+  .fix { color: var(--amber); transition: color .3s; }
+  .caret { display: inline-block; width: 7px; height: 15px; background: var(--amber);
+           vertical-align: text-bottom; animation: pulse 1s infinite; }
+  .console-foot { display: flex; align-items: center; gap: 26px; padding: 13px 20px;
+                  border-top: 1px solid var(--edge); background: var(--panel-2); flex-wrap: wrap; }
+  .ro { display: flex; flex-direction: column; gap: 1px; }
+  .ro .l { font-family: var(--mono); font-size: 8.5px; letter-spacing: .2em; color: var(--faint); }
+  .ro .v { font-family: var(--mono); font-size: 17px; color: var(--amber); }
+  .grade-slot { margin-left: auto; min-width: 74px; text-align: center; }
+  .grade { display: inline-block; font-family: var(--mono); font-weight: 500; font-size: 17px;
+           color: var(--green); border: 2px double var(--green); border-radius: 8px; padding: 3px 13px;
+           transform: scale(1.25) rotate(-3deg); opacity: 0; }
+  .grade.stamped { animation: stampIn .16s ease-out forwards; }
+  @keyframes stampIn { to { transform: scale(1) rotate(-3deg); opacity: 1; } }
+
+  section { padding: 84px 0; border-top: 1px solid rgba(31,43,69,.55); }
+  .sec-head { text-align: center; margin-bottom: 46px; }
+  h2 { font-size: clamp(22px, 3.4vw, 32px); font-weight: 700; margin-top: 10px; }
+  .sec-head p { color: var(--mute); margin-top: 10px; max-width: 560px; margin-inline: auto; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 24px; }
+  .card h3 { font-size: 16.5px; font-weight: 600; margin: 10px 0 6px; }
+  .card p { font-size: 13.5px; color: var(--mute); }
+  .before-after { margin-top: 14px; font-family: var(--mono); font-size: 12px;
+                  background: var(--panel-2); border: 1px solid var(--edge); border-radius: 9px; padding: 10px 12px; }
+  .before-after .b { color: var(--faint); text-decoration: line-through wavy rgba(224,86,62,.55); }
+  .before-after .a { color: var(--amber); }
+  .arrow { color: var(--faint); padding: 0 6px; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; counter-reset: step; }
+  .step { position: relative; padding: 22px 22px 22px 66px; background: var(--panel);
+          border: 1px solid var(--edge); border-radius: 14px; }
+  .step::before { counter-increment: step; content: counter(step, decimal-leading-zero);
+                  position: absolute; left: 20px; top: 22px; font-family: var(--mono);
+                  color: var(--amber); font-size: 15px; border: 1.5px solid rgba(245,160,11,.5);
+                  border-radius: 8px; padding: 3px 7px; }
+  .step h3 { font-size: 15.5px; font-weight: 600; }
+  .step p { font-size: 13px; color: var(--mute); margin-top: 4px; }
+  .findings { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .finding { display: grid; grid-template-columns: 3px 1fr auto; gap: 14px; align-items: start;
+             background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: 16px 18px; }
+  .finding .rule { width: 3px; border-radius: 2px; height: 100%; min-height: 40px; }
+  .finding h4 { font-size: 14.5px; font-weight: 600; }
+  .finding p { font-size: 12.5px; color: var(--mute); margin-top: 3px; }
+  .sev { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; padding: 2px 8px;
+         border: 1px solid; border-radius: 5px; align-self: center; }
+  .honest { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px;
+            font-size: 13px; color: var(--mute); }
+  .honest div { border-left: 2px solid var(--edge); padding-left: 14px; }
+  .honest b { color: var(--txt); font-weight: 600; display: block; margin-bottom: 3px; }
+  .final { text-align: center; padding: 96px 0 80px; }
+  footer { border-top: 1px solid var(--edge); padding: 26px 0 34px; color: var(--faint);
+           font-family: var(--mono); font-size: 11px; text-align: center; }
+  .rv { opacity: 0; transform: translateY(16px); transition: opacity .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
+  .rv.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    .rv { opacity: 1; transform: none; }
+    .grade { opacity: 1; transform: rotate(-3deg); }
+    .tag { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav><div class="wrap nav-in">
+  <span class="stamp">DAB</span>
+  <span><span class="nav-title">Data Analysis Bot</span><br><span class="nav-sub">AFTER-HOURS CONSOLE</span></span>
+  <span class="chip">v20.4</span>
+  <span class="lang" role="group" aria-label="Language">
+    <button id="langTh">TH</button><button id="langEn" class="on">EN</button>
+  </span>
+  <a class="nav-cta" href="#cta" data-i18n="navCta">ลองเลย — ฟรี</a>
+</div></nav>
+
+<header class="hero wrap">
+  <div class="eyebrow" data-i18n="heroEyebrow">เครื่องตรวจข้อมูลภาษาไทย · ไม่ต้องสมัครก็ลองได้</div>
+  <h1 data-i18n-html="heroH1">ไฟล์จากหน้าร้านเละแค่ไหน<br><span class="hl">เครื่องนี้ก็อ่านออก</span></h1>
+  <p class="sub" data-i18n="heroSub">วันที่ พ.ศ. · ราคา ฿1,234.50 · หัวรายงานคั่นตาราง — อัปโหลดมาทั้งอย่างนั้น แล้วรับ insights คุณภาพข้อมูล และกราฟ ภายใน 10 วินาที</p>
+  <div class="cta-row">
+    <a class="btn btn-amber" href="/" data-i18n="heroCta1">แตะข้อมูลตัวอย่าง ↗</a>
+    <a class="btn btn-ghost" href="#how" data-i18n="heroCta2">ทำงานยังไง</a>
+  </div>
+  <div class="trust mono" data-i18n="trust">ไม่ต้องล็อกอิน · ไม่เก็บไฟล์ตัวอย่าง · สถิติล้วน ไม่เผาโควต้า AI</div>
+
+  <div class="console" aria-label="Live parsing demo">
+    <div class="console-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="console-file">ยอดขาย_มค-มีค.csv</span>
+      <span class="console-live"><span class="pulse"></span>LIVE PARSE</span>
+    </div>
+    <div class="console-body" id="cbody"></div>
+    <div class="console-foot">
+      <div class="ro"><span class="l">ROWS</span><span class="v" id="roRows">0</span></div>
+      <div class="ro"><span class="l">FIXED</span><span class="v" id="roFixed">0</span></div>
+      <div class="ro"><span class="l">SKIPPED</span><span class="v" id="roSkip">0</span></div>
+      <div class="ro"><span class="l">SERVER</span><span class="v" id="roMs">— ms</span></div>
+      <div class="grade-slot"><span class="grade" id="grade">B+</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="messy"><div class="wrap">
+  <div class="sec-head rv">
+    <div class="eyebrow">Messy File Layer</div>
+    <h2 data-i18n="messyH2">อ่านไฟล์ที่เครื่องมืออื่นอ่านไม่ออก</h2>
+    <p data-i18n="messySub">ไฟล์จริงจาก Excel ภาษาไทยไม่เคยสะอาด — เราสร้างชั้นแปลภาษาไฟล์เละโดยเฉพาะ</p>
+  </div>
+  <div class="grid3">
+    <div class="card rv">
+      <div class="eyebrow" style="color:var(--green)" data-i18n="c1Eyebrow">พ.ศ. → ค.ศ.</div>
+      <h3 data-i18n="c1H">วันที่แบบไทย เข้าใจหมด</h3>
+      <p data-i18n="c1P">2569, "14 ม.ค. 69", ปี พ.ศ. สองหลัก — แปลงเป็นมาตรฐานให้อัตโนมัติ พร้อมบอกช่วงเวลาของข้อมูล</p>
+      <div class="before-after"><span class="b">14 ม.ค. 2569</span><span class="arrow">→</span><span class="a">2026-01-14</span></div>
+    </div>
+    <div class="card rv">
+      <div class="eyebrow" data-i18n="c2Eyebrow">ตัวเลขปนสัญลักษณ์</div>
+      <h3 data-i18n="c2H">฿ , % ( ) ไม่ใช่ปัญหา</h3>
+      <p data-i18n="c2P">"฿1,234.50" ที่เครื่องมืออื่นอ่านเป็น 1 — ที่นี่อ่านถูก รวมถึงยอดติดลบแบบบัญชี (500)</p>
+      <div class="before-after"><span class="b">"฿1,234.50"</span><span class="arrow">→</span><span class="a">1234.50</span></div>
+    </div>
+    <div class="card rv">
+      <div class="eyebrow" style="color:var(--red)" data-i18n="c3Eyebrow">หัวรายงานคั่น</div>
+      <h3 data-i18n="c3H">ข้ามขยะ หาหัวตารางเอง</h3>
+      <p data-i18n="c3P">บรรทัด "รายงานยอดขายประจำเดือน…" เหนือหัวตาราง? ระบบตรวจเจอและข้ามให้ พร้อม TIS-620/UTF-16</p>
+      <div class="before-after"><span class="b">รายงานยอดขาย ร้านป้าศรี</span><span class="arrow">→</span><span class="a">SKIPPED ✓</span></div>
+    </div>
+  </div>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <div class="sec-head rv">
+    <div class="eyebrow" data-i18n="howEyebrow">10 วินาทีแรก</div>
+    <h2 data-i18n="howH2">ทำงานยังไง</h2>
+  </div>
+  <div class="steps">
+    <div class="step rv"><h3 data-i18n="s1H">วางไฟล์ หรือแตะตัวอย่าง</h3><p data-i18n="s1P">CSV / Excel สูงสุด 10MB — หรือลองชุดข้อมูลตัวอย่างโดยไม่ต้องสมัครอะไรเลย</p></div>
+    <div class="step rv"><h3 data-i18n="s2H">Insights Engine ตรวจทันที</h3><p data-i18n="s2P">สถิติล้วน ไม่รอ AI: ค่าผิดปกติ แถวซ้ำ ค่าว่าง แนวโน้ม correlation — พร้อมใน ~10ms</p></div>
+    <div class="step rv"><h3 data-i18n="s3H">อ่านผลเป็นภาษาไทย</h3><p data-i18n="s3P">บันทึกข้างเล่มบอกว่าเจออะไร สำคัญแค่ไหน ควรทำอะไรต่อ — เข้าสู่ระบบเมื่ออยากได้บทวิเคราะห์ AI ฉบับเต็ม</p></div>
+  </div>
+</div></section>
+
+<section id="findings-sec"><div class="wrap">
+  <div class="sec-head rv">
+    <div class="eyebrow" data-i18n="fEyebrow">บันทึกข้างเล่ม · Insights</div>
+    <h2 data-i18n="fH2">เส้นข้างกระดาษบอกความสำคัญ</h2>
+    <p data-i18n="fSub">มรดกจากสมุดผู้ตรวจสอบ — ทุกประเด็นมีเส้นสีบอกระดับ อ่านปราดเดียวรู้ว่าอะไรด่วน</p>
+  </div>
+  <div class="findings">
+    <div class="finding rv">
+      <div class="rule" style="background:var(--red)"></div>
+      <div><h4 data-i18n="f1H">"ยอดขาย" มีค่าว่าง 4.4%</h4><p data-i18n="f1P">พบเซลล์ว่าง 2 จุด — ตรวจสอบการกรอกข้อมูลต้นทาง หรือระบุวิธีจัดการก่อนสรุปผล</p></div>
+      <span class="sev" style="color:var(--red);border-color:rgba(224,86,62,.5)">CRITICAL</span>
+    </div>
+    <div class="finding rv">
+      <div class="rule" style="background:var(--warn)"></div>
+      <div><h4 data-i18n="f2H">พบข้อมูลซ้ำ 2 แถว (4.4%)</h4><p data-i18n="f2P">อาจเกิดจากการกดส่งซ้ำ — เก็บไว้พร้อมระบุในรายงาน หรือลบออกก่อนวิเคราะห์</p></div>
+      <span class="sev" style="color:var(--warn);border-color:rgba(245,192,68,.5)">WARNING</span>
+    </div>
+    <div class="finding rv">
+      <div class="rule" style="background:var(--green)"></div>
+      <div><h4 data-i18n="f3H">"วันที่" เป็นคอลัมน์วันที่</h4><p data-i18n="f3P">ครอบคลุม 2026-01-05 ถึง 2026-03-28 — พบปีแบบ พ.ศ. และแปลงเป็น ค.ศ. ให้อัตโนมัติ</p></div>
+      <span class="sev" style="color:var(--green);border-color:rgba(52,211,153,.45)">INFO</span>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="honest rv">
+    <div><b data-i18n="h1B">ข้อมูลตัวอย่าง ไม่ใช่ของปลอมสวย ๆ</b><span data-i18n="h1T">ตัวเลขทุกตัวบนหน้านี้มาจาก engine จริง รันกับไฟล์เละจริง</span></div>
+    <div><b data-i18n="h2B">โหมดลองใช้ ไม่แตะ AI</b><span data-i18n="h2T">ผลตรวจฟรีคำนวณจากสถิติล้วน — เร็ว ตรวจซ้ำได้ และไม่เผางบใคร</span></div>
+    <div><b data-i18n="h3B">ความเป็นส่วนตัวมาก่อน</b><span data-i18n="h3T">ระบบเก็บเพียงรูปทรงไฟล์กับหมวดคอลัมน์ ไม่เก็บชื่อไฟล์ ชื่อคอลัมน์ หรือข้อมูลจริง</span></div>
+  </div>
+</div></section>
+
+<div class="final wrap" id="cta">
+  <div class="eyebrow rv" data-i18n="ctaEyebrow">พร้อมเมื่อคุณพร้อม</div>
+  <h2 class="rv" style="margin-top:10px" data-i18n="ctaH2">เอาไฟล์ที่เละที่สุดของคุณมา</h2>
+  <p class="rv" style="color:var(--mute);margin-top:10px" data-i18n="ctaSub">ถ้าเครื่องนี้อ่านไม่ออก เราอยากเห็นไฟล์นั้นมาก</p>
+  <div class="cta-row rv"><a class="btn btn-amber" href="/" data-i18n="ctaBtn">เปิดเครื่องตรวจ ↗</a></div>
+</div>
+
+<footer><div class="wrap" data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — สถิติล้วนตรวจซ้ำได้เสมอ</div></footer>
+
+<script>
+(function () {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* ── i18n ── */
+  const I18N = {
+    th: {
+      navCta: "ลองเลย — ฟรี",
+      heroEyebrow: "เครื่องตรวจข้อมูลภาษาไทย · ไม่ต้องสมัครก็ลองได้",
+      heroH1: 'ไฟล์จากหน้าร้านเละแค่ไหน<br><span class="hl">เครื่องนี้ก็อ่านออก</span>',
+      heroSub: "วันที่ พ.ศ. · ราคา ฿1,234.50 · หัวรายงานคั่นตาราง — อัปโหลดมาทั้งอย่างนั้น แล้วรับ insights คุณภาพข้อมูล และกราฟ ภายใน 10 วินาที",
+      heroCta1: "แตะข้อมูลตัวอย่าง ↗", heroCta2: "ทำงานยังไง",
+      trust: "ไม่ต้องล็อกอิน · ไม่เก็บไฟล์ตัวอย่าง · สถิติล้วน ไม่เผาโควต้า AI",
+      messyH2: "อ่านไฟล์ที่เครื่องมืออื่นอ่านไม่ออก",
+      messySub: "ไฟล์จริงจาก Excel ภาษาไทยไม่เคยสะอาด — เราสร้างชั้นแปลภาษาไฟล์เละโดยเฉพาะ",
+      c1Eyebrow: "พ.ศ. → ค.ศ.", c1H: "วันที่แบบไทย เข้าใจหมด",
+      c1P: '2569, "14 ม.ค. 69", ปี พ.ศ. สองหลัก — แปลงเป็นมาตรฐานให้อัตโนมัติ พร้อมบอกช่วงเวลาของข้อมูล',
+      c2Eyebrow: "ตัวเลขปนสัญลักษณ์", c2H: "฿ , % ( ) ไม่ใช่ปัญหา",
+      c2P: '"฿1,234.50" ที่เครื่องมืออื่นอ่านเป็น 1 — ที่นี่อ่านถูก รวมถึงยอดติดลบแบบบัญชี (500)',
+      c3Eyebrow: "หัวรายงานคั่น", c3H: "ข้ามขยะ หาหัวตารางเอง",
+      c3P: 'บรรทัด "รายงานยอดขายประจำเดือน…" เหนือหัวตาราง? ระบบตรวจเจอและข้ามให้ พร้อม TIS-620/UTF-16',
+      howEyebrow: "10 วินาทีแรก", howH2: "ทำงานยังไง",
+      s1H: "วางไฟล์ หรือแตะตัวอย่าง", s1P: "CSV / Excel สูงสุด 10MB — หรือลองชุดข้อมูลตัวอย่างโดยไม่ต้องสมัครอะไรเลย",
+      s2H: "Insights Engine ตรวจทันที", s2P: "สถิติล้วน ไม่รอ AI: ค่าผิดปกติ แถวซ้ำ ค่าว่าง แนวโน้ม correlation — พร้อมใน ~10ms",
+      s3H: "อ่านผลเป็นภาษาไทย", s3P: "บันทึกข้างเล่มบอกว่าเจออะไร สำคัญแค่ไหน ควรทำอะไรต่อ — เข้าสู่ระบบเมื่ออยากได้บทวิเคราะห์ AI ฉบับเต็ม",
+      fEyebrow: "บันทึกข้างเล่ม · Insights", fH2: "เส้นข้างกระดาษบอกความสำคัญ",
+      fSub: "มรดกจากสมุดผู้ตรวจสอบ — ทุกประเด็นมีเส้นสีบอกระดับ อ่านปราดเดียวรู้ว่าอะไรด่วน",
+      f1H: '"ยอดขาย" มีค่าว่าง 4.4%', f1P: "พบเซลล์ว่าง 2 จุด — ตรวจสอบการกรอกข้อมูลต้นทาง หรือระบุวิธีจัดการก่อนสรุปผล",
+      f2H: "พบข้อมูลซ้ำ 2 แถว (4.4%)", f2P: "อาจเกิดจากการกดส่งซ้ำ — เก็บไว้พร้อมระบุในรายงาน หรือลบออกก่อนวิเคราะห์",
+      f3H: '"วันที่" เป็นคอลัมน์วันที่', f3P: "ครอบคลุม 2026-01-05 ถึง 2026-03-28 — พบปีแบบ พ.ศ. และแปลงเป็น ค.ศ. ให้อัตโนมัติ",
+      h1B: "ข้อมูลตัวอย่าง ไม่ใช่ของปลอมสวย ๆ", h1T: "ตัวเลขทุกตัวบนหน้านี้มาจาก engine จริง รันกับไฟล์เละจริง",
+      h2B: "โหมดลองใช้ ไม่แตะ AI", h2T: "ผลตรวจฟรีคำนวณจากสถิติล้วน — เร็ว ตรวจซ้ำได้ และไม่เผางบใคร",
+      h3B: "ความเป็นส่วนตัวมาก่อน", h3T: "ระบบเก็บเพียงรูปทรงไฟล์กับหมวดคอลัมน์ ไม่เก็บชื่อไฟล์ ชื่อคอลัมน์ หรือข้อมูลจริง",
+      ctaEyebrow: "พร้อมเมื่อคุณพร้อม", ctaH2: "เอาไฟล์ที่เละที่สุดของคุณมา",
+      ctaSub: "ถ้าเครื่องนี้อ่านไม่ออก เราอยากเห็นไฟล์นั้นมาก", ctaBtn: "เปิดเครื่องตรวจ ↗",
+      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — สถิติล้วนตรวจซ้ำได้เสมอ",
+      tSkip: "SKIPPED — หัวรายงาน", tHeader: "HEADER ✓", tFix1: "พ.ศ.→ค.ศ. · ฿→number", tFix2: "เดือนไทย · ติดลบบัญชี",
+    },
+    en: {
+      navCta: "Try it — free",
+      heroEyebrow: "Thai-first data inspector · no signup needed",
+      heroH1: 'However messy your shop file is,<br><span class="hl">this machine reads it.</span>',
+      heroSub: "Buddhist-Era dates · ฿1,234.50 prices · report banners above the table — upload it exactly as it is, and get insights, a data-quality grade, and charts within 10 seconds.",
+      heroCta1: "Tap a sample dataset ↗", heroCta2: "How it works",
+      trust: "No login · sample files never stored · pure statistics, zero AI quota burned",
+      messyH2: "Reads files other tools can't",
+      messySub: "Real Thai Excel exports are never clean — so we built a translation layer for messy files.",
+      c1Eyebrow: "B.E. → C.E.", c1H: "Thai dates, fully understood",
+      c1P: '2569, "14 ม.ค. 69", two-digit Buddhist-Era years — normalized automatically, with the data\'s date range reported back.',
+      c2Eyebrow: "Numbers with symbols", c2H: "฿ , % ( ) — no problem",
+      c2P: '"฿1,234.50" reads as 1 in most tools — here it parses correctly, including accounting negatives like (500).',
+      c3Eyebrow: "Banner rows", c3H: "Skips junk, finds the real header",
+      c3P: 'A "Monthly sales report…" line sitting above your table? Detected and skipped — TIS-620 and UTF-16 handled too.',
+      howEyebrow: "The first 10 seconds", howH2: "How it works",
+      s1H: "Drop a file, or tap a sample", s1P: "CSV / Excel up to 10MB — or try a sample dataset with zero signup.",
+      s2H: "Insights Engine inspects instantly", s2P: "Pure statistics, no AI wait: outliers, duplicates, missing values, trends, correlations — ready in ~10ms.",
+      s3H: "Read the findings in plain language", s3P: "Margin notes tell you what was found, how serious it is, and what to do — sign in when you want the full AI report.",
+      fEyebrow: "Margin notes · Insights", fH2: "The margin rule tells you what matters",
+      fSub: "Inherited from the auditor's ledger — every finding carries a colored rule, so urgency reads at a glance.",
+      f1H: '"Sales" has 4.4% missing values', f1P: "2 empty cells found — check the source entry, or state your handling method before concluding.",
+      f2H: "2 duplicate rows found (4.4%)", f2P: "Likely double-submits — keep them with a note in the report, or remove before analysis.",
+      f3H: '"Date" is a date column', f3P: "Spans 2026-01-05 to 2026-03-28 — Buddhist-Era years detected and converted automatically.",
+      h1B: "Sample numbers aren't decorative", h1T: "Every figure on this page comes from the real engine, run against a genuinely messy file.",
+      h2B: "Try-mode never touches AI", h2T: "Free inspection is pure statistics — fast, reproducible, and burns nobody's budget.",
+      h3B: "Privacy first", h3T: "Only file shapes and column categories are recorded — never filenames, column names, or your data.",
+      ctaEyebrow: "Ready when you are", ctaH2: "Bring us your messiest file",
+      ctaSub: "If this machine can't read it, we genuinely want to see it.", ctaBtn: "Open the inspector ↗",
+      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — pure statistics, always reproducible",
+      tSkip: "SKIPPED — banner row", tHeader: "HEADER ✓", tFix1: "B.E.→C.E. · ฿→number", tFix2: "Thai month · acct negative",
+    },
+  };
+  let lang = localStorage.getItem("dab_landing_lang") || "en";
+
+  function applyLang() {
+    const d = I18N[lang];
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = d[el.dataset.i18n]; });
+    document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = d[el.dataset.i18nHtml]; });
+    document.getElementById("langTh").classList.toggle("on", lang === "th");
+    document.getElementById("langEn").classList.toggle("on", lang === "en");
+    document.querySelectorAll(".tag[data-tkey]").forEach(el => { el.textContent = d[el.dataset.tkey]; });
+  }
+  document.getElementById("langTh").onclick = () => { lang = "th"; localStorage.setItem("dab_landing_lang", lang); applyLang(); };
+  document.getElementById("langEn").onclick = () => { lang = "en"; localStorage.setItem("dab_landing_lang", lang); applyLang(); };
+  applyLang();
+
+  /* ── scroll reveals ── */
+  const io = new IntersectionObserver((es) => {
+    es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+  }, { threshold: 0.18 });
+  document.querySelectorAll(".rv").forEach(el => io.observe(el));
+
+  /* ── the signature console loop ── */
+  const body = document.getElementById("cbody");
+  const lines = [
+    { src: "รายงานยอดขาย ร้านป้าศรี ประจำเดือน ม.ค.–มี.ค. 2569", fix: null, tkey: "tSkip", cls: "t-skip", skip: true },
+    { src: "วันที่,สินค้า,จำนวน,ยอดขาย", fix: null, tkey: "tHeader", cls: "t-ok" },
+    { src: '14/01/2569,น้ำปลา,12,"฿1,234.50"', fix: "2026-01-14,น้ำปลา,12,1234.50", tkey: "tFix1", cls: "t-fix" },
+    { src: '15 ม.ค. 69,ข้าวสาร,5,"(500)"', fix: "2026-01-15,ข้าวสาร,5,-500", tkey: "tFix2", cls: "t-fix" },
+  ];
+  const $ = id => document.getElementById(id);
+  const sleep = ms => new Promise(r => setTimeout(r, reduced ? 0 : ms));
+
+  function countUp(el, target, dur = 420) {
+    if (reduced) { el.textContent = target; return; }
+    const t0 = performance.now();
+    (function tick(t) {
+      const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * e);
+      if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+  }
+
+  async function typeInto(el, text) {
+    if (reduced) { el.textContent = text; return; }
+    for (let i = 1; i <= text.length; i++) {
+      el.textContent = text.slice(0, i);
+      await sleep(text.length > 40 ? 9 : 16);
+    }
+  }
+
+  async function runLoop() {
+    body.innerHTML = "";
+    ["roRows","roFixed","roSkip"].forEach(id => $(id).textContent = "0");
+    $("roMs").textContent = "— ms";
+    const g = $("grade"); g.classList.remove("stamped");
+
+    const rows = lines.map((l, i) => {
+      const ln = document.createElement("div");
+      ln.className = "ln";
+      ln.innerHTML = `<span class="no">${String(i + 1).padStart(2, "0")}</span><span class="src"></span><span class="tag ${l.cls}" data-tkey="${l.tkey}">${I18N[lang][l.tkey]}</span>`;
+      body.appendChild(ln);
+      return ln;
+    });
+    const caret = document.createElement("span");
+    caret.className = "caret";
+
+    for (let i = 0; i < lines.length; i++) {
+      const srcEl = rows[i].querySelector(".src");
+      srcEl.appendChild(caret);
+      await typeInto(srcEl, lines[i].src);
+      srcEl.appendChild(caret);
+      await sleep(120);
+    }
+    caret.remove();
+    await sleep(450);
+
+    let fixed = 0, skipped = 0;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i], row = rows[i], srcEl = row.querySelector(".src");
+      if (l.skip) { row.classList.add("skipped"); skipped++; }
+      if (l.fix) { srcEl.textContent = l.fix; srcEl.classList.add("fix"); fixed++; }
+      row.querySelector(".tag").classList.add("show");
+      await sleep(430);
+    }
+    await sleep(300);
+
+    countUp($("roRows"), 45);
+    setTimeout(() => countUp($("roFixed"), fixed + 41), 60);
+    setTimeout(() => countUp($("roSkip"), skipped), 120);
+    setTimeout(() => { $("roMs").textContent = "8 ms"; }, 200);
+    await sleep(reduced ? 0 : 760);
+    g.classList.add("stamped");
+
+    await sleep(4200);
+    runLoop();
+  }
+  runLoop();
+})();
+</script>
+</body>
+</html>

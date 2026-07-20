@@ -23,6 +23,14 @@ import bcrypt         from "bcryptjs";
 import swaggerUi      from "swagger-ui-express";
 import YAML           from "yamljs";
 import path           from "path";
+import { readFileSync } from "node:fs";
+
+// v20.4.1: /api/health reported a hardcoded "19.0.0" — the exact bug class
+// logger.js fixed back in v18. One read, straight from package.json.
+const PKG_VERSION = (() => {
+  try { return JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version; }
+  catch { return "0.0.0"; }
+})();
 import crypto         from "crypto";
 import { fileURLToPath } from "url";
 
@@ -169,7 +177,12 @@ export function createApp() {
   app.get("/api/metrics", metricsHandler);
   app.get("/api/health",  async (_,res) => {
     const { getBackend } = await import("./db/pool.js");
-    res.json({ status:"ok", version:"19.0.0", db: getBackend(), cache: cache.getBackend(), ts: new Date().toISOString() });
+    res.json({ status:"ok", version: PKG_VERSION, db: getBackend(), cache: cache.getBackend(), ts: new Date().toISOString() });
+  });
+
+  // Public landing page (v20.4.1) — a real file in dist, EN-default bilingual
+  app.get("/welcome", (_, res) => {
+    try { res.sendFile(path.join(distPath, "landing.html")); } catch { res.redirect("/"); }
   });
 
   // Serve React for all non-API routes (SPA fallback)

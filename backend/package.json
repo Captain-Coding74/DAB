@@ -1,6 +1,6 @@
 {
   "name": "@dab/backend",
-  "version": "20.4.0",
+  "version": "20.4.1",
   "type": "module",
   "scripts": {
     "start": "cross-env NODE_ENV=production node src/server.js",

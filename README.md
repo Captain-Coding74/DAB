@@ -44,6 +44,7 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
+| **🛬 Public Landing (v20.4.1)** | Bilingual EN/TH landing page at `/welcome` — live-parse console hero that demos the messy-file layer on loop, EN default with persisted toggle. Also un-hardcoded `/api/health` version (a test was pinning the bug) |
 | **🌒 After-Hours Console (v20.4)** | The Ledger evolves: navy ink console by default, amber instrument accent, severity-colored margin rules per finding, and a 6-rule motion system (readout count-up, insight stagger, ring-draw + grade stamping, reduced-motion respected). Browser suite upgraded to guard the demo-tap flow — was silently stale since v20.1 |
 | **🛡️ Launch Safety (v20.3)** | AI prose is the signed-in tier: anonymous uploads get the full instant Insights Engine, zero Anthropic calls. Global `AI_DAILY_BUDGET` caps the daily bill with graceful stats-only degradation. Fixed a dead-since-v16 import bug in stored-dataset re-analysis (first test to ever hit it) |
 | **📡 Upload Telemetry (v20.2)** | Privacy-safe usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). No filenames, no raw column names, no cell values — enforced by tests. `npm run telemetry` prints the "which vertical showed up" report |

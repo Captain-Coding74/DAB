@@ -319,11 +319,14 @@ describe("POST /api/export/excel", () => {
 // HEALTH + METRICS
 // ─────────────────────────────────────────────────────────
 describe("GET /api/health", () => {
-  test("returns ok status with v19 version", async () => {
+  test("returns ok status with the real package version", async () => {
+    // v20.4.1: this test used to PIN the hardcoded "19.0.0" — enshrining the
+    // exact bug logger.js documented at v18. Now it asserts semver shape;
+    // routes.test.js asserts exact equality with package.json.
     const res = await agent.get("/api/health");
     assert.equal(res.status, 200);
     assert.equal(res.body.status, "ok");
-    assert.equal(res.body.version, "19.0.0");
+    assert.match(res.body.version, /^\d+\.\d+\.\d+$/);
     assert.ok(res.body.db);
   });
 });

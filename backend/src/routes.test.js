@@ -292,3 +292,19 @@ describe("AI gating + daily budget (v20.3)", () => {
     } finally { delete process.env.AI_DAILY_BUDGET; }
   });
 });
+
+describe("Public landing page (v20.4.1)", () => {
+  test("/welcome serves the bilingual landing, EN default", async () => {
+    const res = await agent.get("/welcome");
+    assert.equal(res.status, 200);
+    assert.ok(res.text.includes("AFTER-HOURS CONSOLE"), "landing brand present");
+    assert.ok(res.text.includes('id="langEn" class="on"'), "English is the default language");
+    assert.ok(res.text.includes("LIVE PARSE"), "signature console present");
+  });
+
+  test("/api/health reports the real package version, not a hardcoded one", async () => {
+    const res = await agent.get("/api/health");
+    const pkg = JSON.parse((await import("node:fs")).readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    assert.equal(res.body.version, pkg.version, "health version === package.json version");
+  });
+});
