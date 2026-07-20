@@ -12,12 +12,12 @@ export const clampScore = (score) => Math.min(100, Math.max(0, score || 0));
 export const gradeFor   = (score) => GRADE_BANDS.find(b => clampScore(score) >= b.min).grade;
 export const gradeHex   = (score) => {
   const s = clampScore(score);
-  return s >= 80 ? "#2F6B4F" : s >= 60 ? "#B7791F" : "#C13B27";
+  return s >= 80 ? "#34B27B" : s >= 60 ? "#CE9A3C" : "#D9573F"; // v20.4: dual-legible on paper + navy
 };
 /** Tailwind classes for the double-ruled stamp chip. */
 export const gradeStampClass = (score) => {
   const s = clampScore(score);
-  return s >= 80 ? "text-brand-600 border-brand-400 dark:text-brand-300 dark:border-brand-500"
+  return s >= 80 ? "text-stamp border-stamp dark:text-stamp-dark dark:border-stamp-dark"
        : s >= 60 ? "text-pencil border-pencil dark:text-pencil-dark dark:border-pencil-dark"
        : "text-rule border-rule dark:text-rule-dark dark:border-rule-dark";
 };

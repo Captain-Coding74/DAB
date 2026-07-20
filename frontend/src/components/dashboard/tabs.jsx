@@ -16,12 +16,17 @@ const SEVERITY = {
   positive: { mark: "✓", cls: "text-brand-500 dark:text-brand-300", tag: "GOOD",     badge: "green"  },
 };
 
-export function InsightRow({ ins }) {
+export function InsightRow({ ins, index = 0 }) {
   const sv = SEVERITY[ins.severity] || SEVERITY.info;
+  // v20.4: the margin rule now carries the verdict color per finding,
+  // and rows rise in staggered (rule 02) — first six only, then instant.
+  const ruleCls = ins.severity === "critical" ? "bg-rule dark:bg-rule-dark"
+                : ins.severity === "warning"  ? "bg-pencil dark:bg-pencil-dark"
+                : "bg-stamp dark:bg-stamp-dark";
   return (
-    <div className="grid grid-cols-[24px_2px_1fr] gap-x-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
+    <div style={{ animationDelay: `${Math.min(index, 5) * 60}ms` }} className="anim-rise grid grid-cols-[24px_2px_1fr] gap-x-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
       <div className={`font-mono text-sm font-semibold text-center leading-5 ${sv.cls}`} aria-hidden="true">{sv.mark}</div>
-      <div className="rounded-full bg-rule/70 dark:bg-rule-dark/70"/>
+      <div className={`rounded-full ${ruleCls}`}/>
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-3">
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-5">{ins.title}</p>
@@ -108,7 +113,7 @@ export function InsightsTab({ a }) {
   return (
     <Card title="บันทึกข้างเล่ม · Insights" meta={`${a.insights?.length || 0} findings`}>
       {a.insights?.length
-        ? <div className="-my-3">{a.insights.map(ins => <InsightRow key={ins.id} ins={ins}/>)}</div>
+        ? <div className="-my-3">{a.insights.map((ins, i) => <InsightRow key={ins.id} ins={ins} index={i}/>)}</div>
         : <p className="text-sm text-gray-400 dark:text-gray-500">ไม่พบประเด็นเด่นจากสถิติ — ข้อมูลชุดนี้ดูปกติดี</p>}
       <p className="num text-[10px] text-gray-400 dark:text-gray-500 mt-4">คำนวณจากสถิติล้วน (ไม่ใช้ AI) — ได้ผลทันที ตรวจซ้ำได้เสมอ</p>
     </Card>
@@ -123,7 +128,7 @@ export function QualityTab({ a }) {
         <QualityRing score={a.quality.score} size={80}/>
         <div className="space-y-1.5">
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{a.quality.label}</p>
-          <GradeStamp score={a.quality.score}/>
+          <GradeStamp score={a.quality.score} delay={700}/>
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">

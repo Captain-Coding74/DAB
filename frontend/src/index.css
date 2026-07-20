@@ -12,19 +12,20 @@
     background-image: repeating-linear-gradient(
       to bottom, transparent 0 27px, rgba(47, 107, 79, 0.055) 27px 28px);
   }
+  /* After-hours: the same feint rules, now faint slate on navy ink */
   .dark body {
     background-image: repeating-linear-gradient(
-      to bottom, transparent 0 27px, rgba(143, 184, 154, 0.05) 27px 28px);
+      to bottom, transparent 0 27px, rgba(140, 153, 181, 0.045) 27px 28px);
   }
 
   ::selection { @apply bg-brand-200 text-brand-900; }
-  :focus-visible { outline: 2px solid #35795A; outline-offset: 2px; }
+  :focus-visible { outline: 2px solid #B37204; outline-offset: 2px; }
 
   /* Thin ledger scrollbars */
   * { scrollbar-width: thin; scrollbar-color: #AEB8A9 transparent; }
   *::-webkit-scrollbar { width: 8px; height: 8px; }
   *::-webkit-scrollbar-thumb { background: #AEB8A9; border-radius: 4px; }
-  .dark *::-webkit-scrollbar-thumb { background: #39413A; }
+  .dark *::-webkit-scrollbar-thumb { background: #2A3752; }
 
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -54,4 +55,19 @@
 @layer utilities {
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  /* ── v20.4 motion system: "เครื่องมือเปิดเครื่อง" ──
+     06 reduced-motion is handled globally in @layer base. */
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes stamp-in {
+    0%   { opacity: 0; transform: scale(1.2) rotate(-3deg); }
+    100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+  }
+  @keyframes tab-fade { from { opacity: 0; } to { opacity: 1; } }
+  .anim-rise  { animation: rise-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .anim-stamp { animation: stamp-in 0.14s ease-out both; }
+  .anim-tab   { animation: tab-fade 0.15s ease-out both; }
 }

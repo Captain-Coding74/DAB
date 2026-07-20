@@ -1,4 +1,4 @@
-# 📊 Data Analysis Bot v20.3 — Launch Safe
+# 📊 Data Analysis Bot v20.4 — After-Hours Console
 
 React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + scheduled reports + team workspaces — now parsing the files Thai shops *actually* export.
 
@@ -44,6 +44,7 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
+| **🌒 After-Hours Console (v20.4)** | The Ledger evolves: navy ink console by default, amber instrument accent, severity-colored margin rules per finding, and a 6-rule motion system (readout count-up, insight stagger, ring-draw + grade stamping, reduced-motion respected). Browser suite upgraded to guard the demo-tap flow — was silently stale since v20.1 |
 | **🛡️ Launch Safety (v20.3)** | AI prose is the signed-in tier: anonymous uploads get the full instant Insights Engine, zero Anthropic calls. Global `AI_DAILY_BUDGET` caps the daily bill with graceful stats-only degradation. Fixed a dead-since-v16 import bug in stored-dataset re-analysis (first test to ever hit it) |
 | **📡 Upload Telemetry (v20.2)** | Privacy-safe usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). No filenames, no raw column names, no cell values — enforced by tests. `npm run telemetry` prints the "which vertical showed up" report |
 | **⚡ Instant Demo (v20.1)** | Public no-auth landing demo: tap a sample → full Insights Engine results with zero AI calls, cached in-process. The messy Thai sample doubles as a live v20 showcase, and the AI-report slot becomes the conversion CTA |

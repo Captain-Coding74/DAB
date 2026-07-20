@@ -30,11 +30,11 @@ function PageSkeleton() {
 function Wordmark() {
   return (
     <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="6" fill="#2F6B4F"/>
-      <rect x="6" y="6" width="2" height="20" fill="#C13B27"/>
-      <rect x="12" y="16" width="3" height="10" fill="#F2F4EC"/>
-      <rect x="17" y="11" width="3" height="15" fill="#F2F4EC"/>
-      <rect x="22" y="7"  width="3" height="19" fill="#F2F4EC"/>
+      <rect x="1" y="1" width="30" height="30" rx="6" fill="#0B1220" stroke="#F5A00B" strokeWidth="2"/>
+      <rect x="7" y="7" width="2" height="18" fill="#D9573F"/>
+      <rect x="13" y="16" width="3" height="9"  fill="#F5A00B"/>
+      <rect x="18" y="12" width="3" height="13" fill="#F5A00B"/>
+      <rect x="23" y="8"  width="3" height="17" fill="#F5A00B"/>
     </svg>
   );
 }
@@ -112,9 +112,9 @@ function Nav() {
           <Wordmark/>
           <span className="hidden sm:flex flex-col leading-none">
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Data Analysis Bot</span>
-            <span className="eyebrow !text-[9px] mt-0.5">Ledger for datasets</span>
+            <span className="eyebrow !text-[9px] mt-0.5">After-hours console</span>
           </span>
-          <span className="num text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 ml-1">v20</span>
+          <span className="num text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 ml-1">v20.4</span>
         </NavLink>
 
         <div className="flex items-center gap-1">

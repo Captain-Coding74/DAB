@@ -203,15 +203,15 @@ async function visit({ firstRun = false } = {}) {
   }
   // Wait until React has mounted and attached its listeners. Firing keyboard
   // input before this races the app and produces flaky, meaningless failures.
-  await page.getByRole("button", { name: "ใช้ข้อมูลตัวอย่าง" }).waitFor({ timeout: 15_000 });
+  // v20.1+: the empty state is the demo-card grid, fetched from /api/demo/samples.
+  await page.getByRole("button", { name: /ยอดขายร้านโชห่วย/ }).waitFor({ timeout: 15_000 });
 }
 
-/** The load-sample → analyze journey, used by several flows. */
+/** The demo-tap journey (v20.1 "first 10 seconds") — the flagship flow. */
 async function analyzeSample() {
-  await page.getByRole("button", { name: "ใช้ข้อมูลตัวอย่าง" }).click();
-  await page.getByText("พร้อมตรวจ").waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "วิเคราะห์ไฟล์" }).click();
-  await page.getByText("รายงานผู้ตรวจ · AI").waitFor({ timeout: 30_000 });
+  await page.getByRole("button", { name: /ยอดขายร้านโชห่วย/ }).click();
+  // A demo tap lands on the insights tab with the readout strip powered on.
+  await page.getByText("บันทึกข้างเล่ม · Insights").waitFor({ timeout: 15_000 });
 }
 
 describe("Critical flow: first-run onboarding", () => {
@@ -239,29 +239,32 @@ describe("Critical flow: first-run onboarding", () => {
 
   btest("the empty state invites the user to start", async () => {
     await visit();
-    assert.ok(await page.getByText("เริ่มหน้าแรกของสมุดตรวจ").isVisible());
+    assert.ok(await page.getByText("เห็นผลตรวจจริงใน 10 วินาทีแรก").isVisible());
   });
 });
 
 describe("Critical flow: upload → analyze → read the report", () => {
-  btest("sample data analyzes and paints the AI report", async () => {
+  btest("a demo tap paints instant insights and the honest AI pitch", async () => {
     await visit();
     await analyzeSample();
 
     // The readout strip must show real numbers, not placeholders.
     const rows = await page.locator("text=Rows").first().isVisible();
     assert.ok(rows, "row readout rendered");
-    const report = await page.getByText("รายงานผู้ตรวจ · AI").isVisible();
-    assert.ok(report, "AI report panel is visible");
+
+    // v20.1/20.3: the AI slot on the demo path is the conversion pitch,
+    // under the same "รายงานผู้ตรวจ · AI" plate.
+    await page.getByRole("tab", { name: "analysis" }).click();
+    await page.getByText("รายงานผู้ตรวจ · AI").waitFor({ timeout: 10_000 });
+    assert.ok(await page.getByText(/Insights Engine/).first().isVisible(), "demo pitch replaces AI text");
   });
 
   btest("insights tab shows deterministic findings", async () => {
     await page.getByRole("tab", { name: "insights" }).click();
     await page.getByText("บันทึกข้างเล่ม · Insights").waitFor({ timeout: 10_000 });
-    // The bundled sample deliberately contains missing values + duplicates,
-    // so the engine must produce at least one finding.
-    const findings = await page.locator("text=/CRITICAL|WARNING|NOTE|GOOD/").count();
-    assert.ok(findings > 0, `expected findings, got ${findings}`);
+    // thai_shop.csv guarantees the v20 messy-layer finding: a Buddhist-Era
+    // date column, detected and converted.
+    assert.ok(await page.getByText(/เป็นคอลัมน์วันที่/).first().isVisible(), "daterange finding present");
   });
 
   btest("charts tab lazy-loads recharts and renders an SVG", async () => {
@@ -365,7 +368,16 @@ describe("Critical flow: auth", () => {
   });
 
   btest("a signed-in user's analysis is saved and the deep-dive agent runs", async () => {
-    await analyzeSample();
+    // The demo path never saves (savedId:null by design) — the agent needs a
+    // REAL upload while signed in, which also keeps the classic upload →
+    // analyze journey covered now that analyzeSample() rides the demo tap.
+    await page.locator("#fileIn").setInputFiles({
+      name: "browser-e2e.csv", mimeType: "text/csv",
+      buffer: Buffer.from("สินค้า,ยอดขาย\nน้ำปลา,120\nข้าวสาร,450\nน้ำตาล,80\n"),
+    });
+    await page.getByText("พร้อมตรวจ").waitFor({ timeout: 10_000 });
+    await page.getByRole("button", { name: "วิเคราะห์ไฟล์" }).click();
+    await page.getByText("รายงานผู้ตรวจ · AI").waitFor({ timeout: 30_000 });
 
     await page.getByRole("tab", { name: "deep dive" }).click();
     await page.getByPlaceholder(/คอลัมน์ไหนน่ากังวล/).waitFor({ timeout: 10_000 });

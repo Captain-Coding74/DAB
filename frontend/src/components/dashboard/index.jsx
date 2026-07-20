@@ -149,7 +149,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5 max-w-2xl mx-auto">
                   {samples.map(s => (
                     <button key={s.id} onClick={() => runDemoCard(s)}
-                      className="group text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-brand-400 hover:shadow-sm transition">
+                      className="group text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-brand-400 hover:-translate-y-0.5 hover:shadow-[0_4px_22px_rgba(245,160,11,0.22)] transition duration-150">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xl" aria-hidden="true">{s.emoji}</span>
                         <span className="font-mono text-[9px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
@@ -199,7 +199,7 @@ export default function Dashboard() {
                 { label: "Perceived",  value: a.perceivedMs ? `${a.perceivedMs} ms` : "—", tone: a.perceivedMs > 4000 ? "alert" : undefined },
                 { label: "Missing",    value: a.missing?.length || 0, tone: a.missing?.length ? "alert" : undefined },
                 { label: "Duplicates", value: a.dupes?.count || 0,    tone: a.dupes?.count   ? "alert" : undefined },
-              ].map(s => <div key={s.label} className="px-4 py-3"><Readout label={s.label} value={s.value} tone={s.tone}/></div>)}
+              ].map((s, i) => <div key={s.label} className="px-4 py-3"><Readout label={s.label} value={s.value} tone={s.tone} index={i}/></div>)}
             </div>
           </Card>
         )}
@@ -231,7 +231,7 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2 space-y-4">
+              <div key={activeTab} className="xl:col-span-2 space-y-4 anim-tab">
                 {activeTab === "analysis"    && <AnalysisTab a={a} canShare={!!accessToken} exporting={exporting} onShare={shareReport} onExport={(fmt) => exportReport(fmt, question)}/>}
                 {activeTab === "insights"    && <InsightsTab a={a}/>}
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}

@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { useReadoutValue } from "../../hooks/useCountUp";
 /**
  * UI kit — "The Ledger" (v10)
  * Same exports + props as before, restyled as ledger forms:
@@ -157,6 +159,9 @@ export function QualityRing({ score, size = 80 }) {
   const off = circ * (1 - pct / 100);
   const color = gradeHex(pct);
   const grade = gradeFor(pct);
+  // v20.4 rule 03: the gauge draws itself on mount (0 → score, 700ms)
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setDrawn(true), 30); return () => clearTimeout(t); }, []);
   // 10 tick marks, one per decile — the gauge reads like an instrument
   const ticks = Array.from({ length: 10 }, (_, i) => {
     const a = (i / 10) * 2 * Math.PI - Math.PI / 2;
@@ -167,7 +172,7 @@ export function QualityRing({ score, size = 80 }) {
       <svg width={size} height={size} viewBox="0 0 80 80">
         {ticks.map((t, i) => <line key={i} {...t} strokeWidth="1.5" className="stroke-gray-300 dark:stroke-gray-700"/>)}
         <circle cx="40" cy="40" r={r} fill="none" strokeWidth="6" className="stroke-gray-200 dark:stroke-gray-800"/>
-        <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="butt" transform="rotate(-90 40 40)" style={{ transition: "stroke-dashoffset 0.6s ease" }}/>
+        <circle cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeDasharray={circ} strokeDashoffset={drawn ? off : circ} strokeLinecap="butt" transform="rotate(-90 40 40)" style={{ transition: "stroke-dashoffset 0.7s cubic-bezier(0.2, 0.8, 0.2, 1)" }}/>
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="font-mono text-lg font-semibold leading-none" style={{ color }}>{grade}</span>
@@ -178,22 +183,25 @@ export function QualityRing({ score, size = 80 }) {
 }
 
 // ── Readout (instrument stat: eyebrow label + mono figure) ─
-export function Readout({ label, value, tone }) {
+export function Readout({ label, value, tone, index = 0 }) {
+  // v20.4 rule 01: readouts power on — count 0 → value, staggered left→right
+  const display = useReadoutValue(value, index * 60);
   return (
     <div className="min-w-0">
       <Eyebrow>{label}</Eyebrow>
-      <div className={clsx("num text-xl font-medium mt-0.5 truncate", tone === "alert" ? "text-rule dark:text-rule-dark" : "text-gray-900 dark:text-gray-100")}>{value}</div>
+      <div className={clsx("num text-xl font-medium mt-0.5 truncate", tone === "alert" ? "text-rule dark:text-rule-dark" : "text-brand-500 dark:text-brand-400")}>{display}</div>
     </div>
   );
 }
 
 // ── Grade stamp (inline chip: double-ruled, mono) ─────────
-export function GradeStamp({ score }) {
+export function GradeStamp({ score, delay = 0 }) {
+  // v20.4 rule 03: the verdict stamps down (scale 1.2 → 1) after the ring draws
   const pct = clampScore(score);
   const grade = gradeFor(pct);
   const cls = gradeStampClass(pct);
   return (
-    <span className={clsx("inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold px-2 py-0.5 rounded border-2 border-double", cls)}>
+    <span style={{ animationDelay: `${delay}ms` }} className={clsx("anim-stamp inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold px-2 py-0.5 rounded border-2 border-double", cls)}>
       GRADE {grade} <span className="font-normal opacity-70">· {pct}/100</span>
     </span>
   );

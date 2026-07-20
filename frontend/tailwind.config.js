@@ -17,21 +17,26 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Auditor's stamp — actions, positive marks
+        // v20.4 After-Hours Console: the auditor's pencil takes over as the
+        // primary instrument accent — amber calibration marks on navy ink.
         brand: {
-          50:  "#EDF2EA", 100: "#DFE9DB", 200: "#C2D6BC", 300: "#8FB89A",
-          400: "#35795A", 500: "#2F6B4F", 600: "#275A42", 700: "#1F4834",
-          800: "#173627", 900: "#0F241A",
+          50:  "#FDF6E7", 100: "#FAEBC7", 200: "#F5D98F", 300: "#F0BE4E",
+          400: "#F5A00B", 500: "#D98B06", 600: "#B37204", 700: "#8C5903",
+          800: "#664103", 900: "#402902",
         },
+        // Verdict green — the stamp's ink, kept for GOOD grades only
+        stamp:  { DEFAULT: "#2F9E6E", dark: "#34D399" },
         // The red margin rule — signature; used sparingly (critical, danger)
         rule:   { DEFAULT: "#C13B27", soft: "#F0D6D0", dark: "#D9573F" },
         // Auditor's pencil — warnings
         pencil: { DEFAULT: "#B7791F", soft: "#EFE2C6", dark: "#CE9A3C" },
         // Green-tinted neutrals: paper → ink (light), after-hours ledger (dark)
+        // Light = ledger paper (unchanged). Dark end = after-hours console:
+        // navy ink surfaces instead of the old green-black ledger.
         gray: {
           50:  "#F2F4EC", 100: "#E7EBE0", 200: "#D6DECE", 300: "#AEB8A9",
-          400: "#7E887C", 500: "#5F695E", 600: "#49534A", 700: "#39413A",
-          800: "#242B24", 900: "#171C17", 950: "#101410",
+          400: "#82909F", 500: "#5E6B80", 600: "#465468", 700: "#2A3752",
+          800: "#1F2B45", 900: "#121C30", 950: "#0B1220",
         },
       },
       fontFamily: {

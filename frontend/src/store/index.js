@@ -48,7 +48,7 @@ export const useAppStore = create((set, get) => ({
   setCurrentWorkspace: (w) => set({ currentWorkspace: w }),
 
   // Theme
-  dark: localStorage.getItem("dab_dark") === "1",
+  dark: localStorage.getItem("dab_dark") !== "0", // v20.4: console by default
   toggleDark: () => set(s => {
     localStorage.setItem("dab_dark", s.dark ? "0" : "1");
     document.documentElement.classList.toggle("dark", !s.dark);

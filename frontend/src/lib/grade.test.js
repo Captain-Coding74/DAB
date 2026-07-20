@@ -32,8 +32,8 @@ describe("clampScore", () => {
 
 describe("gradeHex", () => {
   test("green ≥80, amber 60-79, red <60", () => {
-    assert.equal(gradeHex(85), "#2F6B4F");
-    assert.equal(gradeHex(70), "#B7791F");
-    assert.equal(gradeHex(30), "#C13B27");
+    assert.equal(gradeHex(85), "#34B27B");
+    assert.equal(gradeHex(70), "#CE9A3C");
+    assert.equal(gradeHex(30), "#D9573F");
   });
 });
