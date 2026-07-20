@@ -1,0 +1,374 @@
+/**
+ * src/services/streaming.js — Streaming parser for large files
+ *
+ * Strategy:
+ *   - Files < 5MB  → buffer parse (fast, same as before)
+ *   - Files ≥ 5MB  → stream parse row-by-row, compute stats
+ *                    incrementally without loading full dataset
+ *                    into memory
+ *
+ * Uses Node.js Streams + csv-parse in streaming mode.
+ * XLSX: exceljs load + row iteration (SheetJS removed in v15 — unpatched CVEs).
+ *
+ * v20 — "Messy File Layer" (see services/normalize.js):
+ *   - CSV encoding detection: UTF-8 / UTF-16 / TIS-620 (windows-874)
+ *   - Delimiter sniffing (, ; tab |)
+ *   - Header-row detection: skips report titles / banner rows above the table
+ *   - Thai-aware value coercion for STATS ONLY: "฿1,234.50" → 1234.5,
+ *     "14 ม.ค. 2569" (พ.ศ.) → date. Original strings are preserved in
+ *     sampleRows and frequency tables — we normalize numbers, not data.
+ *   - Date-majority columns keep type:"text" (the numeric/text contract is
+ *     unchanged for downstream consumers) but gain semantic:"date",
+ *     dateRange {min,max} and a buddhistEra flag. This also FIXES a bug:
+ *     parseFloat("2026-01-14") === 2026, so date columns used to masquerade
+ *     as numeric with avg ≈ the year.
+ */
+
+import { parse }  from "csv-parse";
+import ExcelJS   from "exceljs";
+import { Readable } from "stream";
+import { serviceLogger } from "../logger.js";
+import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
+         decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
+
+const log = serviceLogger("streaming");
+
+const STREAM_THRESHOLD = 5 * 1024 * 1024; // 5 MB
+const HEADER_SCAN = 10; // rows buffered up-front to locate the real header
+
+// ── Online statistics (Welford's algorithm) ───────────────
+// Computes mean, variance, min, max in a single pass
+// without storing all values — O(1) memory
+class OnlineStat {
+  constructor() {
+    this.n = 0; this.mean = 0; this.M2 = 0;
+    this.min = Infinity; this.max = -Infinity; this.sum = 0;
+  }
+  update(x) {
+    this.n++; this.sum += x;
+    const delta = x - this.mean;
+    this.mean += delta / this.n;
+    this.M2   += delta * (x - this.mean);
+    if (x < this.min) this.min = x;
+    if (x > this.max) this.max = x;
+  }
+  result() {
+    return {
+      count:  this.n,
+      sum:    this.sum,
+      avg:    this.mean,
+      min:    this.min === Infinity  ? null : this.min,
+      max:    this.max === -Infinity ? null : this.max,
+      stdDev: this.n > 1 ? Math.sqrt(this.M2 / this.n) : 0,
+    };
+  }
+}
+
+// ── Frequency counter (capped at 10k unique values) ───────
+class FreqCounter {
+  constructor(cap = 10_000) { this.freq = new Map(); this.cap = cap; this.overflow = false; }
+  update(v) {
+    if (this.freq.has(v)) { this.freq.set(v, this.freq.get(v) + 1); return; }
+    if (this.freq.size >= this.cap) { this.overflow = true; return; }
+    this.freq.set(v, 1);
+  }
+  top(n = 10) {
+    return [...this.freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, n)
+      .map(([value, count]) => ({ value, count, pct: (count / [...this.freq.values()].reduce((a,b)=>a+b,0) * 100).toFixed(1) }));
+  }
+  get unique() { return this.freq.size; }
+}
+
+// ── Reservoir sampler (keep N random rows for preview) ────
+class ReservoirSampler {
+  constructor(k = 5) { this.k = k; this.reservoir = []; this.n = 0; }
+  update(row) {
+    this.n++;
+    if (this.reservoir.length < this.k) { this.reservoir.push(row); return; }
+    const j = Math.floor(Math.random() * this.n);
+    if (j < this.k) this.reservoir[j] = [...row];
+  }
+}
+
+// ── Build per-column accumulators ─────────────────────────
+function makeAccumulators(headers) {
+  return headers.map(() => ({
+    onlineStat:  new OnlineStat(),
+    freqCounter: new FreqCounter(),
+    missing:     0,
+    numericCount: 0,
+    dateCount:   0,          // v20: values recognized as dates
+    beCount:     0,          // v20: of those, how many used พ.ศ. years
+    dateMin:     null,       // v20: ISO range across the column
+    dateMax:     null,
+    totalCount:  0,
+    // Reservoir for quantile estimation (Q1/Q2/Q3)
+    // We keep up to 10k values for quantile accuracy
+    reservoir:   [],
+    reservoirCap: 10_000,
+    overflowQ:   false,
+  }));
+}
+
+function updateAccumulator(acc, value) {
+  acc.totalCount++;
+  if (value === "" || value == null) { acc.missing++; return; }
+
+  // v20: dates FIRST — parseFloat("2026-01-14") is 2026, which used to
+  // leak date columns into numeric stats. Original string still feeds the
+  // frequency table so top-values remain what the user typed.
+  const d = parseFlexibleDate(value);
+  if (d) {
+    acc.dateCount++;
+    if (d.be) acc.beCount++;
+    if (acc.dateMin === null || d.iso < acc.dateMin) acc.dateMin = d.iso;
+    if (acc.dateMax === null || d.iso > acc.dateMax) acc.dateMax = d.iso;
+    acc.freqCounter.update(value);
+    return;
+  }
+
+  // v20: flexible numbers ("฿1,234.50" → 1234.5) instead of bare parseFloat,
+  // which read "1,234.50" as 1 and "12abc" as 12. Strict beats lenient.
+  const n = parseFlexibleNumber(value);
+  if (n !== null) {
+    acc.numericCount++;
+    acc.onlineStat.update(n);
+    acc.freqCounter.update(value);
+    if (acc.reservoir.length < acc.reservoirCap) acc.reservoir.push(n);
+    else acc.overflowQ = true;
+  } else {
+    acc.freqCounter.update(value);
+  }
+}
+
+function finalizeColumn(col, acc) {
+  const isNumeric = acc.numericCount > acc.totalCount * 0.6;
+  if (isNumeric) {
+    const s = acc.onlineStat.result();
+    // Compute Q1/Q3/median from reservoir sample
+    acc.reservoir.sort((a, b) => a - b);
+    const r   = acc.reservoir;
+    const n   = r.length;
+    const mid = Math.floor(n / 2);
+    const q2  = n % 2 !== 0 ? r[mid] : (r[mid-1] + r[mid]) / 2;
+    const lower = n % 2 !== 0 ? r.slice(0, mid+1) : r.slice(0, mid);
+    const upper = n % 2 !== 0 ? r.slice(mid)       : r.slice(mid);
+    const q1  = lower.length ? lower[Math.floor(lower.length/2)] : null;
+    const q3  = upper.length ? upper[Math.floor(upper.length/2)] : null;
+    const iqr = (q1 != null && q3 != null) ? q3 - q1 : null;
+    const outlierCount = iqr != null
+      ? acc.reservoir.filter(v => v < q1 - 1.5*iqr || v > q3 + 1.5*iqr).length
+      : 0;
+    return {
+      col, type: "numeric",
+      count: s.count, missing: acc.missing,
+      missingPct: ((acc.missing / acc.totalCount) * 100).toFixed(1),
+      min: s.min, max: s.max, avg: s.avg, median: q2,
+      stdDev: s.stdDev, sum: s.sum, q1, q3, iqr, outlierCount,
+      quantileApprox: acc.overflowQ,
+    };
+  } else {
+    const top = acc.freqCounter.top(10);
+    const base = {
+      col, type: "text",
+      count: acc.totalCount - acc.missing, missing: acc.missing,
+      missingPct: ((acc.missing / acc.totalCount) * 100).toFixed(1),
+      unique: acc.freqCounter.unique, top,
+      uniqueApprox: acc.freqCounter.overflow,
+    };
+    // v20: date-majority columns keep type:"text" (contract-safe) but carry
+    // semantic metadata for insights/charts.
+    if (acc.dateCount > acc.totalCount * 0.6) {
+      base.semantic    = "date";
+      base.dateRange   = { min: acc.dateMin, max: acc.dateMax };
+      base.buddhistEra = acc.beCount > 0;
+    }
+    return base;
+  }
+}
+
+// ── CSV streaming parse ───────────────────────────────────
+async function streamCSV(buffer) {
+  // v20: decode legacy encodings BEFORE parsing (TIS-620 CSVs from Thai
+  // Windows/Excel were mojibake before), then sniff the delimiter.
+  const { text, encoding } = decodeSmart(buffer);
+  const delimiter = sniffDelimiter(text);
+
+  return new Promise((resolve, reject) => {
+    let headers    = null;
+    let accs       = null;
+    let totalRows  = 0;
+    let skipped    = 0;      // junk rows above the detected header
+    let dupeCount  = 0;
+    const dupeSet  = new Set();
+    const sampler  = new ReservoirSampler(5);
+    const readable = Readable.from(text);
+
+    const parser = parse({ bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter });
+
+    // Ingest one DATA row into stats.
+    const ingest = (row) => {
+      if (row.every(v => v === "")) return; // ",,," lines are not data (parity with XLSX)
+      totalRows++;
+      sampler.update(row);
+      row.forEach((val, i) => { if (accs[i]) updateAccumulator(accs[i], val); });
+      // Duplicate detection (hash first 4 cols to save memory)
+      const key = row.slice(0, 4).join("|||");
+      if (dupeSet.has(key)) dupeCount++;
+      else dupeSet.add(key);
+    };
+
+    // v20: buffer the first rows, locate the real header (report titles /
+    // banner rows above the table are common in shop exports), then flow.
+    let pre = [];
+    const flushPreBuffer = () => {
+      const hIdx = detectHeaderRow(pre);
+      skipped = hIdx;
+      headers = finalizeHeaders(pre[hIdx]);
+      accs    = makeAccumulators(headers);
+      for (let j = hIdx + 1; j < pre.length; j++) ingest(pre[j]);
+      pre = null;
+    };
+
+    parser.on("data", (row) => {
+      const cleaned = row.map(cleanCell);
+      if (!headers) {
+        pre.push(cleaned);
+        if (pre.length >= HEADER_SCAN) flushPreBuffer();
+        return;
+      }
+      ingest(cleaned);
+    });
+
+    parser.on("end", () => {
+      if (!headers) {
+        if (!pre || !pre.length) return reject(new Error("Empty CSV"));
+        flushPreBuffer();
+      }
+      const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
+      resolve({ headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+                normalization: { encoding, delimiter, skippedPreHeaderRows: skipped } });
+    });
+
+    parser.on("error", reject);
+    readable.pipe(parser);
+  });
+}
+
+// ── XLSX streaming parse (exceljs) ────────────────────────
+// v15: migrated off `xlsx` (SheetJS), which shipped two unpatched HIGH CVEs
+// (prototype pollution + ReDoS) with no fix available — unacceptable for a
+// path that parses untrusted uploads. exceljs is actively maintained and
+// its value model is explicit, so coercion is done deliberately below.
+
+/**
+ * Normalize one exceljs cell to the flat string the pipeline expects.
+ * exceljs returns rich objects for some types; we flatten them the same way
+ * the old SheetJS path did, so downstream stats are byte-identical:
+ *   - Date        → "YYYY-MM-DD"
+ *   - formula     → its computed .result (never the formula text)
+ *   - hyperlink   → the visible text
+ *   - rich text   → concatenated runs
+ *   - error       → "" (treated as missing, as before)
+ */
+function cellToString(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString().split("T")[0];
+  if (typeof value === "object") {
+    if (value.error) return "";                              // #DIV/0! etc → missing
+    if ("result" in value) return cellToString(value.result); // formula cell
+    if ("text" in value)   return String(value.text).trim();   // hyperlink
+    if (Array.isArray(value.richText)) return value.richText.map(r => r.text).join("").trim();
+    if (value.formula && "result" in value) return cellToString(value.result);
+    return "";
+  }
+  return String(value).trim();
+}
+
+async function streamXLSX(buffer) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buffer);
+  const ws = wb.worksheets[0];
+  if (!ws || ws.rowCount === 0) {
+    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [],
+             normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: 0 } };
+  }
+
+  // v20: scan the first rows for the real header — Thai SME exports often
+  // put a report title (merged cells) above the table. Column count still
+  // comes from the HEADER row, not ws.columnCount: a stray value in a lower
+  // row would otherwise manufacture a phantom "col_N" full of blanks.
+  const scanLimit = Math.min(ws.rowCount, HEADER_SCAN);
+  const scanned = [];
+  for (let r = 1; r <= scanLimit; r++) {
+    const excelRow = ws.getRow(r);
+    let extent = 0;
+    excelRow.eachCell({ includeEmpty: false }, (_cell, colNumber) => {
+      if (colNumber > extent) extent = colNumber;
+    });
+    const cells = [];
+    for (let c = 1; c <= extent; c++) cells.push(cleanCell(cellToString(excelRow.getCell(c).value)));
+    scanned.push(cells);
+  }
+
+  const hIdx    = detectHeaderRow(scanned);
+  const headers = finalizeHeaders(scanned[hIdx] || []);
+  if (headers.length === 0) {
+    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [],
+             normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: hIdx } };
+  }
+  const colCount = headers.length;
+
+  let totalRows = 0, dupeCount = 0;
+  const accs    = makeAccumulators(headers);
+  const sampler = new ReservoirSampler(5);
+  const dupeSet = new Set();
+
+  for (let r = hIdx + 2; r <= ws.rowCount; r++) {
+    const excelRow = ws.getRow(r);
+    const row = [];
+    for (let c = 1; c <= colCount; c++) row.push(cleanCell(cellToString(excelRow.getCell(c).value)));
+    if (row.every(v => v === "")) continue;
+
+    totalRows++;
+    sampler.update(row);
+    row.forEach((val, i) => { if (accs[i]) updateAccumulator(accs[i], val); });
+    const key = row.slice(0, 4).join("|||");
+    if (dupeSet.has(key)) dupeCount++;
+    else dupeSet.add(key);
+  }
+
+  const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
+  return { headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+           normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: hIdx } };
+}
+
+// ── Public API ────────────────────────────────────────────
+/**
+ * parseFileStreaming(buffer, originalName)
+ *
+ * Always streams — even small files go through the streaming path
+ * so stats are computed in O(1) memory regardless of size.
+ *
+ * Returns:
+ *   { headers, colAnalysis, totalRows, dupeCount, sampleRows, normalization }
+ *   normalization: { encoding, delimiter, skippedPreHeaderRows }
+ */
+export async function parseFileStreaming(buffer, originalName) {
+  const ext  = originalName.split(".").pop().toLowerCase();
+  const size = buffer.length;
+  const mode = size >= STREAM_THRESHOLD ? "streaming" : "buffered-stream";
+  log.debug({ file: originalName, sizeKB: Math.round(size/1024), mode }, "Parsing file");
+
+  const t0     = performance.now();
+  const result = ext === "xlsx" || ext === "xls"
+    ? await streamXLSX(buffer)
+    : await streamCSV(buffer);
+  const ms     = Math.round(performance.now() - t0);
+
+  log.info({ file: originalName, rows: result.totalRows, ms, mode,
+             norm: result.normalization }, "File parsed");
+  return { ...result, parseMs: ms };
+}

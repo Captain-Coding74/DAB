@@ -1,0 +1,13 @@
+{
+  "_comment": "v14 frontend performance budgets. `bundle` = regression ratchet, machine-local, recalibrate via perf:bundle --update. `render` = ABSOLUTE UX targets gated by scripts/perf-render.mjs in a real headless Chromium (lcpMs 2500 = Web Vitals 'good').",
+  "bundle": {
+    "initialGzipKb": 90,
+    "totalGzipKb": 228,
+    "fontsGzipKb": 339
+  },
+  "render": {
+    "lcpMs": 2500,
+    "analyzeMs": 4000,
+    "apiP95Ms": 800
+  }
+}

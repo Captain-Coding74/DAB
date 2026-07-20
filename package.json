@@ -1,0 +1,29 @@
+{
+  "name": "data-analysis-bot",
+  "version": "20.0.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend",
+    "test": "npm run test -w backend",
+    "test:all": "npm run test:all -w backend",
+    "quality": "node scripts/quality.mjs",
+    "coverage": "node scripts/coverage.mjs",
+    "test:e2e": "npm run test:e2e -w backend",
+    "perf:bundle": "npm run perf:bundle -w frontend",
+    "verify": "npm run test:all -w backend && npm test -w frontend && npm run test:e2e -w backend && npm run build && npm run test:browser && npm run perf:bundle && npm run perf:render && npm run coverage && npm run quality && npm run audit:gate && npm run dashboard",
+    "perf:render": "node scripts/perf-render.mjs",
+    "audit:gate": "node scripts/audit-gate.mjs",
+    "dashboard": "node scripts/dashboard.mjs",
+    "test:browser": "npm run test:browser -w backend"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^149.0.0",
+    "concurrently": "^8.2.2",
+    "playwright-core": "^1.61.1"
+  }
+}

@@ -1,0 +1,13 @@
+Month,Revenue,Orders,Customers,Returns
+January,45000,120,98,5
+February,52000,145,110,8
+March,38000,95,82,3
+April,61000,180,145,10
+May,55000,160,130,7
+June,70000,210,175,12
+July,67000,195,160,9
+August,74000,225,185,14
+September,63000,185,152,11
+October,80000,240,198,16
+November,92000,275,220,18
+December,105000,310,255,22

@@ -1,0 +1,171 @@
+/**
+ * scripts/perf-api.mjs — v13 API latency budgets
+ *
+ * Spawns the real server (AI_MOCK=1, isolated DB), load-tests the hot paths
+ * with autocannon, and fails if p95 latency or throughput regress past the
+ * targets in perf-budget.json.
+ *
+ * We budget p95 (not the mean) because the mean hides exactly the users
+ * having a bad time. Analyze is measured separately with a lower bar — it
+ * parses a whole file, so it will always be the slow path.
+ *
+ * Usage: node scripts/perf-api.mjs [--update]
+ */
+import autocannon from "autocannon";
+import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT   = join(__dirname, "..");
+const BUDGET = join(ROOT, "perf-budget.json");
+const PORT   = 3299;
+const BASE   = `http://127.0.0.1:${PORT}`;
+
+const dataDir = mkdtempSync(join(tmpdir(), "dab-perf-"));
+const server = spawn(process.execPath, [join(ROOT, "src", "server.js")], {
+  cwd: ROOT,
+  env: {
+    ...process.env,
+    NODE_ENV: "development",
+    AI_MOCK: "1",
+    PORT: String(PORT),
+    JWT_SECRET: "perf-secret-32-chars-xxxxxxxxxxx",
+    JWT_REFRESH_SECRET: "perf-refresh-32-chars-xxxxxxxxx",
+    SQLITE_DIR: dataDir,
+    LOG_LEVEL: "error",
+    // Rate limiting would throttle the benchmark itself, not the code we're
+    // measuring. Raise the ceiling so we measure the app, not the limiter.
+    RATE_LIMIT_MAX: "1000000",
+  },
+  stdio: ["ignore", "ignore", "pipe"],
+});
+server.stderr.on("data", d => process.env.PERF_DEBUG && console.error(String(d)));
+
+const cleanup = () => { server.kill("SIGKILL"); try { rmSync(dataDir, { recursive: true, force: true }); } catch {} };
+process.on("exit", cleanup);
+
+async function waitHealthy() {
+  for (let i = 0; i < 75; i++) {
+    try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {}
+    await new Promise(r => setTimeout(r, 200));
+  }
+  throw new Error("server never became healthy");
+}
+
+const run = (opts) => new Promise((resolve, reject) =>
+  autocannon({ url: BASE, connections: 10, duration: 5, ...opts }, (err, r) => err ? reject(err) : resolve(r)));
+
+await waitHealthy();
+
+// Warm the process (JIT, first DB connect) so we measure steady state.
+for (let i = 0; i < 20; i++) await fetch(`${BASE}/api/health`);
+
+console.log("\nRunning API benchmarks (real server, mock AI)…\n");
+
+const health  = await run({ path: "/api/health", title: "health" });
+const metrics = await run({ path: "/api/metrics", title: "metrics", connections: 5, duration: 3 });
+
+// Analyze: the heavy path. Hand-rolling multipart for autocannon proved
+// brittle (it silently benchmarked 404s), so we drive it with the platform's
+// own FormData encoder and compute percentiles ourselves. Slower to run,
+// but it measures the code path users actually hit.
+const csv = ["a,b,c", ...Array.from({ length: 200 }, (_, i) => `${i},${i * 2},x${i % 7}`)].join("\n");
+
+async function loadTest({ fn, concurrency = 4, iterations = 60 }) {
+  const latencies = [];
+  let ok = 0, bad = 0;
+  let next = 0;
+  const t0 = performance.now();
+  await Promise.all(Array.from({ length: concurrency }, async () => {
+    while (next++ < iterations) {
+      const s = performance.now();
+      try {
+        const res = await fn();
+        (res.ok ? ok++ : bad++);
+      } catch { bad++; }
+      latencies.push(performance.now() - s);
+    }
+  }));
+  const wallSec = (performance.now() - t0) / 1000;
+  latencies.sort((a, b) => a - b);
+  const pct = (p) => Math.round(latencies[Math.min(latencies.length - 1, Math.floor(latencies.length * p / 100))]);
+  return {
+    "2xx": ok, non2xx: bad, errors: 0,
+    latency: { p50: pct(50), p95: pct(95), p99: pct(99) },
+    requests: { average: Math.round(iterations / wallSec) },
+    statusCodeStats: { ok, bad },
+  };
+}
+
+const analyze = await loadTest({
+  concurrency: 4, iterations: 60,
+  fn: () => {
+    const fd = new FormData();
+    fd.append("file", new Blob([csv], { type: "text/csv" }), "p.csv");
+    fd.append("question", "สรุป");
+    return fetch(`${BASE}/api/analyze`, { method: "POST", body: fd });
+  },
+});
+
+// A benchmark that measures the error path is worse than no benchmark.
+for (const [name, r] of [["health", health], ["metrics", metrics], ["analyze", analyze]]) {
+  const bad = (r.non2xx ?? 0) + (r.errors ?? 0);
+  if (bad > 0 || r["2xx"] === 0) {
+    console.error(`✗ ${name}: ${bad} non-2xx/errors, ${r["2xx"]} successes — benchmark hit the failure path, numbers are meaningless.`);
+    console.error(`  statusCodeStats:`, JSON.stringify(r.statusCodeStats ?? {}));
+    process.exit(2);
+  }
+}
+
+const actual = {
+  healthP95Ms:   health.latency.p97_5 ?? health.latency.p99,
+  healthReqSec:  Math.round(health.requests.average),
+  metricsP95Ms:  metrics.latency.p97_5 ?? metrics.latency.p99,
+  analyzeP95Ms:  analyze.latency.p97_5 ?? analyze.latency.p99,
+  analyzeReqSec: Math.round(analyze.requests.average),
+};
+// autocannon reports p97_5; use the plain p95 field when present
+actual.healthP95Ms  = health.latency.p95  ?? actual.healthP95Ms;
+actual.metricsP95Ms = metrics.latency.p95 ?? actual.metricsP95Ms;
+actual.analyzeP95Ms = analyze.latency.p95 ?? actual.analyzeP95Ms;
+
+const budget = JSON.parse(readFileSync(BUDGET, "utf8"));
+
+if (process.argv.includes("--update")) {
+  budget.api = {
+    healthP95Ms:   Math.ceil(actual.healthP95Ms  * 2 + 10),
+    metricsP95Ms:  Math.ceil(actual.metricsP95Ms * 2 + 10),
+    analyzeP95Ms:  Math.ceil(actual.analyzeP95Ms * 2 + 50),
+    healthReqSecMin:  Math.floor(actual.healthReqSec  * 0.5),
+    analyzeReqSecMin: Math.floor(actual.analyzeReqSec * 0.5),
+  };
+  writeFileSync(BUDGET, JSON.stringify(budget, null, 2) + "\n");
+  console.log("✓ perf-budget.json api targets updated from this run:", budget.api);
+  process.exit(0);
+}
+
+const checks = [
+  ["health p95",   actual.healthP95Ms,  budget.api.healthP95Ms,  "≤", "ms"],
+  ["metrics p95",  actual.metricsP95Ms, budget.api.metricsP95Ms, "≤", "ms"],
+  ["analyze p95",  actual.analyzeP95Ms, budget.api.analyzeP95Ms, "≤", "ms"],
+  ["health req/s", actual.healthReqSec, budget.api.healthReqSecMin,  "≥", "req/s"],
+  ["analyze req/s",actual.analyzeReqSec,budget.api.analyzeReqSecMin, "≥", "req/s"],
+];
+
+let failed = 0;
+console.log("Latency / throughput budgets:");
+for (const [label, got, limit, op, unit] of checks) {
+  const ok = op === "≤" ? got <= limit : got >= limit;
+  if (!ok) failed++;
+  console.log(`  ${ok ? "✓" : "✗"} ${label.padEnd(14)} ${String(got).padStart(7)} ${unit.padEnd(5)} ${op} ${limit}`);
+}
+
+if (failed) {
+  console.error(`\n✗ ${failed} API budget(s) missed. Investigate before merging.\n`);
+  process.exit(1);
+}
+console.log("\n✓ All API latency budgets met.\n");
+process.exit(0);

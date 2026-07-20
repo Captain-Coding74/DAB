@@ -1,0 +1,138 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:integration
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: E2E User Journeys
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      # Real server, real HTTP, real SQLite, real PDF/XLSX. AI_MOCK=1 → no key needed.
+      - run: npm run test:e2e
+
+  quality-gates:
+    name: Browser Suite + Perf Budgets + Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+
+      # System libs Chromium needs. The browser binary itself ships inside the
+      # @sparticuz/chromium npm package, so no browser-CDN access is required.
+      - name: Chromium system libraries
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
+            libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+            libasound2t64 libpango-1.0-0 libcairo2
+
+      - run: npm run build
+
+      # Playwright over every critical user flow. Emits metrics/browser.json:
+      # pass rate, durations, console errors, screenshots + traces on failure.
+      - run: npm run test:browser
+
+      - run: npm run perf:bundle          # initial payload, gzip
+      - run: npm run perf:render          # LCP / analyze / client API p95
+      - run: npm run perf:api -w backend  # server p95 + throughput
+      - run: npm run coverage
+      # Gates complexity, duplication, coverage, AND browser pass rate +
+      # console errors (which is why the browser suite must run first).
+      - run: npm run quality
+      - run: npm run audit:gate
+      - run: npm run dashboard
+
+      - name: Upload cockpit (dashboard, history, failure artifacts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-cockpit
+          path: |
+            metrics/dashboard.html
+            metrics/history.jsonl
+            metrics/browser.json
+            artifacts/browser/
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build, e2e, quality-gates]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: dab:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/dab:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/dab:${{ github.sha }}

@@ -1,0 +1,10 @@
+{
+  "_comment": "v13 API performance budgets. p95 (not mean) — the mean hides the users having a bad time. Calibrated from a real run, then given headroom so ordinary variance doesn't flake CI while a genuine regression still fails.",
+  "api": {
+    "healthP95Ms": 54,
+    "metricsP95Ms": 22,
+    "analyzeP95Ms": 204,
+    "healthReqSecMin": 682,
+    "analyzeReqSecMin": 83
+  }
+}

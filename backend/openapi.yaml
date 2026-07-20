@@ -1,0 +1,482 @@
+openapi: "3.0.3"
+info:
+  title: Data Analysis Bot API
+  version: "19.0.0"
+  description: |
+    AI-powered CSV/Excel data analysis API.
+
+    **Authentication:** Use `POST /api/auth/login` to get an `accessToken`.
+    Pass it as `Authorization: Bearer <accessToken>` on protected routes.
+    Access tokens expire in **15 minutes** — use `POST /api/auth/refresh` with your `refreshToken` to get a new one.
+  contact:
+    name: Data Analysis Bot
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Registration, login, token refresh, logout
+  - name: Analyze
+    description: Upload and analyze CSV/Excel files
+  - name: Export
+    description: Download PDF or Excel reports
+  - name: History
+    description: Per-user analysis history (requires auth)
+  - name: System
+    description: Health check
+
+# ── Reusable components ────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid credentials"
+
+    TokenPair:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token (expires in 15m)
+        refreshToken:
+          type: string
+          description: Opaque refresh token (expires in 7d)
+        username:
+          type: string
+
+    ColStat:
+      type: object
+      properties:
+        col:         { type: string }
+        type:        { type: string, enum: [numeric, text] }
+        count:       { type: integer }
+        missing:     { type: integer }
+        missingPct:  { type: string }
+        # numeric fields
+        min:         { type: number }
+        max:         { type: number }
+        avg:         { type: number }
+        median:      { type: number }
+        stdDev:      { type: number }
+        q1:          { type: number }
+        q3:          { type: number }
+        iqr:         { type: number }
+        outlierCount: { type: integer }
+        # text fields
+        unique:      { type: integer }
+        top:
+          type: array
+          items:
+            type: object
+            properties:
+              value: { type: string }
+              count: { type: integer }
+              pct:   { type: string }
+
+    AnalyzeResponse:
+      type: object
+      properties:
+        success:    { type: boolean }
+        analysis:   { type: string, description: AI-generated analysis text }
+        rows:       { type: integer }
+        columns:    { type: integer }
+        durationMs: { type: integer }
+        savedId:    { type: string, nullable: true }
+        insights:
+          type: array
+          description: v9 — deterministic ranked findings (no AI call, instant)
+          items:
+            type: object
+            properties:
+              id:       { type: string,  example: "missing:age" }
+              severity: { type: string,  enum: [critical, warning, info, positive] }
+              icon:     { type: string,  example: "⚠️" }
+              title:    { type: string }
+              detail:   { type: string }
+              metric:   { type: object,  nullable: true }
+        sampleRows:
+          type: array
+          description: v9 — 5 reservoir-sampled rows for chart previews
+          items: { type: array, items: { type: string } }
+        colAnalysis:
+          type: array
+          items: { $ref: "#/components/schemas/ColStat" }
+        missing:
+          type: array
+          items:
+            type: object
+            properties:
+              col:     { type: string }
+              missing: { type: integer }
+              total:   { type: integer }
+              pct:     { type: string }
+        dupes:
+          type: object
+          properties:
+            count:    { type: integer }
+            examples: { type: array, items: { type: object } }
+        corr:
+          type: object
+          nullable: true
+          properties:
+            cols:   { type: array, items: { type: string } }
+            matrix: { type: array, items: { type: array, items: { type: number } } }
+            strong: { type: array, items: { type: object } }
+        forecasts:
+          type: array
+          items:
+            type: object
+            properties:
+              col:       { type: string }
+              slope:     { type: number }
+              intercept: { type: number }
+              r2:        { type: number }
+              forecast:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    step:      { type: integer }
+                    predicted: { type: number }
+        chartRecs:
+          type: array
+          items:
+            type: object
+            properties:
+              type:   { type: string }
+              reason: { type: string }
+
+    HistoryItem:
+      type: object
+      properties:
+        id:          { type: string }
+        file_name:   { type: string }
+        file_type:   { type: string }
+        total_rows:  { type: integer }
+        total_cols:  { type: integer }
+        prompt:      { type: string }
+        created_at:  { type: string, format: date-time }
+        duration_ms: { type: integer }
+        preview:     { type: string, description: First 200 chars of analysis }
+
+# ── Paths ──────────────────────────────────────────────────
+paths:
+
+  # ── Auth ────────────────────────────────────────────────
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, minLength: 3, example: captain }
+                password: { type: string, minLength: 6, example: secret123 }
+                email:    { type: string, format: email, example: captain@example.com }
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400":
+          description: Validation error or username taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login and get tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: captain }
+                password: { type: string, example: secret123 }
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Get a new access token using a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+        "401":
+          description: Invalid or expired refresh token
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: Logged out successfully
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:         { type: string }
+                  username:   { type: string }
+                  email:      { type: string }
+                  created_at: { type: string }
+                  last_login: { type: string }
+                  stats:
+                    type: object
+                    properties:
+                      total:      { type: integer }
+                      total_rows: { type: integer }
+                      avg_ms:     { type: number }
+
+  # ── Analyze ──────────────────────────────────────────────
+  /api/analyze:
+    post:
+      tags: [Analyze]
+      summary: Upload and analyze a CSV or Excel file
+      description: |
+        Parses the file, computes full statistical summary across ALL rows,
+        runs missing/duplicate/correlation/forecast analysis,
+        generates deterministic **insights** (v9 — ranked findings: missing-data
+        hotspots, outliers, duplicates, ID columns, strong correlations, trends),
+        then asks Claude AI to interpret the results.
+
+        Response additionally includes `insights[]` and `sampleRows[]` (v9).
+
+        Authentication is **optional** — if provided, the result is saved to history.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV (.csv), Excel (.xlsx, .xls) — max 10 MB
+                question:
+                  type: string
+                  default: สรุปภาพรวมข้อมูลทั้งหมด
+                  description: Question to ask the AI about the data
+      responses:
+        "200":
+          description: Analysis complete
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyzeResponse" }
+        "400":
+          description: No file, wrong format, or empty data
+        "429":
+          description: Rate limit exceeded (30 req / 15 min)
+        "500":
+          description: Server or AI API error
+
+  # ── Export ───────────────────────────────────────────────
+  /api/export/pdf:
+    post:
+      tags: [Export]
+      summary: Export analysis as a multi-page PDF report
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:     { type: string, format: binary }
+                analysis: { type: string, description: AI analysis text to include }
+                prompt:   { type: string }
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+
+  /api/export/excel:
+    post:
+      tags: [Export]
+      summary: Export analysis as an Excel workbook (6 sheets)
+      description: |
+        Sheets: Data (raw) | Statistics | Quality | Correlation | Forecast | AI Analysis
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:     { type: string, format: binary }
+                analysis: { type: string }
+      responses:
+        "200":
+          description: Excel (.xlsx) file
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  # ── History ──────────────────────────────────────────────
+  /api/history:
+    get:
+      tags: [History]
+      summary: List user's analysis history
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          description: List of history items
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/HistoryItem" }
+
+  /api/history/{id}:
+    get:
+      tags: [History]
+      summary: Get a single analysis record (full)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Full analysis record
+        "404":
+          description: Not found
+
+    delete:
+      tags: [History]
+      summary: Delete an analysis record
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted successfully
+
+  # ── System ───────────────────────────────────────────────
+  /api/public/share/{token}:
+    get:
+      tags: [System]
+      summary: View a shared report (public, no auth)
+      description: |
+        v9 — for password-protected shares, send the password in the
+        `X-Share-Password` header. The legacy `?password=` query parameter
+        still works but is discouraged (it leaks into logs and history).
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Share-Password
+          in: header
+          required: false
+          schema: { type: string }
+          description: Password for protected shares (preferred over query param)
+      responses:
+        "200": { description: Shared report payload }
+        "401": { description: Password required or incorrect }
+        "404": { description: Report not found or expired }
+
+  /api/health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, example: ok }
+                  version: { type: string, example: "9.0.0" }
+                  db:      { type: string, example: sqlite, description: Active DB backend (postgres | sqlite) }
+                  cache:   { type: string, example: memory, description: Active cache backend (redis | memory) }
+                  ts:      { type: string, format: date-time }

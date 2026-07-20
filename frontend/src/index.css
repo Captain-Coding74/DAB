@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  /* Ledger paper: the page itself carries faint horizontal feint rules.
+     Panels sit on top as clean forms, so text areas stay quiet. */
+  body {
+    @apply antialiased font-sans text-gray-900 bg-gray-50 dark:bg-gray-950 dark:text-gray-100;
+    background-image: repeating-linear-gradient(
+      to bottom, transparent 0 27px, rgba(47, 107, 79, 0.055) 27px 28px);
+  }
+  .dark body {
+    background-image: repeating-linear-gradient(
+      to bottom, transparent 0 27px, rgba(143, 184, 154, 0.05) 27px 28px);
+  }
+
+  ::selection { @apply bg-brand-200 text-brand-900; }
+  :focus-visible { outline: 2px solid #35795A; outline-offset: 2px; }
+
+  /* Thin ledger scrollbars */
+  * { scrollbar-width: thin; scrollbar-color: #AEB8A9 transparent; }
+  *::-webkit-scrollbar { width: 8px; height: 8px; }
+  *::-webkit-scrollbar-thumb { background: #AEB8A9; border-radius: 4px; }
+  .dark *::-webkit-scrollbar-thumb { background: #39413A; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Typewritten section label */
+  .eyebrow {
+    @apply font-mono text-[10px] font-medium uppercase tracking-eyebrow text-gray-500 dark:text-gray-400;
+  }
+  /* Tabular figures for every readout */
+  .num { @apply font-mono tabular-nums; }
+  /* The signature: a red vertical margin rule on the left of an entry */
+  .margin-rule { @apply relative pl-4; }
+  .margin-rule::before {
+    content: "";
+    position: absolute; left: 0; top: 2px; bottom: 2px; width: 2px;
+    border-radius: 1px;
+    @apply bg-rule dark:bg-rule-dark;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}
