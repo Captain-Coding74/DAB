@@ -45,6 +45,16 @@
              padding: 9px 18px; border-radius: 10px; font-size: 14px; transition: transform .15s, box-shadow .15s; }
   .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 22px rgba(245,160,11,.3); }
 
+
+  /* ── hero background video (v20.4.2) ── */
+  .hero-stage { position: relative; overflow: hidden; }
+  .hero-bg { position: absolute; inset: 0; z-index: 0;
+             background: url(poster.jpg) center/cover no-repeat #0B1220; }
+  .hero-bg video { width: 100%; height: 100%; object-fit: cover; opacity: .5; }
+  .hero-bg::after { content: ""; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 35%, transparent 0%, rgba(11,18,32,.55) 68%, rgba(11,18,32,.92) 100%),
+                linear-gradient(to bottom, rgba(11,18,32,.35), transparent 30%, transparent 60%, #0B1220 96%); }
+  .hero-stage .hero { position: relative; z-index: 1; }
   .hero { padding: 76px 0 70px; text-align: center; }
   h1 { font-size: clamp(30px, 5.2vw, 52px); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
   h1 .hl { color: var(--amber); }
@@ -142,6 +152,7 @@
     .rv { opacity: 1; transform: none; }
     .grade { opacity: 1; transform: rotate(-3deg); }
     .tag { opacity: 1; transform: none; }
+    .hero-bg video { display: none; }   /* static poster only */
   }
 </style>
 </head>
@@ -157,6 +168,13 @@
   <a class="nav-cta" href="#cta" data-i18n="navCta">ลองเลย — ฟรี</a>
 </div></nav>
 
+<div class="hero-stage">
+<div class="hero-bg" aria-hidden="true">
+  <video autoplay muted loop playsinline poster="poster.jpg">
+    <source src="dab-bg.webm" type="video/webm">
+    <source src="dab-bg.mp4" type="video/mp4">
+  </video>
+</div>
 <header class="hero wrap">
   <div class="eyebrow" data-i18n="heroEyebrow">เครื่องตรวจข้อมูลภาษาไทย · ไม่ต้องสมัครก็ลองได้</div>
   <h1 data-i18n-html="heroH1">ไฟล์จากหน้าร้านเละแค่ไหน<br><span class="hl">เครื่องนี้ก็อ่านออก</span></h1>
@@ -183,6 +201,7 @@
     </div>
   </div>
 </header>
+</div>
 
 <section id="messy"><div class="wrap">
   <div class="sec-head rv">
