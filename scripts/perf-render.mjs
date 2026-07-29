@@ -101,6 +101,19 @@ async function launchBrowser() {
 async function makePage(browser) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await ctx.addInitScript(() => localStorage.setItem("dab_tour_done", "1"));
+
+  /**
+   * This script measures the pick-file -> analyze -> report journey, which
+   * starts at the "ใช้ข้อมูลตัวอย่าง" button. Since v20.1 that button only
+   * renders as a FALLBACK, when /api/demo/samples returns nothing — with
+   * samples present the tappable demo cards take its place, and those jump
+   * straight to insights without an analyze step, so they measure a different
+   * journey. Stubbing the endpoint empty keeps the measured path intact
+   * instead of silently benchmarking something else.
+   */
+  await ctx.route("**/api/demo/samples", route =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ samples: [] }) }));
+
   return ctx.newPage();
 }
 
