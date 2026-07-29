@@ -117,7 +117,10 @@ describe("E2E · Journey A — anonymous: upload → analyze → export", () => 
     assert.equal(analysis.success, true);
     assert.equal(analysis.rows, 8);
     assert.equal(analysis.columns, 4);
-    assert.ok(analysis.analysis.includes("[MOCK]"), "mock AI reached");
+    // v20.3 gates AI prose behind auth: anonymous callers get the full
+    // deterministic bundle with analysis:null and the aiGated flag set.
+    assert.equal(analysis.analysis, null, "anonymous gets no AI prose (v20.3 gating)");
+    assert.equal(analysis.aiGated, true, "and is told why");
     assert.ok(Array.isArray(analysis.colAnalysis) && analysis.colAnalysis.length === 4);
     assert.ok(Array.isArray(analysis.sampleRows) && analysis.sampleRows.length > 0);
     assert.ok(analysis.quality?.score >= 0);

@@ -59,6 +59,8 @@ function toChartData(headers, rows = []) {
 }
 
 const TYPES = ["Bar","Line","Area","Scatter","Pie"];
+/* Values stay English so saved chart configs keep working; only the label is Thai. */
+const TYPE_LABELS = { Bar: "แท่ง", Line: "เส้น", Area: "พื้นที่", Scatter: "กระจาย", Pie: "วงกลม" };
 
 /* Raw values like 2100 read as codes; ๒,๑๐๐-style separators are what a Thai
    reader expects from a report. Non-numbers pass through untouched. */
