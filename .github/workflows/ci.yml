@@ -20,6 +20,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm            # workspaces: the only lockfile is at the root
       - run: npm ci
+      # routes.test.js asserts /welcome serves frontend/dist/landing.html, which
+      # only exists after a Vite build (public/ -> dist/). dist/ is gitignored,
+      # so without this the route 404s and the suite fails in CI while passing
+      # locally on a stale build. Pre-existing since v20.4.1; CI never ran to
+      # surface it until v21.
+      - run: npm run build -w frontend
       - run: npm test -w backend
       - run: npm run test:integration -w backend
 
