@@ -1,6 +1,6 @@
 {
   "name": "@dab/backend",
-  "version": "20.4.1",
+  "version": "21.0.0",
   "engines": {
     "node": ">=22.0.0"
   },

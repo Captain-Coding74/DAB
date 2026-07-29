@@ -1,12 +1,12 @@
 {
-  "_comment": "v16 code-quality budgets — a RATCHET. Regressions fail CI. NOTE: coverage % is NOT comparable across the v16 boundary: before v16 the integration tests hit a re-implemented app (testApp.js), so only ~20 files were instrumented and the number flattered itself. v16 made tests run against the real app factory, adding 10 previously-invisible modules to the denominator. The honest companion metric improved sharply: maxFilesUncounted 32 -> 22.",
+  "_comment": "v16 code-quality budgets — a RATCHET. Regressions fail CI. NOTE: coverage % is NOT comparable across the v16 boundary: before v16 the integration tests hit a re-implemented app (testApp.js), so only ~20 files were instrumented and the number flattered itself. v16 made tests run against the real app factory, adding 10 previously-invisible modules to the denominator. The honest companion metric improved sharply: maxFilesUncounted 32 -> 22. v21: maxFilesUncounted 22 -> 25. This metric counts source files no in-process test ever loads, and 19 of them are .jsx — the frontend suite runs node --test over src/lib/*.js only, so no component can be counted until a component test runner exists. v21 added ColumnStats.jsx (extracted to keep recharts out of the initial bundle) and moved parity-check.mjs into the tree. Raised deliberately and surgically rather than via --update, which would also have loosened largestFile, complexity and duplication for no reason. The real fix is a component test runner in v22; until then this number tracks component count.",
   "quality": {
     "largestFile": 327,
     "maxComplexity": 41,
     "duplicationPct": 2.84,
     "minTests": 138,
     "minCoverageLinesPct": 79,
-    "maxFilesUncounted": 22,
+    "maxFilesUncounted": 25,
     "minBrowserPassRate": 100,
     "maxBrowserConsoleErrors": 0
   }

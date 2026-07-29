@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
-import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command, Sparkles } from "lucide-react";
+import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command } from "lucide-react";
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
 import { Toasts, Skeleton, Modal, Kbd, Wordmark } from "./components/ui";
@@ -14,8 +14,7 @@ const WorkspacePanel = lazy(() => import("./components/workspace"));
 const AuthPage       = lazy(() => import("./pages/AuthPage"));
 const SharePage      = lazy(() => import("./pages/SharePage"));
 const HistoryPage    = lazy(() => import("./pages/HistoryPage"));
-const LandingPage    = lazy(() => import("./pages/LandingPage"));
-const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace"), landing: () => import("./pages/LandingPage") };
+const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace") };
 
 function PageSkeleton() {
   return (
@@ -111,11 +110,6 @@ function Nav() {
           <NavLink to="/" end className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
             <BarChart2 size={14}/><span className="hidden sm:block">Analyze</span>
           </NavLink>
-          {!user && (
-            <NavLink to="/welcome" onMouseEnter={prefetch.landing} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
-              <Sparkles size={14}/><span className="hidden sm:block">Tour</span>
-            </NavLink>
-          )}
           {user && (
             <>
               <NavLink to="/history" onMouseEnter={prefetch.history} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
@@ -175,7 +169,6 @@ function Shell() {
               <Route path="/auth"      element={<AuthPage/>}/>
               <Route path="/history"   element={<HistoryPage/>}/>
               <Route path="/workspace" element={<WorkspacePanel/>}/>
-              <Route path="/welcome"   element={<LandingPage/>}/>
             </Routes>
           </Suspense>
         </ErrorBoundary>
