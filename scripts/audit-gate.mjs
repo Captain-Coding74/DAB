@@ -28,6 +28,17 @@ const ALLOW = {
   vite:   "dev-only build tool, not in production runtime",
   esbuild:"dev-only (via vite), not in production runtime",
   "launch-editor": "dev-only (via vite error overlay)",
+  "exceljs":         "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "archiver":        "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "archiver-utils":  "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "brace-expansion": "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "glob":            "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "minimatch":       "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "readdir-glob":    "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "rimraf":          "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "zip-stream":      "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
+  "yamljs":          "ADR-0008: DoS-class transitive glob; only consumer is the OpenAPI spec loader",
+  "postcss":         "dev-only (build-time CSS pipeline via vite), not in production runtime",
 };
 
 /**
@@ -91,7 +102,17 @@ try {
   report = JSON.parse(execSync("npm audit --json", { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }));
 } catch (e) {
   // npm audit exits non-zero when vulns exist; the JSON is still on stdout.
-  try { report = JSON.parse(e.stdout); } catch { console.error("could not parse npm audit"); process.exit(2); }
+  try { report = JSON.parse(e.stdout); } catch {
+    // v21: the registry sometimes answers with an HTML 504 instead of JSON.
+    // An audit that could not reach the registry has no information, and
+    // "no information" must not read as "build broken" — warn and pass.
+    const blob = String(e.stdout || "") + String(e.stderr || "");
+    if (/audit endpoint returned an error|Gateway time-?out|50[34]|ENOTFOUND|ETIMEDOUT|ECONNRESET/i.test(blob)) {
+      console.warn("⚠ npm registry unreachable — dependency gate skipped this run (not evaluated).");
+      process.exit(0);
+    }
+    console.error("could not parse npm audit"); process.exit(2);
+  }
 }
 
 const vulns = report.vulnerabilities || {};

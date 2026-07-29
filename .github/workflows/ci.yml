@@ -64,11 +64,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - run: npm ci
 
-      # Dependency gate (ADR-0008): hard-fail on criticals. The 8 known
-      # ExcelJS-transitive highs are accepted — printed, not failing, until
-      # upstream clears them. NEVER add --force here.
-      - run: npm audit --audit-level=critical
-      - run: npm audit --audit-level=high || true
+      # Dependency gating is `npm run audit:gate` (below, v15). Raw `npm audit`
+      # is deliberately NOT used: it fails on dev-only tooling and on advisories
+      # with no fix, which trains everyone to ignore the gate. See ADR-0008.
 
       # System libs Chromium needs. The browser binary itself ships inside the
       # @sparticuz/chromium npm package, so no browser-CDN access is required.

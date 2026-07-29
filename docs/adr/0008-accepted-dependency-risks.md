@@ -57,9 +57,15 @@ Accept the eleven, with bounds, and gate against growth:
 3. **`npm audit fix --force` is prohibited** in this repo. It resolves the
    above by downgrading the parser. A broken ExcelJS is a worse outcome than
    every vulnerability on this list combined.
-4. **CI gates at `--audit-level=critical`** (hard fail) and prints the full
-   high-level report informationally. The gate rises to `high` the day the
-   ExcelJS chain clears.
+4. **CI gates via `npm run audit:gate`** (`scripts/audit-gate.mjs`, v15), not
+   raw `npm audit`. That script already encodes the distinction this ADR
+   describes: it fails only on high/critical advisories that are *fixable* and
+   *reachable from production dependencies*, and carries an allowlist naming
+   `vite`/`esbuild` as dev-only. A raw `npm audit --audit-level=critical` step
+   was briefly added in v21 and removed — it duplicated the gate, ignored the
+   dev-only distinction, and failed the build when the npm registry returned a
+   504. The gate now treats an unreachable registry as "not evaluated" rather
+   than "broken".
 
 ## Consequences
 

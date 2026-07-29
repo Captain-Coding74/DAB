@@ -94,7 +94,12 @@ function run(label, cwd, cmd) {
   } catch (err) {
     out = (err.stdout || "") + (err.stderr || "");
     if (!out.includes("all files")) {
-      console.error(`✗ ${label} tests failed — coverage not collected.\n`);
+      // v21: print WHY. This branch used to swallow the suite output entirely,
+      // so a CI failure said only "coverage not collected" with no cause.
+      console.error(`✗ ${label} tests failed — coverage not collected.`);
+      const lines = out.trimEnd().split("\n");
+      console.error(lines.slice(-40).join("\n"));
+      console.error("");
       process.exit(1);
     }
   }
