@@ -7,7 +7,10 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: "20"
+  # 22, not 20: scripts/coverage.mjs uses --test-coverage-exclude, which does
+  # not exist before Node 22 ("node: bad option"). Local dev runs 22.x, so this
+  # also stops CI and the workstation drifting apart.
+  NODE_VERSION: "22"
 
 jobs:
   backend-tests:

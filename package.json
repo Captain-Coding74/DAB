@@ -1,6 +1,9 @@
 {
   "name": "data-analysis-bot",
-  "version": "21.0.0",
+  "version": "20.4.1",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "private": true,
   "workspaces": [
     "backend",
