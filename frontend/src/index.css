@@ -32,6 +32,9 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+    /* Progress indication is essential motion (WCAG 2.3.3 exception):
+       a frozen spinner reads as a hang, not as loading. */
+    .animate-spin { animation-duration: 1.2s !important; }
   }
 }
 
@@ -67,7 +70,29 @@
     100% { opacity: 1; transform: scale(1) rotate(-3deg); }
   }
   @keyframes tab-fade { from { opacity: 0; } to { opacity: 1; } }
+  /* v20.5: the landing lays VERTICAL feint rules over the page's existing
+     horizontal ones, making the paper read as blueprint, and drifts them one
+     full 28px module per cycle so the loop is seamless. Perpendicular to the
+     body rules on purpose — same-axis rules at the same pitch would beat.
+     transform only: painted once, moved on the compositor. */
+  @keyframes drift-rules {
+    from { transform: translate3d(0, 0, 0); }
+    to   { transform: translate3d(28px, 0, 0); }
+  }
   .anim-rise  { animation: rise-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
   .anim-stamp { animation: stamp-in 0.14s ease-out both; }
   .anim-tab   { animation: tab-fade 0.15s ease-out both; }
+  .anim-drift { animation: drift-rules 9s linear infinite; }
+
+  /* The blueprint layer itself. Sits behind content, never interactive. */
+  .blueprint {
+    position: fixed; inset: 0 -56px 0 -56px; z-index: -1;
+    pointer-events: none; contain: strict;
+    background-image: repeating-linear-gradient(
+      to right, transparent 0 27px, rgba(47, 107, 79, 0.055) 27px 28px);
+  }
+  .dark .blueprint {
+    background-image: repeating-linear-gradient(
+      to right, transparent 0 27px, rgba(140, 153, 181, 0.045) 27px 28px);
+  }
 }

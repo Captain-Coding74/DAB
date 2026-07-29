@@ -31,8 +31,15 @@ export const useAppStore = create((set, get) => ({
       const res  = await fetch("/api/auth/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ refreshToken: rt }) });
       const data = await res.json();
       if (res.ok) {
+        // v21: the server rotates the refresh token on every refresh and
+        // revokes the old one — persist the new one or the NEXT refresh 401s.
         localStorage.setItem("dab_at", data.accessToken);
-        set({ accessToken: data.accessToken });
+        const next = { accessToken: data.accessToken };
+        if (data.refreshToken) {
+          localStorage.setItem("dab_rt", data.refreshToken);
+          next.refreshToken = data.refreshToken;
+        }
+        set(next);
         return true;
       }
     } catch {}

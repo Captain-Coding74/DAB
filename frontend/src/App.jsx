@@ -1,9 +1,9 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
-import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command } from "lucide-react";
+import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command, Sparkles } from "lucide-react";
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
-import { Toasts, Skeleton, Modal, Kbd } from "./components/ui";
+import { Toasts, Skeleton, Modal, Kbd, Wordmark } from "./components/ui";
 import ErrorBoundary from "./components/errors";
 import CommandPalette, { firePaletteAction } from "./components/palette";
 import PerfOverlay from "./components/perf";
@@ -14,7 +14,8 @@ const WorkspacePanel = lazy(() => import("./components/workspace"));
 const AuthPage       = lazy(() => import("./pages/AuthPage"));
 const SharePage      = lazy(() => import("./pages/SharePage"));
 const HistoryPage    = lazy(() => import("./pages/HistoryPage"));
-const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace") };
+const LandingPage    = lazy(() => import("./pages/LandingPage"));
+const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace"), landing: () => import("./pages/LandingPage") };
 
 function PageSkeleton() {
   return (
@@ -26,26 +27,15 @@ function PageSkeleton() {
   );
 }
 
-/* Ledger mark: stamp-green plate, red margin rule, three white bars */
-function Wordmark() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
-      <rect x="1" y="1" width="30" height="30" rx="6" fill="#0B1220" stroke="#F5A00B" strokeWidth="2"/>
-      <rect x="7" y="7" width="2" height="18" fill="#D9573F"/>
-      <rect x="13" y="16" width="3" height="9"  fill="#F5A00B"/>
-      <rect x="18" y="12" width="3" height="13" fill="#F5A00B"/>
-      <rect x="23" y="8"  width="3" height="17" fill="#F5A00B"/>
-    </svg>
-  );
-}
 
 /* v11: global shortcuts. Skips fields so typing is never hijacked. */
+const FIELD_TAG_RE = /^(INPUT|TEXTAREA|SELECT)$/;
 function useGlobalShortcuts() {
   const setPaletteOpen = useAppStore(s => s.setPaletteOpen);
   const paletteOpen    = useAppStore(s => s.paletteOpen);
   useEffect(() => {
     const onKey = (e) => {
-      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      const typing = FIELD_TAG_RE.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(!paletteOpen); return; }
       if (typing) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "u") { e.preventDefault(); firePaletteAction("upload"); return; }
@@ -121,6 +111,11 @@ function Nav() {
           <NavLink to="/" end className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
             <BarChart2 size={14}/><span className="hidden sm:block">Analyze</span>
           </NavLink>
+          {!user && (
+            <NavLink to="/welcome" onMouseEnter={prefetch.landing} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+              <Sparkles size={14}/><span className="hidden sm:block">Tour</span>
+            </NavLink>
+          )}
           {user && (
             <>
               <NavLink to="/history" onMouseEnter={prefetch.history} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
@@ -180,6 +175,7 @@ function Shell() {
               <Route path="/auth"      element={<AuthPage/>}/>
               <Route path="/history"   element={<HistoryPage/>}/>
               <Route path="/workspace" element={<WorkspacePanel/>}/>
+              <Route path="/welcome"   element={<LandingPage/>}/>
             </Routes>
           </Suspense>
         </ErrorBoundary>

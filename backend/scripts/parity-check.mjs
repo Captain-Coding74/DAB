@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { parseFileStreaming } from "./src/services/streaming.js";
+import { parseFileStreaming } from "../src/services/streaming.js";
 
 // Build an .xlsx in memory with mixed types: dates, numbers, a formula, blanks
 const wb = new ExcelJS.Workbook();

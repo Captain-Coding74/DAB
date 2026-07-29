@@ -18,6 +18,22 @@ const router = express.Router();
 const csvExcelOnly = (_, file, cb) =>
   /\.(csv|xlsx|xls)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("CSV/Excel only"));
 
+/* v21 SECURITY: the filename check above is spoofable. This second gate reads
+   the buffer's leading bytes after upload: xlsx is a ZIP (PK\x03\x04), xls is
+   the OLE compound-file magic (D0 CF 11 E0). CSV is plain text, so anything
+   not matching a known binary magic is allowed through as text and left to the
+   parser. Rejects a renamed executable before it reaches streaming. */
+function verifyFileMagic(buf, name) {
+  if (!buf || buf.length < 8) return true;
+  const isXlsxName = /\.xlsx$/i.test(name), isXlsName = /\.xls$/i.test(name);
+  const zip = buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04;
+  const ole = buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0;
+  if (isXlsxName) return zip;              // .xlsx must be a real ZIP container
+  if (isXlsName)  return zip || ole;       // .xls: legacy OLE, or xlsx mislabelled
+  // .csv / .tsv: reject only if it carries a known binary magic
+  return !(zip || ole || (buf[0] === 0x7F && buf[1] === 0x45 && buf[2] === 0x4C && buf[3] === 0x46)); // ELF
+}
+
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: csvExcelOnly });
 const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: csvExcelOnly });
 
@@ -55,6 +71,8 @@ router.get("/", requireAuth, async (req, res, next) => {
 router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!verifyFileMagic(req.file.buffer, req.file.originalname))
+      return res.status(400).json({ error: "File content does not match its extension" });
     const { name, description, folderId, workspaceId } = req.body;
     const fileContent = req.file.buffer.toString("utf-8");
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
@@ -96,7 +114,9 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
 
     const totalRows = req.files.length === 1 ? firstRows : await (async () => {
       let sum = 0;
-      for (const f of req.files) { const r = await parseFileStreaming(f.buffer, f.originalname); sum += r.totalRows; }
+      // v21: same magic-byte gate on every file in a multi-upload
+    for (const f of req.files) {
+      if (!verifyFileMagic(f.buffer, f.originalname)) return res.status(400).json({ error: `${f.originalname}: content does not match extension` }); const r = await parseFileStreaming(f.buffer, f.originalname); sum += r.totalRows; }
       return sum;
     })();
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
@@ -243,6 +263,8 @@ router.post("/:id/versions", requireAuth, upload.single("file"), async (req, res
     const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
     if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!verifyFileMagic(req.file.buffer, req.file.originalname))
+      return res.status(400).json({ error: "File content does not match its extension" });
 
     const fileContent = req.file.buffer.toString("utf-8");
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);

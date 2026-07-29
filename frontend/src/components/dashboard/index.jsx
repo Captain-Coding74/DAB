@@ -14,9 +14,8 @@ import Tour, { tourDone } from "../tour";
 import { makeSampleFile } from "../../lib/sampleData";
 import { ChatPanel } from "../chat";
 import { AgentPanel } from "./AgentPanel";
-import {
-  AnalysisTab, InsightsTab, QualityTab, ForecastTab, ColumnStatsPanel,
-} from "./tabs";
+import { AnalysisTab, InsightsTab, QualityTab, ForecastTab } from "./tabs";
+import { ColumnStatsPanel } from "../ColumnStats";
 
 // v13: recharts (112 kB gzip) loads only when a chart tab is opened.
 const ChartsTab      = lazy(() => import("./tabs-charts").then(m => ({ default: m.ChartsTab })));

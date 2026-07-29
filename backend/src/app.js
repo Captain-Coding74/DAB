@@ -123,7 +123,7 @@ export function createApp() {
   // Swagger
   try {
     const swaggerDoc = YAML.load(path.join(__dirname, "../openapi.yaml"));
-    app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc, { customSiteTitle: "DAB API v19", customCss: ".swagger-ui .topbar { background:#2F6B4F }" }));
+    app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc, { customSiteTitle: "DAB API", customCss: ".swagger-ui .topbar { background:#0B1220 }" }));
   } catch {}
 
   // Serve React build in production

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { LEDGER } from "../lib/ledger";
 import { apiFetch } from "../lib/api";
 import { useParams } from "react-router-dom";
 import { AutoChart } from "../components/charts";
-import { QualityRing, Spinner, Input, Button } from "../components/ui";
+import { ColumnStatsPanel } from "../components/ColumnStats";
+import { Spinner, Input, Button } from "../components/ui";
+import { Lock, SearchX } from "lucide-react";
 
 export default function SharePage() {
   const { token }   = useParams();
@@ -22,9 +25,9 @@ export default function SharePage() {
       });
       const d   = await res.json();
       if (res.status === 401 && d.passwordProtected) { setNeedsPass(true); setLoading(false); return; }
-      if (!res.ok) { setError(d.error || "Report not found"); setLoading(false); return; }
+      if (!res.ok) { setError(d.error || "ไม่พบรายงาน"); setLoading(false); return; }
       setData(d);
-    } catch { setError("Failed to load report"); }
+    } catch { setError("โหลดรายงานไม่สำเร็จ"); }
     setLoading(false);
   };
 
@@ -32,33 +35,33 @@ export default function SharePage() {
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-      <div className="text-center"><Spinner size={32}/><p className="text-sm text-gray-400 mt-3">Loading report...</p></div>
+      <div className="text-center"><Spinner size={32}/><p className="text-sm text-gray-400 mt-3">กำลังโหลดรายงาน…</p></div>
     </div>
   );
 
   if (needsPass) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 p-8 w-full max-w-sm text-center">
-        <div className="text-3xl mb-3">🔒</div>
-        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-1">Password Required</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Report นี้ต้องใส่ password</p>
-        <Input placeholder="Password..." type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key==="Enter" && fetchReport(password)} className="mb-3"/>
-        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-        <Button className="w-full" onClick={() => fetchReport(password)}>Unlock</Button>
+        <Lock size={28} className="mx-auto mb-3 text-gray-400" aria-hidden="true"/>
+        <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-1">รายงานนี้ถูกล็อกด้วยรหัสผ่าน</h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">ใส่รหัสผ่านที่ได้รับจากผู้แชร์เพื่อเปิดรายงาน</p>
+        <Input label="รหัสผ่าน" name="share-password" autoComplete="off" placeholder="••••••••" type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key==="Enter" && fetchReport(password)} className="mb-3"/>
+        {error && <p className="text-xs text-rule dark:text-rule-dark mb-3">{error}</p>}
+        <Button className="w-full" onClick={() => fetchReport(password)}>ปลดล็อก</Button>
       </div>
     </div>
   );
 
   if (error) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-      <div className="text-center"><div className="text-4xl mb-3">😕</div><p className="text-gray-600 dark:text-gray-400">{error}</p></div>
+      <div className="text-center"><SearchX size={32} className="mx-auto mb-3 text-gray-400" aria-hidden="true"/><p className="text-gray-600 dark:text-gray-400">{error}</p></div>
     </div>
   );
 
   if (!data) return null;
 
   // Custom branding from workspace
-  const brandColor = data.brand_color || "#2F6B4F";
+  const brandColor = data.brand_color || LEDGER.stamp.DEFAULT;
   const brandName  = data.brand_name  || "Data Analysis Bot";
   const statsJson  = data.stats_json  || {};
   const colAnalysis = statsJson.colAnalysis || [];
@@ -97,30 +100,7 @@ export default function SharePage() {
         )}
 
         {/* Column stats */}
-        {colAnalysis.length > 0 && (
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">📐 Column Statistics</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {colAnalysis.map((c, i) => (
-                <div key={i} className="p-3 bg-gray-50 dark:bg-gray-950 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate flex-1">{c.col}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.type==="numeric"?"bg-blue-50 dark:bg-blue-900/30 text-blue-600":"bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700"}`}>{c.type}</span>
-                  </div>
-                  {c.type === "numeric" ? (
-                    <div className="grid grid-cols-3 gap-1 text-xs text-gray-500 dark:text-gray-400">
-                      <span>Min: <b className="text-gray-700 dark:text-gray-300">{c.min}</b></span>
-                      <span>Max: <b className="text-gray-700 dark:text-gray-300">{c.max}</b></span>
-                      <span>Avg: <b className="text-gray-700 dark:text-gray-300">{c.avg?.toFixed(1)}</b></span>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{c.unique} unique values</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {colAnalysis.length > 0 && <ColumnStatsPanel colAnalysis={colAnalysis}/>}
 
         <p className="text-center text-xs text-gray-400">
           Shared report · Powered by {brandName}

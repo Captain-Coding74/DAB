@@ -1,6 +1,6 @@
 {
   "name": "data-analysis-bot",
-  "version": "20.4.2",
+  "version": "21.0.0",
   "private": true,
   "workspaces": [
     "backend",

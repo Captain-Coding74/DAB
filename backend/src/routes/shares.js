@@ -3,6 +3,7 @@
  * Public shared reports (password-protected via X-Share-Password).
  */
 import bcrypt from "bcryptjs";
+import { shareLimiter } from "../middleware/rateLimiter.js";
 import * as R from "../db/repository.js";
 import { requireAuth } from "../auth.js";
 
@@ -33,9 +34,11 @@ export function mountShareRoutes(app) {
   // v9: password is read from the X-Share-Password header first — query-string
   // passwords end up in access logs, browser history, and proxies. The query
   // param still works for old links but the frontend now sends the header.
-  app.get("/api/public/share/:token", async (req, res, next) => {
+  app.get("/api/public/share/:token", shareLimiter(), async (req, res, next) => {
     try {
-      const password = req.get("x-share-password") || req.query.password;
+      // v21 SECURITY: header only — query-string passwords leak into access
+      // logs, proxies, and browser history.
+      const password = req.get("x-share-password");
       const report = await R.getSharedReport(req.params.token);
       if (!report) return res.status(404).json({ error: "Report not found or expired" });
       if (report.password_hash) {

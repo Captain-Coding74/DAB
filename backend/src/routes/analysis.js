@@ -14,6 +14,17 @@ import { recordUpload } from "../services/telemetry.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
 import { serviceLogger, requestLogger } from "../logger.js";
 
+/** One place the analysis model is named and called — both endpoints go through here. */
+const ANALYSIS_MODEL = "claude-sonnet-4-6";
+async function generateAnalysis(ai, promptArgs) {
+  const msg = await ai.messages.create({
+    model: ANALYSIS_MODEL, max_tokens: 1500,
+    messages: [{ role: "user", content: buildAnalysisPrompt(promptArgs) }],
+  });
+  return msg.content[0].text;
+}
+
+
 const log = serviceLogger("analyze");
 
 export function mountAnalysisRoutes(app, { upload, ai }) {
@@ -44,11 +55,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
         aiBudget = "exceeded";
         log.warn({ used: b.used, budget: b.budget }, "AI daily budget exhausted — serving stats-only");
       } else {
-        const msg = await ai.messages.create({
-          model: "claude-sonnet-4-6", max_tokens: 1500,
-          messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, bundle, sampleRows }) }],
-        });
-        aiAnalysis = msg.content[0].text;
+        aiAnalysis = await generateAnalysis(ai, { question, totalRows, headers, bundle, sampleRows });
       }
       const durationMs = Math.round(performance.now() - t0);
 
@@ -105,11 +112,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
           aiBudget = "exceeded";
           log.warn({ used: b.used, budget: b.budget }, "AI daily budget exhausted — serving stats-only");
         } else {
-          const msg = await ai.messages.create({
-            model: "claude-sonnet-4-6", max_tokens: 1500,
-            messages: [{ role: "user", content: buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle, sampleRows }) }],
-          });
-          aiAnalysis = msg.content[0].text;
+          aiAnalysis = await generateAnalysis(ai, { question, totalRows, headers, fileType, bundle, sampleRows });
         }
       }
       const durationMs = Math.round(performance.now() - t0);

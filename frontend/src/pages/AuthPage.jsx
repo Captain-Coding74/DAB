@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../store";
 import { postJSON } from "../lib/api";
-import { Button, Input } from "../components/ui";
+import { Button, Input, Wordmark } from "../components/ui";
 
 export default function AuthPage() {
   const { login, toast } = useAppStore();
@@ -37,13 +37,7 @@ export default function AuthPage() {
       <div className="w-full max-w-sm">
         {/* Cover */}
         <div className="text-center mb-8">
-          <svg width="52" height="52" viewBox="0 0 32 32" className="mx-auto mb-3" aria-hidden="true">
-            <rect width="32" height="32" rx="6" fill="#2F6B4F"/>
-            <rect x="6" y="6" width="2" height="20" fill="#C13B27"/>
-            <rect x="12" y="16" width="3" height="10" fill="#F2F4EC"/>
-            <rect x="17" y="11" width="3" height="15" fill="#F2F4EC"/>
-            <rect x="22" y="7"  width="3" height="19" fill="#F2F4EC"/>
-          </svg>
+          <Wordmark size={52} className="mx-auto mb-3"/>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Data Analysis Bot</h1>
           <p className="eyebrow mt-1.5">อัปโหลด · ตรวจสอบ · แชร์รายงาน</p>
         </div>
@@ -59,22 +53,27 @@ export default function AuthPage() {
             ))}
           </div>
 
-          <div className="p-6 space-y-4">
-            <Input label="Username" placeholder="your_username" value={form.username} error={errors.username}
-              onChange={e => setForm(f => ({...f, username: e.target.value}))}
-              onKeyDown={e => e.key === "Enter" && submit()}/>
+          {/* A real <form>: Enter submits from any field (the old per-input
+              onKeyDown missed the email field), and password managers get
+              the semantics they key on. */}
+          <form className="p-6 space-y-4" onSubmit={e => { e.preventDefault(); submit(); }}>
+            <Input label="ชื่อผู้ใช้" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
+              placeholder="your_username" value={form.username} error={errors.username}
+              onChange={e => setForm(f => ({...f, username: e.target.value}))}/>
             {mode === "register" && (
-              <Input label="Email (optional)" type="email" placeholder="you@example.com" value={form.email}
+              <Input label="อีเมล (ไม่บังคับ)" name="email" type="email" inputMode="email" autoComplete="email"
+                autoCapitalize="none" spellCheck={false} placeholder="you@example.com" value={form.email}
                 onChange={e => setForm(f => ({...f, email: e.target.value}))}/>
             )}
-            <Input label="Password" type="password" placeholder="••••••••" value={form.password} error={errors.password}
-              onChange={e => setForm(f => ({...f, password: e.target.value}))}
-              onKeyDown={e => e.key === "Enter" && submit()}/>
+            <Input label="รหัสผ่าน" name="password" type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              placeholder="••••••••" value={form.password} error={errors.password}
+              onChange={e => setForm(f => ({...f, password: e.target.value}))}/>
 
-            <Button className="w-full" size="md" onClick={submit} loading={loading}>
+            <Button className="w-full" size="md" type="submit" loading={loading}>
               {mode === "login" ? "เข้าสู่ระบบ" : "สมัครสมาชิก"}
             </Button>
-          </div>
+          </form>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">

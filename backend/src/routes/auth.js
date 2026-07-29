@@ -49,7 +49,12 @@ export function mountAuthRoutes(app) {
       if (!stored) return res.status(401).json({ error: "Refresh token revoked" });
       const user = await R.findUserById(payload.userId);
       if (!user) return res.status(401).json({ error: "User not found" });
-      res.json({ accessToken: signAccess({ userId: user.id, username: user.username }) });
+      // v21 SECURITY: rotate. Issue a new refresh token, revoke the presented
+      // one, so a leaked refresh token is usable for one call, not seven days.
+      const newRt = signRefresh({ userId: user.id });
+      await R.storeRefreshToken(user.id, hashToken(newRt), refreshExpiresAt());
+      await R.revokeRefreshToken(hashToken(refreshToken));
+      res.json({ accessToken: signAccess({ userId: user.id, username: user.username }), refreshToken: newRt });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 

@@ -8,6 +8,21 @@ import { useReadoutValue } from "../../hooks/useCountUp";
  */
 import React from "react";
 import { clsx } from "clsx";
+
+/* The Ledger mark — one definition. v20.4 After-Hours plate: navy ink,
+   amber calibration stroke, red margin rule, amber bars. AuthPage carried a
+   stale v10 green-plate copy of this SVG until v20.5. */
+export function Wordmark({ size = 24, className }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="6" fill="#0B1220" stroke="#F5A00B" strokeWidth="2"/>
+      <rect x="7" y="7" width="2" height="18" fill="#D9573F"/>
+      <rect x="13" y="16" width="3" height="9"  fill="#F5A00B"/>
+      <rect x="18" y="12" width="3" height="13" fill="#F5A00B"/>
+      <rect x="23" y="8"  width="3" height="17" fill="#F5A00B"/>
+    </svg>
+  );
+}
 import { X, AlertCircle, CheckCircle, Info } from "lucide-react";
 import { useAppStore } from "../../store";
 import { clampScore, gradeFor, gradeHex, gradeStampClass } from "../../lib/grade";
@@ -18,7 +33,7 @@ export function Button({ children, variant = "primary", size = "md", className, 
   const variants = {
     primary:  "bg-brand-500 hover:bg-brand-600 text-white",
     secondary:"bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700",
-    danger:   "bg-rule hover:bg-[#A93321] dark:bg-rule-dark text-white",
+    danger:   "bg-rule hover:bg-rule-deep dark:bg-rule-dark text-white",
     ghost:    "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400",
   };
   const sizes = { sm: "text-xs px-3 py-1.5", md: "text-sm px-4 py-2", lg: "text-base px-5 py-2.5" };
@@ -56,8 +71,8 @@ export function Badge({ children, variant = "green" }) {
   const variants = {
     green:  "bg-brand-50 text-brand-600 border-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:border-brand-800",
     blue:   "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700",
-    yellow: "bg-pencil-soft text-pencil border-[#DFC79A] dark:bg-pencil/15 dark:text-pencil-dark dark:border-pencil/40",
-    red:    "bg-rule-soft text-rule border-[#DFB0A6] dark:bg-rule/15 dark:text-rule-dark dark:border-rule/40",
+    yellow: "bg-pencil-soft text-pencil border-pencil-line dark:bg-pencil/15 dark:text-pencil-dark dark:border-pencil/40",
+    red:    "bg-rule-soft text-rule border-rule-line dark:bg-rule/15 dark:text-rule-dark dark:border-rule/40",
     gray:   "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700",
   };
   return <span className={clsx("inline-flex items-center px-1.5 py-0.5 rounded border font-mono text-[10px] font-medium tracking-wide", variants[variant])}>{children}</span>;

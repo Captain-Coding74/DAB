@@ -112,12 +112,14 @@ describe("POST /api/auth/login", () => {
 });
 
 describe("POST /api/auth/refresh", () => {
-  test("issues new access token with valid refresh token", async () => {
+  test("issues new access token and rotates the refresh token", async () => {
     const res = await agent.post("/api/auth/refresh").send({ refreshToken });
     assert.equal(res.status, 200);
     assert.ok(res.body.accessToken);
-    // Update access token for subsequent tests
-    accessToken = res.body.accessToken;
+    assert.ok(res.body.refreshToken, "refresh should rotate the refresh token");
+    assert.notEqual(res.body.refreshToken, refreshToken, "rotated token must differ");
+    accessToken  = res.body.accessToken;
+    refreshToken = res.body.refreshToken;   // use the rotated token downstream
   });
 
   test("rejects invalid refresh token", async () => {

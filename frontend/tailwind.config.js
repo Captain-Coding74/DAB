@@ -27,9 +27,9 @@ export default {
         // Verdict green — the stamp's ink, kept for GOOD grades only
         stamp:  { DEFAULT: "#2F9E6E", dark: "#34D399" },
         // The red margin rule — signature; used sparingly (critical, danger)
-        rule:   { DEFAULT: "#C13B27", soft: "#F0D6D0", dark: "#D9573F" },
+        rule:   { DEFAULT: "#C13B27", deep: "#A93321", soft: "#F0D6D0", line: "#DFB0A6", dark: "#D9573F" },
         // Auditor's pencil — warnings
-        pencil: { DEFAULT: "#B7791F", soft: "#EFE2C6", dark: "#CE9A3C" },
+        pencil: { DEFAULT: "#B7791F", soft: "#EFE2C6", line: "#DFC79A", dark: "#CE9A3C" },
         // Green-tinted neutrals: paper → ink (light), after-hours ledger (dark)
         // Light = ledger paper (unchanged). Dark end = after-hours console:
         // navy ink surfaces instead of the old green-black ledger.

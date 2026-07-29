@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { LEDGER } from "../../lib/ledger";
+const DEFAULT_BRAND = LEDGER.stamp.DEFAULT;
 import { Users, Plus, Trash2, Settings, Bell, Palette } from "lucide-react";
 import { apiFetch, useAppStore } from "../../store";
 import { Button, Card, Badge, Input, Modal, Spinner } from "../ui";
@@ -12,9 +14,9 @@ export default function WorkspacePanel() {
   const [showCreate, setShowCreate]   = useState(false);
   const [showBrand,  setShowBrand]    = useState(false);
   const [showSched,  setShowSched]    = useState(false);
-  const [newWs,      setNewWs]        = useState({ name: "", description: "", brandColor: "#1D9E75" });
+  const [newWs,      setNewWs]        = useState({ name: "", description: "", brandColor: DEFAULT_BRAND });
   const [inviteUser, setInviteUser]   = useState("");
-  const [brand,      setBrand]        = useState({ brandColor: "#1D9E75", brandName: "", brandLogo: "" });
+  const [brand,      setBrand]        = useState({ brandColor: DEFAULT_BRAND, brandName: "", brandLogo: "" });
   const [newSched,   setNewSched]     = useState({ name: "", cronExpr: "0 9 * * 1", recipients: "", prompt: "สรุปภาพรวม", format: "pdf" });
 
   useEffect(() => { fetchWorkspaces(); }, []);
@@ -56,7 +58,7 @@ export default function WorkspacePanel() {
       if (!res.ok) throw new Error(data.error);
       toast("สร้าง workspace แล้ว! ✓");
       setShowCreate(false);
-      setNewWs({ name: "", description: "", brandColor: "#1D9E75" });
+      setNewWs({ name: "", description: "", brandColor: DEFAULT_BRAND });
       await fetchWorkspaces();
     } catch (err) { toast(err.message, "error"); }
   }
@@ -168,7 +170,7 @@ export default function WorkspacePanel() {
                 </div>
               </div>
               <div className="flex gap-2 mb-4">
-                <Input placeholder="username ที่จะเชิญ..." value={inviteUser} onChange={e => setInviteUser(e.target.value)} className="flex-1" onKeyDown={e => e.key==="Enter" && inviteMember()}/>
+                <Input placeholder="username ที่จะเชิญ…" value={inviteUser} onChange={e => setInviteUser(e.target.value)} className="flex-1" onKeyDown={e => e.key==="Enter" && inviteMember()}/>
                 <Button size="sm" onClick={inviteMember}><Plus size={13}/> เชิญ</Button>
               </div>
               <div className="space-y-2">
@@ -243,7 +245,7 @@ export default function WorkspacePanel() {
                   </div>
                 </div>
                 <Input label="Brand Name" placeholder="Your Company" value={brand.brandName} onChange={e => setBrand(b => ({...b, brandName: e.target.value}))}/>
-                <Input label="Logo URL" placeholder="https://..." value={brand.brandLogo} onChange={e => setBrand(b => ({...b, brandLogo: e.target.value}))}/>
+                <Input label="Logo URL" placeholder="https://…" value={brand.brandLogo} onChange={e => setBrand(b => ({...b, brandLogo: e.target.value}))}/>
                 {brand.brandLogo && (
                   <div className="p-3 border border-gray-100 dark:border-gray-800 rounded-lg text-center">
                     <img src={brand.brandLogo} alt="logo" className="h-8 mx-auto object-contain" onError={e => e.target.style.display="none"}/>

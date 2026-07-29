@@ -244,15 +244,21 @@ paths:
                 refreshToken: { type: string }
       responses:
         "200":
-          description: New access token issued
+          description: >
+            New access token issued. The refresh token is ROTATED: a new
+            refreshToken is returned and the one you sent is revoked. Store the
+            new one — reusing the old token returns 401.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  accessToken: { type: string }
+                  accessToken:  { type: string }
+                  refreshToken: { type: string, description: Rotated token — replaces the one you sent }
         "401":
-          description: Invalid or expired refresh token
+          description: Invalid, expired, or already-rotated refresh token
+        "429":
+          description: Too many auth attempts (rate limited)
 
   /api/auth/logout:
     post:
@@ -445,9 +451,9 @@ paths:
       tags: [System]
       summary: View a shared report (public, no auth)
       description: |
-        v9 — for password-protected shares, send the password in the
-        `X-Share-Password` header. The legacy `?password=` query parameter
-        still works but is discouraged (it leaks into logs and history).
+        v21 — for password-protected shares, send the password in the
+        `X-Share-Password` header. (The `?password=` query parameter was
+        removed in v21 — query-string secrets leak into logs and proxies.)
       parameters:
         - name: token
           in: path

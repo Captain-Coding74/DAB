@@ -1,4 +1,7 @@
 import { query } from "./pool.js";
+
+/* Default workspace brand — the stamp token (mirrors frontend LEDGER.stamp) */
+const DEFAULT_BRAND_COLOR = "#2F9E6E";
 import crypto from "crypto";
 
 const uuid = () => crypto.randomUUID();
@@ -72,7 +75,7 @@ export async function createWorkspace({ name, ownerId, description, brandColor }
   const id   = uuid();
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g,"-") + "-" + id.slice(0,6);
   await query(`INSERT INTO workspaces (id,name,slug,description,owner_id,brand_color,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [id,name,slug,description||null,ownerId,brandColor||"#1D9E75",now()]);
+    [id,name,slug,description||null,ownerId,brandColor||DEFAULT_BRAND_COLOR,now()]);
   await query(`INSERT INTO workspace_members (id,workspace_id,user_id,role,joined_at) VALUES ($1,$2,$3,'owner',$4)`,
     [uuid(),id,ownerId,now()]);
   return { id, name, slug };
@@ -86,7 +89,7 @@ export async function getWorkspace(id) {
 }
 export async function updateWorkspaceBranding({ id, brandLogo, brandColor, brandName }) {
   await query(`UPDATE workspaces SET brand_logo=$1,brand_color=$2,brand_name=$3 WHERE id=$4`,
-    [brandLogo||null,brandColor||"#1D9E75",brandName||null,id]);
+    [brandLogo||null,brandColor||DEFAULT_BRAND_COLOR,brandName||null,id]);
 }
 export async function getWorkspaceMembers(wsId) {
   return query(`SELECT u.id,u.username,u.email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId]);

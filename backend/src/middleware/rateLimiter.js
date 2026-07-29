@@ -111,11 +111,32 @@ export function authLimiter() {
   return rateLimit({
     windowMs,
     max: OVERRIDE || 10,
-    keyGenerator: (req) => `ip:${req.ip}`,
+    // Distinct namespace: apiLimiter's keyByUserOrIp emits `ip:<addr>` for
+    // anonymous requests, and /api/auth/* passes through BOTH limiters. Sharing
+    // the key made express-rate-limit count one request twice
+    // (ERR_ERL_DOUBLE_COUNT) and halved the real auth budget.
+    keyGenerator: (req) => `auth:${req.ip}`,
     store: makeStore("rl:auth", windowMs),
     standardHeaders: "draft-7",
     legacyHeaders:   false,
     handler: (_, res) => res.status(429).json({ error: "Too many auth attempts. Wait 15 minutes." }),
+  });
+}
+
+// ── Share brute-force protection (public share links) ─────
+// The public share route mounts outside the /api limiter, so a
+// password-protected link could otherwise be brute-forced unthrottled.
+// Keyed by IP + token so guessing one link can't exhaust another's budget.
+export function shareLimiter() {
+  const windowMs = 15 * 60 * 1000;
+  return rateLimit({
+    windowMs,
+    max: OVERRIDE || 30,
+    keyGenerator: (req) => `ip:${req.ip}:${req.params.token || "none"}`,
+    store: makeStore("rl:share", windowMs),
+    standardHeaders: "draft-7",
+    legacyHeaders:   false,
+    handler: (_, res) => res.status(429).json({ error: "Too many attempts on this link. Wait 15 minutes." }),
   });
 }
 

@@ -50,6 +50,18 @@ describe("Dataset routes (real router)", () => {
     assert.equal(res.status, 400);
   });
 
+  test("v21: rejects a binary renamed to .csv (magic-byte gate)", async () => {
+    const elf = Buffer.from([0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00, 0x00, 0x00]);
+    const res = await auth(agent.post("/api/datasets")).attach("file", elf, "totally_a.csv");
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /does not match/i);
+  });
+
+  test("v21: accepts a genuine CSV whose bytes are plain text", async () => {
+    const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(CSV), "real.csv");
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+  });
+
   test("lists datasets for the owner only", async () => {
     const mine = await auth(agent.get("/api/datasets"));
     assert.equal(mine.status, 200);
