@@ -1,14 +1,51 @@
 <!doctype html>
-<html lang="en">
+<html lang="th">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Data Analysis Bot — Thai-first data inspector · เครื่องตรวจข้อมูลภาษาไทย</title>
 <meta name="description" content="อัปโหลดไฟล์เละ ๆ จากหน้าร้าน แล้วเห็นผลตรวจใน 10 วินาที · Upload messy Thai spreadsheets, get insights in 10 seconds.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+/* ── Self-hosted fonts (v21) ──────────────────────────────
+   NOT Google Fonts. helmet's CSP is styleSrc 'self' and fontSrc 'self',
+   so a fonts.googleapis.com stylesheet is BLOCKED and the Ledger
+   typography silently falls back to system fonts. That exact bug was
+   found and fixed in the SPA in v17 (see the comment above the CSP in
+   backend/src/app.js) and reintroduced here in v20.4.1 — it survived
+   because browser.test.mjs only ever navigates to '/', never '/welcome'.
+   Subset files live in public/fonts/ with stable names, deliberately
+   not the hashed build output, so this page has no build coupling. */
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url(fonts/plex-thai-400.woff2) format("woff2");
+  unicode-range: U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url(fonts/plex-latin-400.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url(fonts/plex-thai-500.woff2) format("woff2");
+  unicode-range: U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url(fonts/plex-latin-500.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 600;
+  font-display: swap; src: url(fonts/plex-thai-600.woff2) format("woff2");
+  unicode-range: U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 600;
+  font-display: swap; src: url(fonts/plex-latin-600.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url(fonts/plex-thai-700.woff2) format("woff2");
+  unicode-range: U+02D7,U+0303,U+0331,U+0E01-0E5B,U+200C-200D,U+25CC; }
+@font-face { font-family: "IBM Plex Sans Thai"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url(fonts/plex-latin-700.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url(fonts/plex-mono-400.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url(fonts/plex-mono-500.woff2) format("woff2");
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+
   :root {
     --ink: #0B1220; --panel: #121C30; --panel-2: #0E1728; --edge: #1F2B45;
     --amber: #F5A00B; --red: #E0563E; --green: #34D399; --warn: #F5C044;
@@ -147,6 +184,21 @@
            font-family: var(--mono); font-size: 11px; text-align: center; }
   .rv { opacity: 0; transform: translateY(16px); transition: opacity .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
   .rv.in { opacity: 1; transform: none; }
+
+  /* ── Accessibility (v21) ──────────────────────────────────
+     The SPA sets a deliberate amber focus ring in index.css; this page had
+     no focus styling at all, so keyboard users fell back to whatever the
+     browser draws over a dark background. Same token, same 2px. */
+  :where(a, button, [tabindex]):focus-visible {
+    outline: 2px solid #B37204; outline-offset: 3px; border-radius: 2px;
+  }
+  .skip {
+    position: absolute; left: -9999px; top: 0; z-index: 99;
+    background: var(--panel); color: var(--txt); border: 1px solid var(--amber);
+    padding: 10px 16px; font-family: var(--mono); font-size: 13px; border-radius: 4px;
+  }
+  .skip:focus { left: 12px; top: 12px; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     .rv { opacity: 1; transform: none; }
@@ -157,6 +209,7 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main" data-i18n="skip">ข้ามไปเนื้อหาหลัก</a>
 
 <nav><div class="wrap nav-in">
   <span class="stamp">DAB</span>
@@ -168,6 +221,7 @@
   <a class="nav-cta" href="#cta" data-i18n="navCta">ลองเลย — ฟรี</a>
 </div></nav>
 
+<main id="main">
 <div class="hero-stage">
 <div class="hero-bg" aria-hidden="true">
   <video autoplay muted loop playsinline poster="poster.jpg">
@@ -283,177 +337,9 @@
   <div class="cta-row rv"><a class="btn btn-amber" href="/" data-i18n="ctaBtn">เปิดเครื่องตรวจ ↗</a></div>
 </div>
 
+</main>
 <footer><div class="wrap" data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — สถิติล้วนตรวจซ้ำได้เสมอ</div></footer>
 
-<script>
-(function () {
-  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  /* ── i18n ── */
-  const I18N = {
-    th: {
-      navCta: "ลองเลย — ฟรี",
-      heroEyebrow: "เครื่องตรวจข้อมูลภาษาไทย · ไม่ต้องสมัครก็ลองได้",
-      heroH1: 'ไฟล์จากหน้าร้านเละแค่ไหน<br><span class="hl">เครื่องนี้ก็อ่านออก</span>',
-      heroSub: "วันที่ พ.ศ. · ราคา ฿1,234.50 · หัวรายงานคั่นตาราง — อัปโหลดมาทั้งอย่างนั้น แล้วรับ insights คุณภาพข้อมูล และกราฟ ภายใน 10 วินาที",
-      heroCta1: "แตะข้อมูลตัวอย่าง ↗", heroCta2: "ทำงานยังไง",
-      trust: "ไม่ต้องล็อกอิน · ไม่เก็บไฟล์ตัวอย่าง · สถิติล้วน ไม่เผาโควต้า AI",
-      messyH2: "อ่านไฟล์ที่เครื่องมืออื่นอ่านไม่ออก",
-      messySub: "ไฟล์จริงจาก Excel ภาษาไทยไม่เคยสะอาด — เราสร้างชั้นแปลภาษาไฟล์เละโดยเฉพาะ",
-      c1Eyebrow: "พ.ศ. → ค.ศ.", c1H: "วันที่แบบไทย เข้าใจหมด",
-      c1P: '2569, "14 ม.ค. 69", ปี พ.ศ. สองหลัก — แปลงเป็นมาตรฐานให้อัตโนมัติ พร้อมบอกช่วงเวลาของข้อมูล',
-      c2Eyebrow: "ตัวเลขปนสัญลักษณ์", c2H: "฿ , % ( ) ไม่ใช่ปัญหา",
-      c2P: '"฿1,234.50" ที่เครื่องมืออื่นอ่านเป็น 1 — ที่นี่อ่านถูก รวมถึงยอดติดลบแบบบัญชี (500)',
-      c3Eyebrow: "หัวรายงานคั่น", c3H: "ข้ามขยะ หาหัวตารางเอง",
-      c3P: 'บรรทัด "รายงานยอดขายประจำเดือน…" เหนือหัวตาราง? ระบบตรวจเจอและข้ามให้ พร้อม TIS-620/UTF-16',
-      howEyebrow: "10 วินาทีแรก", howH2: "ทำงานยังไง",
-      s1H: "วางไฟล์ หรือแตะตัวอย่าง", s1P: "CSV / Excel สูงสุด 10MB — หรือลองชุดข้อมูลตัวอย่างโดยไม่ต้องสมัครอะไรเลย",
-      s2H: "Insights Engine ตรวจทันที", s2P: "สถิติล้วน ไม่รอ AI: ค่าผิดปกติ แถวซ้ำ ค่าว่าง แนวโน้ม correlation — พร้อมใน ~10ms",
-      s3H: "อ่านผลเป็นภาษาไทย", s3P: "บันทึกข้างเล่มบอกว่าเจออะไร สำคัญแค่ไหน ควรทำอะไรต่อ — เข้าสู่ระบบเมื่ออยากได้บทวิเคราะห์ AI ฉบับเต็ม",
-      fEyebrow: "บันทึกข้างเล่ม · Insights", fH2: "เส้นข้างกระดาษบอกความสำคัญ",
-      fSub: "มรดกจากสมุดผู้ตรวจสอบ — ทุกประเด็นมีเส้นสีบอกระดับ อ่านปราดเดียวรู้ว่าอะไรด่วน",
-      f1H: '"ยอดขาย" มีค่าว่าง 4.4%', f1P: "พบเซลล์ว่าง 2 จุด — ตรวจสอบการกรอกข้อมูลต้นทาง หรือระบุวิธีจัดการก่อนสรุปผล",
-      f2H: "พบข้อมูลซ้ำ 2 แถว (4.4%)", f2P: "อาจเกิดจากการกดส่งซ้ำ — เก็บไว้พร้อมระบุในรายงาน หรือลบออกก่อนวิเคราะห์",
-      f3H: '"วันที่" เป็นคอลัมน์วันที่', f3P: "ครอบคลุม 2026-01-05 ถึง 2026-03-28 — พบปีแบบ พ.ศ. และแปลงเป็น ค.ศ. ให้อัตโนมัติ",
-      h1B: "ข้อมูลตัวอย่าง ไม่ใช่ของปลอมสวย ๆ", h1T: "ตัวเลขทุกตัวบนหน้านี้มาจาก engine จริง รันกับไฟล์เละจริง",
-      h2B: "โหมดลองใช้ ไม่แตะ AI", h2T: "ผลตรวจฟรีคำนวณจากสถิติล้วน — เร็ว ตรวจซ้ำได้ และไม่เผางบใคร",
-      h3B: "ความเป็นส่วนตัวมาก่อน", h3T: "ระบบเก็บเพียงรูปทรงไฟล์กับหมวดคอลัมน์ ไม่เก็บชื่อไฟล์ ชื่อคอลัมน์ หรือข้อมูลจริง",
-      ctaEyebrow: "พร้อมเมื่อคุณพร้อม", ctaH2: "เอาไฟล์ที่เละที่สุดของคุณมา",
-      ctaSub: "ถ้าเครื่องนี้อ่านไม่ออก เราอยากเห็นไฟล์นั้นมาก", ctaBtn: "เปิดเครื่องตรวจ ↗",
-      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — สถิติล้วนตรวจซ้ำได้เสมอ",
-      tSkip: "SKIPPED — หัวรายงาน", tHeader: "HEADER ✓", tFix1: "พ.ศ.→ค.ศ. · ฿→number", tFix2: "เดือนไทย · ติดลบบัญชี",
-    },
-    en: {
-      navCta: "Try it — free",
-      heroEyebrow: "Thai-first data inspector · no signup needed",
-      heroH1: 'However messy your shop file is,<br><span class="hl">this machine reads it.</span>',
-      heroSub: "Buddhist-Era dates · ฿1,234.50 prices · report banners above the table — upload it exactly as it is, and get insights, a data-quality grade, and charts within 10 seconds.",
-      heroCta1: "Tap a sample dataset ↗", heroCta2: "How it works",
-      trust: "No login · sample files never stored · pure statistics, zero AI quota burned",
-      messyH2: "Reads files other tools can't",
-      messySub: "Real Thai Excel exports are never clean — so we built a translation layer for messy files.",
-      c1Eyebrow: "B.E. → C.E.", c1H: "Thai dates, fully understood",
-      c1P: '2569, "14 ม.ค. 69", two-digit Buddhist-Era years — normalized automatically, with the data\'s date range reported back.',
-      c2Eyebrow: "Numbers with symbols", c2H: "฿ , % ( ) — no problem",
-      c2P: '"฿1,234.50" reads as 1 in most tools — here it parses correctly, including accounting negatives like (500).',
-      c3Eyebrow: "Banner rows", c3H: "Skips junk, finds the real header",
-      c3P: 'A "Monthly sales report…" line sitting above your table? Detected and skipped — TIS-620 and UTF-16 handled too.',
-      howEyebrow: "The first 10 seconds", howH2: "How it works",
-      s1H: "Drop a file, or tap a sample", s1P: "CSV / Excel up to 10MB — or try a sample dataset with zero signup.",
-      s2H: "Insights Engine inspects instantly", s2P: "Pure statistics, no AI wait: outliers, duplicates, missing values, trends, correlations — ready in ~10ms.",
-      s3H: "Read the findings in plain language", s3P: "Margin notes tell you what was found, how serious it is, and what to do — sign in when you want the full AI report.",
-      fEyebrow: "Margin notes · Insights", fH2: "The margin rule tells you what matters",
-      fSub: "Inherited from the auditor's ledger — every finding carries a colored rule, so urgency reads at a glance.",
-      f1H: '"Sales" has 4.4% missing values', f1P: "2 empty cells found — check the source entry, or state your handling method before concluding.",
-      f2H: "2 duplicate rows found (4.4%)", f2P: "Likely double-submits — keep them with a note in the report, or remove before analysis.",
-      f3H: '"Date" is a date column', f3P: "Spans 2026-01-05 to 2026-03-28 — Buddhist-Era years detected and converted automatically.",
-      h1B: "Sample numbers aren't decorative", h1T: "Every figure on this page comes from the real engine, run against a genuinely messy file.",
-      h2B: "Try-mode never touches AI", h2T: "Free inspection is pure statistics — fast, reproducible, and burns nobody's budget.",
-      h3B: "Privacy first", h3T: "Only file shapes and column categories are recorded — never filenames, column names, or your data.",
-      ctaEyebrow: "Ready when you are", ctaH2: "Bring us your messiest file",
-      ctaSub: "If this machine can't read it, we genuinely want to see it.", ctaBtn: "Open the inspector ↗",
-      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — pure statistics, always reproducible",
-      tSkip: "SKIPPED — banner row", tHeader: "HEADER ✓", tFix1: "B.E.→C.E. · ฿→number", tFix2: "Thai month · acct negative",
-    },
-  };
-  let lang = localStorage.getItem("dab_landing_lang") || "en";
-
-  function applyLang() {
-    const d = I18N[lang];
-    document.documentElement.lang = lang;
-    document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = d[el.dataset.i18n]; });
-    document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = d[el.dataset.i18nHtml]; });
-    document.getElementById("langTh").classList.toggle("on", lang === "th");
-    document.getElementById("langEn").classList.toggle("on", lang === "en");
-    document.querySelectorAll(".tag[data-tkey]").forEach(el => { el.textContent = d[el.dataset.tkey]; });
-  }
-  document.getElementById("langTh").onclick = () => { lang = "th"; localStorage.setItem("dab_landing_lang", lang); applyLang(); };
-  document.getElementById("langEn").onclick = () => { lang = "en"; localStorage.setItem("dab_landing_lang", lang); applyLang(); };
-  applyLang();
-
-  /* ── scroll reveals ── */
-  const io = new IntersectionObserver((es) => {
-    es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
-  }, { threshold: 0.18 });
-  document.querySelectorAll(".rv").forEach(el => io.observe(el));
-
-  /* ── the signature console loop ── */
-  const body = document.getElementById("cbody");
-  const lines = [
-    { src: "รายงานยอดขาย ร้านป้าศรี ประจำเดือน ม.ค.–มี.ค. 2569", fix: null, tkey: "tSkip", cls: "t-skip", skip: true },
-    { src: "วันที่,สินค้า,จำนวน,ยอดขาย", fix: null, tkey: "tHeader", cls: "t-ok" },
-    { src: '14/01/2569,น้ำปลา,12,"฿1,234.50"', fix: "2026-01-14,น้ำปลา,12,1234.50", tkey: "tFix1", cls: "t-fix" },
-    { src: '15 ม.ค. 69,ข้าวสาร,5,"(500)"', fix: "2026-01-15,ข้าวสาร,5,-500", tkey: "tFix2", cls: "t-fix" },
-  ];
-  const $ = id => document.getElementById(id);
-  const sleep = ms => new Promise(r => setTimeout(r, reduced ? 0 : ms));
-
-  function countUp(el, target, dur = 420) {
-    if (reduced) { el.textContent = target; return; }
-    const t0 = performance.now();
-    (function tick(t) {
-      const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
-      el.textContent = Math.round(target * e);
-      if (p < 1) requestAnimationFrame(tick);
-    })(t0);
-  }
-
-  async function typeInto(el, text) {
-    if (reduced) { el.textContent = text; return; }
-    for (let i = 1; i <= text.length; i++) {
-      el.textContent = text.slice(0, i);
-      await sleep(text.length > 40 ? 9 : 16);
-    }
-  }
-
-  async function runLoop() {
-    body.innerHTML = "";
-    ["roRows","roFixed","roSkip"].forEach(id => $(id).textContent = "0");
-    $("roMs").textContent = "— ms";
-    const g = $("grade"); g.classList.remove("stamped");
-
-    const rows = lines.map((l, i) => {
-      const ln = document.createElement("div");
-      ln.className = "ln";
-      ln.innerHTML = `<span class="no">${String(i + 1).padStart(2, "0")}</span><span class="src"></span><span class="tag ${l.cls}" data-tkey="${l.tkey}">${I18N[lang][l.tkey]}</span>`;
-      body.appendChild(ln);
-      return ln;
-    });
-    const caret = document.createElement("span");
-    caret.className = "caret";
-
-    for (let i = 0; i < lines.length; i++) {
-      const srcEl = rows[i].querySelector(".src");
-      srcEl.appendChild(caret);
-      await typeInto(srcEl, lines[i].src);
-      srcEl.appendChild(caret);
-      await sleep(120);
-    }
-    caret.remove();
-    await sleep(450);
-
-    let fixed = 0, skipped = 0;
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i], row = rows[i], srcEl = row.querySelector(".src");
-      if (l.skip) { row.classList.add("skipped"); skipped++; }
-      if (l.fix) { srcEl.textContent = l.fix; srcEl.classList.add("fix"); fixed++; }
-      row.querySelector(".tag").classList.add("show");
-      await sleep(430);
-    }
-    await sleep(300);
-
-    countUp($("roRows"), 45);
-    setTimeout(() => countUp($("roFixed"), fixed + 41), 60);
-    setTimeout(() => countUp($("roSkip"), skipped), 120);
-    setTimeout(() => { $("roMs").textContent = "8 ms"; }, 200);
-    await sleep(reduced ? 0 : 760);
-    g.classList.add("stamped");
-
-    await sleep(4200);
-    runLoop();
-  }
-  runLoop();
-})();
-</script>
+<script src="landing.js" defer></script>
 </body>
 </html>

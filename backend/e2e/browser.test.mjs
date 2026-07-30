@@ -362,6 +362,24 @@ describe("Critical flow: the public landing page", () => {
       `no IBM Plex face loaded — CSP may be blocking fonts. Loaded: ${loaded.join(", ") || "(none)"}`);
   });
 
+  btest("no CSP violations — the page's own script actually executes", async () => {
+    // The inline <script> was blocked by script-src 'self' until v21, which
+    // left every .rv element at opacity:0 — the whole page below the hero was
+    // invisible in production. This asserts the script ran AND that nothing
+    // was refused by the CSP.
+    const violations = [];
+    const onMsg = (m) => { if (/Content Security Policy/i.test(m.text())) violations.push(m.text()); };
+    page.on("console", onMsg);
+    await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    await page.waitForTimeout(500);
+    page.off("console", onMsg);
+    assert.deepEqual(violations, [], `CSP blocked resources on /welcome:\n${violations.join("\n")}`);
+
+    const hidden = await page.evaluate(() =>
+      [...document.querySelectorAll(".rv")].filter(el => getComputedStyle(el).opacity === "0").length);
+    assert.equal(hidden, 0, `${hidden} reveal elements never became visible — landing.js did not run`);
+  });
+
   btest("has a skip link and a main landmark", async () => {
     await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
     assert.equal(await page.locator("main#main").count(), 1, "missing <main id=main>");
