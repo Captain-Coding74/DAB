@@ -335,6 +335,43 @@ describe("Critical flow: typography actually loads", () => {
   });
 });
 
+describe("Critical flow: the public landing page", () => {
+  // /welcome is a separate static file, not the SPA — and until v21 NOTHING
+  // navigated to it. It shipped three fonts.googleapis.com requests that
+  // helmet's own CSP (styleSrc 'self', fontSrc 'self') blocked, so the Ledger
+  // typography silently fell back to system fonts: exactly the v17 bug the
+  // CSP comment documents as fixed. These tests exist so it cannot return.
+  btest("loads with zero third-party requests", async () => {
+    const external = [];
+    const onReq = (r) => {
+      const url = r.url();
+      if (!url.startsWith(BASE) && !url.startsWith("data:")) external.push(url);
+    };
+    page.on("request", onReq);
+    await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    page.off("request", onReq);
+    assert.deepEqual(external, [], `landing page made third-party requests: ${external.join(", ")}`);
+  });
+
+  btest("IBM Plex really renders — not a system fallback", async () => {
+    await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    const loaded = await page.evaluate(() =>
+      [...document.fonts].filter(f => f.status === "loaded").map(f => f.family));
+    assert.ok(loaded.some(f => /IBM Plex Sans Thai/.test(f)),
+      `no IBM Plex face loaded — CSP may be blocking fonts. Loaded: ${loaded.join(", ") || "(none)"}`);
+  });
+
+  btest("has a skip link and a main landmark", async () => {
+    await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    assert.equal(await page.locator("main#main").count(), 1, "missing <main id=main>");
+    const skip = page.locator('a.skip[href="#main"]');
+    assert.equal(await skip.count(), 1, "missing skip link");
+    await page.keyboard.press("Tab");                 // first tab stop must reveal it
+    assert.ok(await skip.isVisible(), "skip link does not appear on focus");
+  });
+});
+
 describe("Critical flow: dark mode", () => {
   btest("toggling theme flips the root class and persists", async () => {
     await visit();
