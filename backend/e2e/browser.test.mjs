@@ -365,19 +365,33 @@ describe("Critical flow: the public landing page", () => {
   btest("no CSP violations — the page's own script actually executes", async () => {
     // The inline <script> was blocked by script-src 'self' until v21, which
     // left every .rv element at opacity:0 — the whole page below the hero was
-    // invisible in production. This asserts the script ran AND that nothing
-    // was refused by the CSP.
+    // invisible in production.
     const violations = [];
     const onMsg = (m) => { if (/Content Security Policy/i.test(m.text())) violations.push(m.text()); };
     page.on("console", onMsg);
     await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(400);
     page.off("console", onMsg);
     assert.deepEqual(violations, [], `CSP blocked resources on /welcome:\n${violations.join("\n")}`);
 
+    // .rv elements reveal on scroll: IntersectionObserver at threshold .18,
+    // then io.unobserve, so a revealed element stays revealed. Walk the page
+    // before asserting — the first version of this test checked without
+    // scrolling and only ever proved the handful already in the viewport.
+    await page.evaluate(async () => {
+      const step = window.innerHeight / 2;
+      for (let y = 0; y < document.body.scrollHeight; y += step) {
+        window.scrollTo(0, y);
+        await new Promise(r => setTimeout(r, 120));
+      }
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    await page.waitForTimeout(900);
+
     const hidden = await page.evaluate(() =>
-      [...document.querySelectorAll(".rv")].filter(el => getComputedStyle(el).opacity === "0").length);
-    assert.equal(hidden, 0, `${hidden} reveal elements never became visible — landing.js did not run`);
+      [...document.querySelectorAll(".rv")]
+        .filter(el => getComputedStyle(el).opacity === "0").length);
+    assert.equal(hidden, 0, `${hidden} reveal elements still invisible after scrolling the whole page — landing.js did not run`);
   });
 
   btest("has a skip link and a main landmark", async () => {
