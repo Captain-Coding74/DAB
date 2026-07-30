@@ -116,7 +116,8 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .              # workspaces: the lockfile is at the root
+          file: ./backend/Dockerfile
           push: false
           tags: dab:${{ github.sha }}
           cache-from: type=gha
@@ -136,7 +137,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .              # workspaces: the lockfile is at the root
+          file: ./backend/Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/dab:latest

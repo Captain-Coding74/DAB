@@ -1,0 +1,10 @@
+# The build context is the repo root (see backend/Dockerfile), so keep it small.
+node_modules
+**/node_modules
+frontend/dist
+backend/data
+metrics
+coverage
+.git
+.github
+*.log
