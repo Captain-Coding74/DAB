@@ -147,12 +147,34 @@ if (process.argv.includes("--update")) {
   process.exit(0);
 }
 
+/**
+ * CPU scaling factor (v21). These budgets were calibrated on developer
+ * hardware (~77ms analyze p95, ~166 req/s). /api/analyze is CPU-bound — it
+ * parses a 200-row CSV and computes stats per request — and a shared 2-core
+ * CI runner measures ~4x slower on that path. Health and metrics are I/O-bound
+ * and barely move, which is why they pass with huge margin on both.
+ *
+ * So the budgets are scaled rather than skipped — `|| true` would make the
+ * benchmark decorative. Latency budgets multiply, throughput budgets divide.
+ *
+ * Be honest about what this buys. On shared-tenancy runners you cannot have
+ * both flake resistance and 2x regression sensitivity: at PERF_CPU_FACTOR=4
+ * the analyze ceiling is ~816ms against ~325ms observed, so CI catches GROSS
+ * regressions (roughly 2.5x and worse) and tolerates runner variance. The
+ * tight gate is the unscaled local one — run `npm run perf:api` on your own
+ * machine before merging anything that touches the analyze path.
+ */
+const F = Number(process.env.PERF_CPU_FACTOR ?? 1) || 1;
+const lat = (ms) => Math.ceil(ms * F);
+const thr = (rps) => Math.floor(rps / F);
+if (F !== 1) console.log(`  (PERF_CPU_FACTOR=${F} — budgets scaled for slower CI hardware)\n`);
+
 const checks = [
-  ["health p95",   actual.healthP95Ms,  budget.api.healthP95Ms,  "≤", "ms"],
-  ["metrics p95",  actual.metricsP95Ms, budget.api.metricsP95Ms, "≤", "ms"],
-  ["analyze p95",  actual.analyzeP95Ms, budget.api.analyzeP95Ms, "≤", "ms"],
-  ["health req/s", actual.healthReqSec, budget.api.healthReqSecMin,  "≥", "req/s"],
-  ["analyze req/s",actual.analyzeReqSec,budget.api.analyzeReqSecMin, "≥", "req/s"],
+  ["health p95",   actual.healthP95Ms,  lat(budget.api.healthP95Ms),  "≤", "ms"],
+  ["metrics p95",  actual.metricsP95Ms, lat(budget.api.metricsP95Ms), "≤", "ms"],
+  ["analyze p95",  actual.analyzeP95Ms, lat(budget.api.analyzeP95Ms), "≤", "ms"],
+  ["health req/s", actual.healthReqSec, thr(budget.api.healthReqSecMin),  "≥", "req/s"],
+  ["analyze req/s",actual.analyzeReqSec,thr(budget.api.analyzeReqSecMin), "≥", "req/s"],
 ];
 
 let failed = 0;

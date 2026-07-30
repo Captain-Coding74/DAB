@@ -88,7 +88,13 @@ jobs:
 
       - run: npm run perf:bundle          # initial payload, gzip
       - run: npm run perf:render          # LCP / analyze / client API p95
-      - run: npm run perf:api -w backend  # server p95 + throughput
+      # /api/analyze is CPU-bound and this runner is ~4x slower than the hardware
+      # perf-budget.json was calibrated on. Scaled, not skipped: catches gross
+      # regressions here, while the unscaled local run stays the tight gate.
+      # See the comment block in backend/scripts/perf-api.mjs.
+      - run: npm run perf:api -w backend
+        env:
+          PERF_CPU_FACTOR: "4"  # server p95 + throughput
       - run: npm run coverage
       # Gates complexity, duplication, coverage, AND browser pass rate +
       # console errors (which is why the browser suite must run first).
