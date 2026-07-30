@@ -27,6 +27,34 @@
   *::-webkit-scrollbar-thumb { background: #AEB8A9; border-radius: 4px; }
   .dark *::-webkit-scrollbar-thumb { background: #2A3752; }
 
+  /* ── View transitions (v21) ───────────────────────────────
+     Cross-document: /welcome (static landing) -> / (the SPA). Same origin,
+     so the browser can animate BETWEEN documents with no JS at all.
+     In-app route changes use React Router's viewTransition prop, which calls
+     document.startViewTransition natively — React's <ViewTransition>
+     component needs react@canary and this app is on stable 18.3.
+
+     The brand mark carries a shared name so it stays put while everything
+     around it changes: "same product, going in". Scoped with .vt-mark
+     because AuthPage renders a second Wordmark, and a duplicate
+     view-transition-name makes the browser skip the transition entirely.
+
+     Nav here is LATERAL (analyze / history / workspace are siblings), so
+     this is a cross-fade — directional slides would imply a depth that
+     doesn't exist. */
+  @view-transition { navigation: auto; }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation-duration: 220ms; }
+
+  .vt-mark { view-transition-name: dab-mark; }
+
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) { animation: none !important; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;

@@ -97,8 +97,8 @@ function Nav() {
   return (
     <nav className="sticky top-0 z-40 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur border-b border-gray-200 dark:border-gray-800">
       <div className="max-w-screen-xl mx-auto px-4 flex items-center justify-between h-14">
-        <NavLink to="/" className="flex items-center gap-2.5">
-          <Wordmark/>
+        <NavLink viewTransition to="/" className="flex items-center gap-2.5">
+          <Wordmark className="vt-mark"/>
           <span className="hidden sm:flex flex-col leading-none">
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Data Analysis Bot</span>
             <span className="eyebrow !text-[9px] mt-0.5">After-hours console</span>
@@ -107,15 +107,15 @@ function Nav() {
         </NavLink>
 
         <div className="flex items-center gap-1">
-          <NavLink to="/" end className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+          <NavLink viewTransition to="/" end className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
             <BarChart2 size={14}/><span className="hidden sm:block">Analyze</span>
           </NavLink>
           {user && (
             <>
-              <NavLink to="/history" onMouseEnter={prefetch.history} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+              <NavLink viewTransition to="/history" onMouseEnter={prefetch.history} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
                 <History size={14}/><span className="hidden sm:block">History</span>
               </NavLink>
-              <NavLink to="/workspace" onMouseEnter={prefetch.workspace} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+              <NavLink viewTransition to="/workspace" onMouseEnter={prefetch.workspace} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
                 <Users size={14}/><span className="hidden sm:block">Workspace</span>
               </NavLink>
             </>
@@ -143,7 +143,7 @@ function Nav() {
               </button>
             </div>
           ) : (
-            <NavLink to="/auth" className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition">
+            <NavLink viewTransition to="/auth" className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-lg transition">
               <LogIn size={13}/> เข้าสู่ระบบ
             </NavLink>
           )}
@@ -173,6 +173,26 @@ function Shell() {
           </Suspense>
         </ErrorBoundary>
       </main>
+
+      {/* v21: a way back to the landing page. It was a nav "Tour" link until
+          LandingPage.jsx was deleted (that React route was unreachable — the
+          backend serves the static landing at /welcome before the SPA
+          fallback), and removing the component removed the only link with it,
+          leaving /welcome reachable only by typing the URL.
+
+          A plain <a>, not a NavLink: /welcome is a different DOCUMENT, so
+          client-side routing would 404 inside the router. The full navigation
+          is also what lets the cross-document view transition fire and carry
+          the brand mark across (see index.css). */}
+      <footer className="border-t border-gray-200 dark:border-gray-800 mt-10">
+        <div className="max-w-screen-xl mx-auto px-4 py-5 flex items-center gap-4 flex-wrap">
+          <span className="eyebrow">Data Analysis Bot · After-hours console</span>
+          <a href="/welcome"
+             className="ml-auto text-sm text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">
+            Why DAB ↗
+          </a>
+        </div>
+      </footer>
       <CommandPalette/>
       <ShortcutsHelp/>
       <Toasts/>

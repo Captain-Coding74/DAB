@@ -6,6 +6,15 @@
 <title>Data Analysis Bot — Thai-first data inspector · เครื่องตรวจข้อมูลภาษาไทย</title>
 <meta name="description" content="อัปโหลดไฟล์เละ ๆ จากหน้าร้าน แล้วเห็นผลตรวจใน 10 วินาที · Upload messy Thai spreadsheets, get insights in 10 seconds.">
 <style>
+/* View transitions (v21): same-origin cross-document animation into the SPA.
+   .stamp shares its name with the app's nav Wordmark (.vt-mark in index.css)
+   so the brand mark persists across the navigation instead of blinking. */
+@view-transition { navigation: auto; }
+.stamp { view-transition-name: dab-mark; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
 /* ── Self-hosted fonts (v21) ──────────────────────────────
    NOT Google Fonts. helmet's CSP is styleSrc 'self' and fontSrc 'self',
    so a fonts.googleapis.com stylesheet is BLOCKED and the Ledger
