@@ -3,7 +3,7 @@
  * Adds: dataset_versions, dataset_files (actual stored data), comments,
  *       mentions, activity_feed, dataset_tags, shared_dashboards
  */
-import { initPool, execMultiple, getBackend } from "./pool.js";
+import { initPool, execMultiple, getBackend, query } from "./pool.js";
 import { serviceLogger } from "../logger.js";
 const log = serviceLogger("migrate");
 
@@ -204,8 +204,45 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_uploadmeta_created   ON upload_metadata(created_at DESC)`,
 ];
 
+/**
+ * Additive columns, applied after the idempotent CREATEs.
+ *
+ * SCHEMA runs through execMultiple, which is one transaction that throws on
+ * any failure — a bare `ALTER TABLE ADD COLUMN` would therefore break every
+ * boot after the first. SQLite also has no `ADD COLUMN IF NOT EXISTS`, so the
+ * column list is inspected first and each ALTER runs on its own.
+ */
+const ADDITIVE = [
+  // v21.1: file bytes move out of the row and into object storage.
+  // file_content stays for backfill and is dropped once every row has moved.
+  { table: "dataset_versions", column: "storage_key",    type: "TEXT" },
+  { table: "dataset_versions", column: "storage_sha256", type: "TEXT" },
+];
+
+async function existingColumns(table) {
+  if (getBackend() === "postgres") {
+    const r = await query(`SELECT column_name AS name FROM information_schema.columns WHERE table_name=$1`, [table]);
+    return new Set(r.map(c => c.name));
+  }
+  const r = await query(`PRAGMA table_info(${table})`);
+  return new Set(r.map(c => c.name));
+}
+
 export async function migrate() {
   await execMultiple(SCHEMA);
+
+  for (const { table, column, type } of ADDITIVE) {
+    try {
+      const cols = await existingColumns(table);
+      if (cols.has(column)) continue;
+      await query(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      log.info({ table, column }, "column added");
+    } catch (err) {
+      // A concurrent boot may have added it between the check and the ALTER.
+      if (!/duplicate column|already exists/i.test(err.message)) throw err;
+    }
+  }
+
   log.info({ backend: getBackend() }, "migrations applied");
 }
 

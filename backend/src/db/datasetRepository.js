@@ -27,8 +27,10 @@ export async function deleteFolder(id) {
 }
 
 // ── Datasets — Create with first version ────────────────────
-export async function createDataset({ workspaceId, ownerId, name, description, folderId, fileName, fileContent, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes }) {
-  const datasetId = uuid();
+export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes }) {
+  // The caller may supply the id so the storage key it already wrote points
+  // at the same dataset; otherwise generate one as before.
+  const datasetId = providedId || uuid();
   const versionId = uuid();
   const t = now();
 
@@ -39,16 +41,16 @@ export async function createDataset({ workspaceId, ownerId, name, description, f
   );
 
   await query(
-    `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
-     VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,'Initial upload',$10,$11,$12)`,
-    [versionId, datasetId, fileName, fileContent, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, ownerId, sizeBytes||0, t]
+    `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
+     VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Initial upload',$12,$13,$14)`,
+    [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, ownerId, sizeBytes||0, t]
   );
 
   return { id: datasetId, versionId };
 }
 
 // ── New Version (re-upload) ──────────────────────────────────
-export async function addDatasetVersion({ datasetId, fileName, fileContent, fileType, totalRows, totalCols, colAnalysis, qualityScore, changeNote, uploadedBy, sizeBytes }) {
+export async function addDatasetVersion({ datasetId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, changeNote, uploadedBy, sizeBytes }) {
   const versionId = uuid();
   const t = now();
 
@@ -56,9 +58,9 @@ export async function addDatasetVersion({ datasetId, fileName, fileContent, file
   const nextVersion = (last[0]?.v || 0) + 1;
 
   await query(
-    `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [versionId, datasetId, nextVersion, fileName, fileContent, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||`Version ${nextVersion}`, uploadedBy, sizeBytes||0, t]
+    `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [versionId, datasetId, nextVersion, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||`Version ${nextVersion}`, uploadedBy, sizeBytes||0, t]
   );
 
   await query(
@@ -225,4 +227,36 @@ export async function getSharedWithMeDatasets(userId, { limit = 50, offset = 0 }
      WHERE dp.user_id=$1 AND d.is_trashed=0 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
   );
+}
+
+
+/**
+ * Bytes for a version — the ONLY way callers should obtain file content.
+ *
+ * v21.1: prefers object storage. Rows written before the migration still hold
+ * `file_content TEXT`, which is lossless for CSV but was corrupt-on-write for
+ * xlsx (binary through a UTF-8 column), so the legacy path is a fallback for
+ * old rows only. Nothing new writes it.
+ */
+export async function getVersionBytes(version) {
+  if (!version) throw new Error("getVersionBytes: no version row");
+
+  if (version.storage_key) {
+    const storage = await import("../services/storage.js");
+    try {
+      return await storage.get(version.storage_key);
+    } catch (err) {
+      // The object is gone (pruned volume, restored DB without its bucket, a
+      // key written under a different DATA_DIR). Fall back to the legacy
+      // column when the row still has one rather than 500-ing the request —
+      // for CSV that content is intact, and for xlsx nothing was recoverable
+      // anyway. Callers get bytes or a clear error, never a crash.
+      if (version.file_content) return Buffer.from(version.file_content, "utf-8");
+      const e = new Error(`stored object missing for version ${version.id}: ${version.storage_key}`);
+      e.status = 410;   // Gone — the row exists, the bytes do not
+      throw e;
+    }
+  }
+
+  return Buffer.from(version.file_content || "", "utf-8");
 }

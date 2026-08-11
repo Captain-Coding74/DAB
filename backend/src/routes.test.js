@@ -57,6 +57,29 @@ describe("Dataset routes (real router)", () => {
     assert.match(res.body.error, /does not match/i);
   });
 
+  test("v21.1: an uploaded .xlsx survives storage and re-analysis", async () => {
+    // The bug this guards: uploads were persisted via buffer.toString("utf-8")
+    // into a TEXT column, which corrupts every xlsx (a ZIP archive) on write.
+    // Only CSVs were ever re-analyzed, so nothing noticed.
+    const ExcelJS = (await import("exceljs")).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("s");
+    ws.addRow(["สินค้า", "ยอดขาย"]);
+    ws.addRow(["น้ำปลา", 1234]);
+    ws.addRow(["ข้าวสาร", 5678]);
+    const xlsx = Buffer.from(await wb.xlsx.writeBuffer());
+
+    const up = await auth(agent.post("/api/datasets")).attach("file", xlsx, "ยอดขาย.xlsx");
+    assert.equal(up.status, 201, JSON.stringify(up.body));
+    assert.equal(up.body.totalRows, 2, "xlsx parsed on upload");
+
+    // the real test: read it back through the preview path
+    const preview = await auth(agent.get(`/api/datasets/${up.body.id}/preview`));
+    assert.equal(preview.status, 200, "stored xlsx could not be re-read");
+    assert.equal(preview.body.totalRows, 2);
+    assert.ok(preview.body.headers.includes("สินค้า"), "Thai headers survived the round-trip");
+  });
+
   test("v21: accepts a genuine CSV whose bytes are plain text", async () => {
     const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(CSV), "real.csv");
     assert.equal(res.status, 201, JSON.stringify(res.body));

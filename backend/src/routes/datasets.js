@@ -3,10 +3,12 @@
  * Google Drive-style: store, version, rename, delete, preview, filter, folders, tags
  */
 import express from "express";
+import { randomUUID } from "node:crypto";
 import { recordUpload } from "../services/telemetry.js";
 import multer  from "multer";
 import { requireAuth } from "../auth.js";
 import { parseFileStreaming } from "../services/streaming.js";
+import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
@@ -74,20 +76,26 @@ router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
     if (!verifyFileMagic(req.file.buffer, req.file.originalname))
       return res.status(400).json({ error: "File content does not match its extension" });
     const { name, description, folderId, workspaceId } = req.body;
-    const fileContent = req.file.buffer.toString("utf-8");
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
     recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
                    parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
 
+    // v21.1: bytes go to object storage, never through a UTF-8 string.
+    // The old `buffer.toString("utf-8")` corrupted every .xlsx on write.
+    const datasetId = randomUUID();
+    const stored = await storage.put(storage.buildKey({ datasetId, versionNum: 1, fileName: req.file.originalname }), req.file.buffer);
+
     const ds = await DR.createDataset({
+      datasetId,
       workspaceId: workspaceId || null,
       ownerId: req.user.userId,
       name: name || req.file.originalname,
       description,
       folderId: folderId || null,
       fileName: req.file.originalname,
-      fileContent,
+      storageKey: stored.key,
+      storageSha256: stored.sha256,
       fileType: req.file.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length,
       colAnalysis, qualityScore: quality?.score,
@@ -109,7 +117,8 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
     const { name, description, folderId, workspaceId } = req.body;
 
     const first = req.files[0];
-    const firstContent = first.buffer.toString("utf-8");
+    const bundleId = randomUUID();
+    const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
     const { headers, colAnalysis, totalRows: firstRows, dupeCount } = await parseFileStreaming(first.buffer, first.originalname);
 
     const totalRows = req.files.length === 1 ? firstRows : await (async () => {
@@ -122,13 +131,15 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
 
     const ds = await DR.createDataset({
-      workspaceId: workspaceId || null,
+      datasetId: bundleId,
+        workspaceId: workspaceId || null,
       ownerId: req.user.userId,
       name: name || first.originalname,
       description,
       folderId: folderId || null,
       fileName: first.originalname,
-      fileContent: firstContent,
+      storageKey: firstStored.key,
+      storageSha256: firstStored.sha256,
       fileType: first.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length,
       colAnalysis, qualityScore: quality?.score,
@@ -138,11 +149,13 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
     // Remaining files become additional versions with a clear change note
     for (let i = 1; i < req.files.length; i++) {
       const f = req.files[i];
-      const content = f.buffer.toString("utf-8");
       const parsed  = await parseFileStreaming(f.buffer, f.originalname);
       const q       = computeQualityScore(parsed.colAnalysis, parsed.totalRows, parsed.dupeCount);
+        const bundledStored = await storage.put(storage.buildKey({ datasetId: ds.id, versionNum: i + 1, fileName: f.originalname }), f.buffer);
       await DR.addDatasetVersion({
-        datasetId: ds.id, fileName: f.originalname, fileContent: content,
+        datasetId: ds.id, fileName: f.originalname,
+        storageKey: bundledStored.key,
+        storageSha256: bundledStored.sha256,
         fileType: f.originalname.split(".").pop().toLowerCase(),
         totalRows: parsed.totalRows, totalCols: parsed.headers.length,
         colAnalysis: parsed.colAnalysis, qualityScore: q?.score,
@@ -176,7 +189,7 @@ router.get("/:id/preview", requireAuth, async (req, res, next) => {
     if (!ds?.version) return res.status(404).json({ error: "Not found" });
 
     const { headers, colAnalysis, sampleRows } = await parseFileStreaming(
-      Buffer.from(ds.version.file_content, "utf-8"), ds.version.file_name
+      await DR.getVersionBytes(ds.version), ds.version.file_name
     );
     res.json({ headers, colAnalysis, sampleRows: sampleRows.slice(0, 20), totalRows: ds.version.total_rows });
   } catch (err) { next(err); }
@@ -266,14 +279,17 @@ router.post("/:id/versions", requireAuth, upload.single("file"), async (req, res
     if (!verifyFileMagic(req.file.buffer, req.file.originalname))
       return res.status(400).json({ error: "File content does not match its extension" });
 
-    const fileContent = req.file.buffer.toString("utf-8");
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
     recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
                    parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
 
+    const nextStored = await storage.put(storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: req.file.originalname }), req.file.buffer);
+
     const v = await DR.addDatasetVersion({
-      datasetId: req.params.id, fileName: req.file.originalname, fileContent,
+      datasetId: req.params.id, fileName: req.file.originalname,
+      storageKey: nextStored.key,
+      storageSha256: nextStored.sha256,
       fileType: req.file.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length, colAnalysis, qualityScore: quality?.score,
       changeNote: req.body.changeNote, uploadedBy: req.user.userId, sizeBytes: req.file.size,

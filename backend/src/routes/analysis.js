@@ -33,7 +33,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
     const t0  = performance.now();
     const log = requestLogger(req);
     try {
-      const { getUserDatasetRole, getDatasetWithContent } = await import("../db/datasetRepository.js");
+      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes } = await import("../db/datasetRepository.js");
       const role = await getUserDatasetRole(req.params.id, req.user.userId);
       if (!role) return res.status(403).json({ error: "No access to this dataset" });
 
@@ -41,7 +41,9 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       if (!ds?.version) return res.status(404).json({ error: "Dataset not found" });
 
       const question = req.body.question || "สรุปภาพรวมข้อมูลทั้งหมด";
-      const buffer    = Buffer.from(ds.version.file_content, "utf-8");
+      // v21.1: bytes come from object storage; getVersionBytes falls back to
+      // the legacy file_content column for rows written before the migration.
+      const buffer    = await getVersionBytes(ds.version);
       const { headers, colAnalysis, totalRows, dupeCount, sampleRows } = await parseFileStreaming(buffer, ds.version.file_name);
 
       const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows };

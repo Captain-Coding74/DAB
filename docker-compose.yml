@@ -1,12 +1,14 @@
-version: "3.9"
-
+# v21.1: `minio` provides an S3-compatible endpoint so STORAGE_DRIVER=s3 can be
+# exercised locally without an AWS or Cloudflare account. Production points
+# S3_ENDPOINT at R2/S3 instead; nothing else changes.
+version: '3.9'
 services:
   app:
     build:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "3000:3000"
+    - 3000:3000
     environment:
       NODE_ENV: production
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
@@ -14,8 +16,13 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       DATABASE_URL: postgresql://dab:dab@postgres:5432/dab
       REDIS_URL: redis://redis:6379
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_BUCKET: ${S3_BUCKET:-dab}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-dab}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-dabsecret123}
     volumes:
-      - ./frontend/dist:/app/public:ro
+    - ./frontend/dist:/app/public:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -23,11 +30,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test:
+      - CMD
+      - wget
+      - -qO-
+      - http://localhost:3000/api/health
       interval: 30s
       timeout: 5s
       retries: 3
-
   postgres:
     image: postgres:16-alpine
     environment:
@@ -35,24 +45,39 @@ services:
       POSTGRES_USER: dab
       POSTGRES_PASSWORD: dab
     volumes:
-      - pg-data:/var/lib/postgresql/data
+    - pg-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dab"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U dab
       interval: 10s
       timeout: 5s
       retries: 5
-
   redis:
     image: redis:7-alpine
     command: redis-server --save 60 1 --loglevel warning
     volumes:
-      - redis-data:/data
+    - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+      - CMD
+      - redis-cli
+      - ping
       interval: 10s
       timeout: 5s
       retries: 5
-
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: dab
+      MINIO_ROOT_PASSWORD: dabsecret123
+    ports:
+    - 9000:9000
+    - 9001:9001
+    volumes:
+    - minio-data:/data
 volumes:
-  pg-data:
-  redis-data:
+  pg-data: null
+  redis-data: null
+  minio-data: null
