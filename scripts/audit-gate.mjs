@@ -16,6 +16,15 @@
  * Usage: node scripts/audit-gate.mjs
  */
 import { execSync } from "node:child_process";
+
+/** execSync that never throws and never needs a POSIX shell (Windows-safe). */
+function run(cmd, opts = {}) {
+  try {
+    return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], ...opts }) || "";
+  } catch (e) {
+    return (e && typeof e.stdout === "string") ? e.stdout : "";
+  }
+}
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,8 +76,12 @@ function checkDeprecations() {
   for (const name of names) {
     let version = null;
     try {
-      const raw = execSync(`npm ls ${name} --json --all 2>/dev/null || true`,
-        { cwd: ROOT, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+      // `2>/dev/null || true` is POSIX-only: on Windows execSync goes through
+      // cmd.exe, which has neither, so every call failed and the deprecation
+      // check below silently reported "none". stdio:"pipe" + try/catch is the
+      // portable equivalent — npm ls exits non-zero on extraneous deps, which
+      // is exactly what the `|| true` was swallowing.
+      const raw = run(`npm ls ${name} --json --all`, { cwd: ROOT, maxBuffer: 32 * 1024 * 1024 });
       const tree = JSON.parse(raw || "{}");
       const dig = (node) => {
         const deps = node?.dependencies || {};
@@ -84,8 +97,7 @@ function checkDeprecations() {
     if (!version) continue;
 
     try {
-      const msg = execSync(`npm view ${name}@${version} deprecated 2>/dev/null || true`,
-        { encoding: "utf8", timeout: 20000 }).trim();
+      const msg = run(`npm view ${name}@${version} deprecated`, { timeout: 20000 }).trim();
       if (!msg) continue;
       findings.push({
         name, version,
