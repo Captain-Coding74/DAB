@@ -41,8 +41,30 @@ IBM Plex throughout, self-hosted (zero third-party requests is a tested
 invariant). `IBM Plex Sans Thai` for UI text, `IBM Plex Sans Thai Looped` for
 display on the landing, `IBM Plex Mono` for ledger furniture. Utility classes:
 `.num` (mono, tabular numerals — every figure a user might compare), `.eyebrow`
-(mono, 11px, tracked caps — section labels and entry numbers). Numbers in
+(mono, **10px**, tracked caps — section labels and entry numbers). Numbers in
 charts format through `fmtNum` → `toLocaleString("th-TH")`.
+
+### Scale, and the floor that matters here
+
+| Size | Use |
+|---|---|
+| 10px | `.eyebrow` labels, chip text, dense mono metadata — **Latin/numeric only** |
+| 11px | the smallest size permitted for Thai body text |
+| `text-xs` 12px | secondary labels, table cells |
+| `text-sm` 14px | default body |
+| `text-lg`/`xl` | panel titles |
+| `clamp()` | display type on the landing only |
+
+**Nothing renders below 10px.** And **Thai never renders below 11px**: Thai
+stacks vowels and tone marks above and below the baseline, so a glyph loses
+legibility a step earlier than the equivalent Latin one. A 10px chip reading
+`AVG` is fine; a 10px hint reading `↑↓ เลือก · ↵ ใช้งาน` is not.
+
+This section exists because it was missing. Without a written scale, 33
+hand-set pixel values accumulated across the components — including three at
+9px, one of which overrode `.eyebrow` to go *smaller* than the system's own
+label size. v21 raised everything to the floor. If a new size is genuinely
+needed, add it to this table first; `text-[Npx]` with no entry here is drift.
 
 ## Language
 

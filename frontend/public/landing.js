@@ -179,3 +179,19 @@
   }
   runLoop();
 })();
+
+/* ── real version, from the backend (v21) ──────────────────
+   This page is a static file, so Vite's define does not reach it. The nav chip
+   and footer hard-coded "v20.4" — three releases stale. /api/health is public
+   and already the tested source of truth (routes.test.js), and connect-src is
+   'self' so this is CSP-clean. Fails silently: a marketing page must never
+   break over a version label. */
+fetch("/api/health")
+  .then(r => (r.ok ? r.json() : null))
+  .then(d => {
+    if (!d || !d.version) return;
+    const chip = document.getElementById("ver");
+    if (chip) chip.textContent = "v" + d.version;
+    document.querySelectorAll(".ver-txt").forEach(el => { el.textContent = "v" + d.version; });
+  })
+  .catch(() => {});

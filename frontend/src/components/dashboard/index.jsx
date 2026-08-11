@@ -151,7 +151,7 @@ export default function Dashboard() {
                       className="group text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-brand-400 hover:-translate-y-0.5 hover:shadow-[0_4px_22px_rgba(245,160,11,0.22)] transition duration-150">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xl" aria-hidden="true">{s.emoji}</span>
-                        <span className="font-mono text-[9px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
+                        <span className="font-mono text-[10px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
                       </div>
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-brand-600 dark:group-hover:text-brand-300 transition-colors">{s.title}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{s.desc}</p>

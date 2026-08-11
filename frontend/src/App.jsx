@@ -101,9 +101,9 @@ function Nav() {
           <Wordmark className="vt-mark"/>
           <span className="hidden sm:flex flex-col leading-none">
             <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Data Analysis Bot</span>
-            <span className="eyebrow !text-[9px] mt-0.5">After-hours console</span>
+            <span className="eyebrow mt-0.5">After-hours console</span>
           </span>
-          <span className="num text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 ml-1">v20.4</span>
+          <span className="num text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 ml-1">v{__APP_VERSION__}</span>
         </NavLink>
 
         <div className="flex items-center gap-1">

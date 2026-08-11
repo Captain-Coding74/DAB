@@ -82,7 +82,7 @@ export default function PerfOverlay() {
             </div>
           )}
           {isDev && (
-            <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-800 text-[9px] leading-snug text-gray-400 dark:text-gray-500 max-w-[190px]">
+            <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-800 text-[10px] leading-snug text-gray-400 dark:text-gray-500 max-w-[190px]">
               LCP here measures Vite compiling modules on demand — not the app.
               For the real number: <b>npm run preview</b> (prod build ≈ 100 ms).
             </div>

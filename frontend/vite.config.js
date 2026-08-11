@@ -1,7 +1,14 @@
 import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
+
+/* v21: the nav chip hard-coded "v20.4" and was three releases stale before
+   anyone noticed. routes.test.js already asserts the backend reports its real
+   package version rather than a literal — same rule, applied client side. */
+const pkgVersion = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 import react from "@vitejs/plugin-react";
 
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(pkgVersion) },
   plugins: [react()],
   server: {
     port: 5173,

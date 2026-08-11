@@ -172,7 +172,7 @@ export function ForecastTab({ a }) {
               <div className="grid grid-cols-3 gap-2 text-center">
                 {f.forecast.map(p => (
                   <div key={p.step} className="bg-white dark:bg-gray-900 rounded-lg p-2 border border-gray-100 dark:border-gray-800">
-                    <div className="eyebrow !text-[9px]">+{p.step} step</div>
+                    <div className="eyebrow">+{p.step} step</div>
                     <div className="num text-sm font-semibold text-brand-600 dark:text-brand-300 mt-0.5">{p.predicted.toLocaleString()}</div>
                   </div>
                 ))}

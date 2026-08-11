@@ -91,7 +91,7 @@ export default function CommandPalette() {
           ))}
         </div>
         <div className="flex items-center gap-3 px-4 py-2 border-t border-gray-100 dark:border-gray-800">
-          <span className="num text-[10px] text-gray-400 dark:text-gray-500">↑↓ เลือก · ↵ ใช้งาน</span>
+          <span className="num text-[11px] text-gray-400 dark:text-gray-500">↑↓ เลือก · ↵ ใช้งาน</span>
         </div>
       </div>
     </div>
