@@ -186,7 +186,7 @@ function Shell() {
           the brand mark across (see index.css). */}
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-10">
         <div className="max-w-screen-xl mx-auto px-4 py-5 flex items-center gap-4 flex-wrap">
-          <span className="eyebrow">Data Analysis Bot · After-hours console</span>
+          <span className="eyebrow">Data Analysis Bot · After-hours console · สร้างโดย Phatcharaphong Siriphatcharakul · 2 March 2025</span>
           <a href="/welcome"
              className="ml-auto text-sm text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">
             Why DAB ↗

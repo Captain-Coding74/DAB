@@ -44,7 +44,7 @@
       h3B: "ความเป็นส่วนตัวมาก่อน", h3T: "ระบบเก็บเพียงรูปทรงไฟล์กับหมวดคอลัมน์ ไม่เก็บชื่อไฟล์ ชื่อคอลัมน์ หรือข้อมูลจริง",
       ctaEyebrow: "พร้อมเมื่อคุณพร้อม", ctaH2: "เอาไฟล์ที่เละที่สุดของคุณมา",
       ctaSub: "ถ้าเครื่องนี้อ่านไม่ออก เราอยากเห็นไฟล์นั้นมาก", ctaBtn: "เปิดเครื่องตรวจ ↗",
-      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — สถิติล้วนตรวจซ้ำได้เสมอ",
+      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · {v} — สถิติล้วนตรวจซ้ำได้เสมอ · สร้างโดย Phatcharaphong Siriphatcharakul · 2 March 2025",
       tSkip: "SKIPPED — หัวรายงาน", tHeader: "HEADER ✓", tFix1: "พ.ศ.→ค.ศ. · ฿→number", tFix2: "เดือนไทย · ติดลบบัญชี",
     },
     en: {
@@ -77,16 +77,25 @@
       h3B: "Privacy first", h3T: "Only file shapes and column categories are recorded — never filenames, column names, or your data.",
       ctaEyebrow: "Ready when you are", ctaH2: "Bring us your messiest file",
       ctaSub: "If this machine can't read it, we genuinely want to see it.", ctaBtn: "Open the inspector ↗",
-      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · v20.4 — pure statistics, always reproducible",
+      footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · {v} — pure statistics, always reproducible · Made by Phatcharaphong Siriphatcharakul · 2 March 2025",
       tSkip: "SKIPPED — banner row", tHeader: "HEADER ✓", tFix1: "B.E.→C.E. · ฿→number", tFix2: "Thai month · acct negative",
     },
   };
   let lang = localStorage.getItem("dab_landing_lang") || "en";
 
+  let appVersion = "";   // set by the /api/health fetch at the end of this IIFE
+
   function applyLang() {
     const d = I18N[lang];
     document.documentElement.lang = lang;
     document.querySelectorAll("[data-i18n]").forEach(el => { el.textContent = d[el.dataset.i18n]; });
+    /* The footer carries a {v} token rather than a literal version — it was
+       hardcoded to v20.4 and three releases stale. It cannot be a child
+       element: applyLang assigns textContent, which wipes anything inside a
+       [data-i18n] node. appVersion is filled by the /api/health fetch below. */
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      if (el.textContent.includes("{v}")) el.textContent = el.textContent.replace("{v}", appVersion || "");
+    });
     document.querySelectorAll("[data-i18n-html]").forEach(el => { el.innerHTML = d[el.dataset.i18nHtml]; });
     document.getElementById("langTh").classList.toggle("on", lang === "th");
     document.getElementById("langEn").classList.toggle("on", lang === "en");
@@ -178,20 +187,21 @@
     runLoop();
   }
   runLoop();
-})();
 
-/* ── real version, from the backend (v21) ──────────────────
-   This page is a static file, so Vite's define does not reach it. The nav chip
-   and footer hard-coded "v20.4" — three releases stale. /api/health is public
-   and already the tested source of truth (routes.test.js), and connect-src is
-   'self' so this is CSP-clean. Fails silently: a marketing page must never
-   break over a version label. */
-fetch("/api/health")
-  .then(r => (r.ok ? r.json() : null))
-  .then(d => {
-    if (!d || !d.version) return;
-    const chip = document.getElementById("ver");
-    if (chip) chip.textContent = "v" + d.version;
-    document.querySelectorAll(".ver-txt").forEach(el => { el.textContent = "v" + d.version; });
-  })
-  .catch(() => {});
+  /* Real version, from the backend. This page is static, so Vite's define does
+     not reach it. Must live INSIDE this IIFE: applyLang is scoped here, so a
+     call from outside throws a ReferenceError the .catch would swallow — which
+     is why the footer kept showing the literal {v}. */
+  fetch("/api/health")
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => {
+      if (!d || !d.version) return;
+      appVersion = "v" + d.version;
+      const chip = document.getElementById("ver");
+      if (chip) chip.textContent = appVersion;
+      document.querySelectorAll(".ver-txt").forEach(el => { el.textContent = appVersion; });
+      applyLang();
+    })
+    .catch(() => {});
+
+})();
