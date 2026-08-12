@@ -1,6 +1,6 @@
 {
   "name": "data-analysis-bot",
-  "version": "21.0.0",
+  "version": "21.3.0",
   "engines": {
     "node": ">=22.0.0"
   },
@@ -28,5 +28,6 @@
     "@sparticuz/chromium": "^149.0.0",
     "concurrently": "^8.2.2",
     "playwright-core": "^1.61.1"
-  }
+  },
+  "author": "Phatcharaphong Siriphatcharakul"
 }
