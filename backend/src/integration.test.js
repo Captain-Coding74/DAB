@@ -205,9 +205,11 @@ describe("POST /api/analyze", () => {
     assert.ok(res.status >= 400, `expected 4xx/5xx, got ${res.status}`);
   });
 
-  test("rejects file > 10 MB", async () => {
-    // multer rejects oversized files — status varies by middleware order
-    const bigBuffer = Buffer.alloc(11 * 1024 * 1024, "a");
+  test("rejects a file over the configured upload limit", async () => {
+    // Derived from backend/src/config.js so raising the limit does not leave
+    // this test asserting a boundary that no longer exists.
+    const { MAX_UPLOAD_BYTES } = await import("./config.js");
+    const bigBuffer = Buffer.alloc(MAX_UPLOAD_BYTES + 1024 * 1024, "a");
     const res = await agent.post("/api/analyze")
       .attach("file", bigBuffer, "huge.csv");
     assert.ok(res.status >= 400, `expected 4xx/5xx, got ${res.status}`);

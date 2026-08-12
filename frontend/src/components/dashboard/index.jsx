@@ -17,9 +17,15 @@ import { AgentPanel } from "./AgentPanel";
 import { AnalysisTab, InsightsTab, QualityTab, ForecastTab } from "./tabs";
 import { ColumnStatsPanel } from "../ColumnStats";
 
+/* Mirrors MAX_UPLOAD_MB in backend/src/config.js. One constant here so the
+   UI cannot advertise a limit the server would reject; /api/health also
+   publishes the live value if this ever needs to be read at runtime. */
+const MAX_UPLOAD_MB = 25;
+
 // v13: recharts (112 kB gzip) loads only when a chart tab is opened.
 const ChartsTab      = lazy(() => import("./tabs-charts").then(m => ({ default: m.ChartsTab })));
 const CorrelationTab = lazy(() => import("./tabs-charts").then(m => ({ default: m.CorrelationTab })));
+const InferencePanel  = lazy(() => import("../inference").then(m => ({ default: m.InferencePanel })));
 
 const ChartFallback = () => (
   <Card><div className="space-y-3" aria-busy="true">
@@ -36,7 +42,7 @@ const QUICK_PROMPTS = [
   { label: "Executive", prompt: "สรุป executive summary 5 ประเด็นสำคัญ" },
 ];
 
-const TABS = ["analysis", "insights", "charts", "quality", "correlation", "forecast", "deep dive"];
+const TABS = ["analysis", "insights", "charts", "quality", "correlation", "สถิติ", "forecast", "deep dive"];
 
 export default function Dashboard() {
   const accessToken = useAppStore(s => s.accessToken);
@@ -90,7 +96,7 @@ export default function Dashboard() {
 
         {/* Upload + prompt */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card title="ไฟล์ข้อมูล" meta=".csv · .xlsx · .xls — ≤ 10 MB" data-tour="upload">
+          <Card title="ไฟล์ข้อมูล" meta={`.csv · .xlsx · .xls — ≤ ${MAX_UPLOAD_MB} MB`} data-tour="upload">
             <div
               className={`border border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${dragging ? "border-brand-500 bg-brand-50 dark:bg-brand-900/30" : "border-gray-300 dark:border-gray-700 hover:border-brand-400"}`}
               onClick={() => document.getElementById("fileIn").click()}
@@ -151,7 +157,7 @@ export default function Dashboard() {
                       className="group text-left p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-brand-400 hover:-translate-y-0.5 hover:shadow-[0_4px_22px_rgba(245,160,11,0.22)] transition duration-150">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xl" aria-hidden="true">{s.emoji}</span>
-                        <span className="font-mono text-[10px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-eyebrow px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500">{s.badge}</span>
                       </div>
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-brand-600 dark:group-hover:text-brand-300 transition-colors">{s.title}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">{s.desc}</p>
@@ -236,6 +242,9 @@ export default function Dashboard() {
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}
                 {activeTab === "quality"     && <QualityTab a={a}/>}
                 {activeTab === "correlation" && <Suspense fallback={<ChartFallback/>}><CorrelationTab a={a}/></Suspense>}
+                {activeTab === "สถิติ"        && (a.datasetId
+                  ? <Suspense fallback={<ChartFallback/>}><InferencePanel datasetId={a.datasetId}/></Suspense>
+                  : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">บันทึกชุดข้อมูลก่อน จึงจะทดสอบทางสถิติได้ — การทดสอบต้องใช้ข้อมูลทุกแถว ไม่ใช่แค่ตัวอย่าง</p></Card>)}
                 {activeTab === "forecast"    && <ForecastTab a={a}/>}
                 {activeTab === "deep dive"   && (a.savedId
                   ? <AgentPanel analysisId={a.savedId}/>

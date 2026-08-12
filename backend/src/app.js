@@ -50,6 +50,7 @@ import { mountWorkspaceRoutes } from "./routes/workspaces.js";
 import { mountAnalysisRoutes }  from "./routes/analysis.js";
 import { mountInferenceRoutes } from "./routes/inference.js";
 import { mountFixRoutes }       from "./routes/fixes.js";
+import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "./config.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
@@ -134,10 +135,10 @@ export function createApp() {
 
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits:  { fileSize: 10 * 1024 * 1024 },
+    limits:  { fileSize: MAX_UPLOAD_BYTES },
     fileFilter: (_, file, cb) => /\.(csv|xlsx|xls)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("CSV/Excel only")),
   });
-  const uploadMulti = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+  const uploadMulti = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
 
   // ── Auth routes → src/routes/auth.js (v12) ───────────────
   mountAuthRoutes(app);
@@ -181,7 +182,7 @@ export function createApp() {
   app.get("/api/metrics", metricsHandler);
   app.get("/api/health",  async (_,res) => {
     const { getBackend } = await import("./db/pool.js");
-    res.json({ status:"ok", version: PKG_VERSION, db: getBackend(), cache: cache.getBackend(), ts: new Date().toISOString() });
+    res.json({ status:"ok", version: PKG_VERSION, db: getBackend(), cache: cache.getBackend(), maxUploadMb: MAX_UPLOAD_MB, ts: new Date().toISOString() });
   });
 
   // Public landing page (v20.4.1) — a real file in dist, EN-default bilingual

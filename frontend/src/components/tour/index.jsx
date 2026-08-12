@@ -7,8 +7,11 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { Button } from "../ui";
 
+/* Mirrors MAX_UPLOAD_MB in backend/src/config.js. */
+const MAX_UPLOAD_MB = 25;
+
 const STEPS = [
-  { target: '[data-tour="upload"]',  title: "1 · วางไฟล์ของคุณ",     body: "ลาก CSV หรือ Excel มาวางตรงนี้ หรือคลิกเพื่อเลือกไฟล์ (ไม่เกิน 10 MB) ถ้ายังไม่มีไฟล์ ลองปุ่ม \u201cใช้ข้อมูลตัวอย่าง\u201d ได้เลย" },
+  { target: '[data-tour="upload"]',  title: "1 · วางไฟล์ของคุณ",     body: `ลาก CSV หรือ Excel มาวางตรงนี้ หรือคลิกเพื่อเลือกไฟล์ (ไม่เกิน ${MAX_UPLOAD_MB} MB) ถ้ายังไม่มีไฟล์ ลองปุ่ม \u201cใช้ข้อมูลตัวอย่าง\u201d ได้เลย` },
   { target: '[data-tour="prompt"]',  title: "2 · ตั้งคำถาม",          body: "เลือกคำถามสำเร็จรูป หรือพิมพ์คำถามของคุณเอง แล้วกด \u201cวิเคราะห์ไฟล์\u201d — AI จะอ่านสถิติทั้งชุดก่อนตอบ" },
   { target: '[data-tour="tabs"]',    title: "3 · อ่านผลตรวจ",         body: "ผลแบ่งเป็นแท็บ: รายงาน AI, บันทึกข้างเล่ม (insights), แผนภูมิ, เกรดคุณภาพ, สหสัมพันธ์ และพยากรณ์" },
   { target: '[data-tour="palette"]', title: "4 · ทางลัดทุกอย่าง",     body: "กด Ctrl+K เปิด command palette — สั่งงานทุกอย่างจากคีย์บอร์ด กด ? เพื่อดูปุ่มลัดทั้งหมด" },

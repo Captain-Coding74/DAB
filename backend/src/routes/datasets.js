@@ -4,6 +4,7 @@
  */
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { MAX_UPLOAD_BYTES } from "../config.js";
 import { recordUpload } from "../services/telemetry.js";
 import multer  from "multer";
 import { requireAuth } from "../auth.js";
@@ -36,8 +37,8 @@ function verifyFileMagic(buf, name) {
   return !(zip || ole || (buf[0] === 0x7F && buf[1] === 0x45 && buf[2] === 0x4C && buf[3] === 0x46)); // ELF
 }
 
-const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: csvExcelOnly });
-const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: csvExcelOnly });
+const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
+const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
 
 function canAccess(role) { return role !== null; }
 function canEdit(role)   { return ["owner", "editor"].includes(role); }
