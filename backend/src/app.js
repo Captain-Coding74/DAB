@@ -49,6 +49,7 @@ import { mountExportRoutes } from "./routes/export.js";
 import { mountWorkspaceRoutes } from "./routes/workspaces.js";
 import { mountAnalysisRoutes }  from "./routes/analysis.js";
 import { mountInferenceRoutes } from "./routes/inference.js";
+import { mountFixRoutes }       from "./routes/fixes.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
@@ -153,6 +154,7 @@ export function createApp() {
   // ── Analyze (stored dataset + direct upload) → routes/analysis.js (v16) ──
   mountAnalysisRoutes(app, { upload, ai });
   mountInferenceRoutes(app);
+  mountFixRoutes(app);
 
   // ── Chat + streaming + agent → routes/chat.js (v16) ───────
   mountChatRoutes(app, { ai });

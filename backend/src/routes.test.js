@@ -248,6 +248,67 @@ describe("Inference routes (v21.2)", () => {
   });
 });
 
+describe("Data fix routes (v21.3)", () => {
+  const MESSY = ["ร้าน,ยอด","ร้าน A,100","ร้านA,102","ร้าน A,98","ร้าน A,101",
+                 "ร้าน A,99","ร้าน A,103","ร้าน A,","ร้าน A,5000","ร้าน A,100"].join("\n");
+  let fixId;
+
+  test("uploads the messy dataset", async () => {
+    const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(MESSY), "messy.csv");
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    fixId = res.body.id;
+  });
+
+  test("the catalogue is closed and auth-gated", async () => {
+    assert.equal((await agent.get("/api/fixes/catalogue")).status, 401);
+    const res = await auth(agent.get("/api/fixes/catalogue"));
+    assert.equal(res.status, 200);
+    const ids = res.body.operations.map(o => o.id);
+    assert.ok(ids.includes("drop-outliers") && ids.includes("merge-categories"));
+  });
+
+  test("preview reports the effect and writes nothing", async () => {
+    const before = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body.length;
+    const res = await auth(agent.post(`/api/fixes/${fixId}/preview`))
+      .send({ op: "drop-outliers", params: { column: "ยอด" } });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.applied, false);
+    assert.equal(res.body.removed, 1, "the 5000 is an outlier by IQR");
+    assert.ok(res.body.log.includes("IQR"));
+    const after = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body.length;
+    assert.equal(after, before, "preview must not create a version");
+  });
+
+  test("apply creates a NEW version and leaves the original intact", async () => {
+    const before = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body.length;
+    const res = await auth(agent.post(`/api/fixes/${fixId}/apply`))
+      .send({ op: "drop-outliers", params: { column: "ยอด" } });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.applied, true);
+    const versions = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body;
+    assert.equal(versions.length, before + 1, "a new version must exist");
+    assert.ok(res.body.logTh.length > 5, "the methodology line is recorded");
+  });
+
+  test("refuses an operation that would change nothing", async () => {
+    const res = await auth(agent.post(`/api/fixes/${fixId}/apply`))
+      .send({ op: "drop-missing", params: { column: "ร้าน" } });
+    assert.equal(res.status, 400);
+  });
+
+  test("refuses an unknown operation rather than improvising", async () => {
+    const res = await auth(agent.post(`/api/fixes/${fixId}/preview`)).send({ op: "rm -rf" });
+    assert.equal(res.status, 400);
+    assert.match(res.body.errorEn, /unknown operation/);
+  });
+
+  test("another user cannot fix someone else's dataset", async () => {
+    const res = await auth(agent.post(`/api/fixes/${fixId}/preview`), otherToken)
+      .send({ op: "drop-duplicates" });
+    assert.equal(res.status, 403);
+  });
+});
+
 describe("Collaboration routes (real router)", () => {
   test("comment with an @mention notifies the mentioned user", async () => {
     const c = await auth(agent.post("/api/collab/comments"))
