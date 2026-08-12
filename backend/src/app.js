@@ -155,7 +155,7 @@ export function createApp() {
   // ── Analyze (stored dataset + direct upload) → routes/analysis.js (v16) ──
   mountAnalysisRoutes(app, { upload, ai });
   mountInferenceRoutes(app);
-  mountFixRoutes(app);
+  mountFixRoutes(app, { ai });
 
   // ── Chat + streaming + agent → routes/chat.js (v16) ───────
   mountChatRoutes(app, { ai });

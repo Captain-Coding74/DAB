@@ -290,6 +290,21 @@ describe("Data fix routes (v21.3)", () => {
     assert.ok(res.body.logTh.length > 5, "the methodology line is recorded");
   });
 
+  test("suggest returns catalogue-valid fixes and changes nothing", async () => {
+    const before = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body.length;
+    const res = await auth(agent.post(`/api/fixes/${fixId}/suggest`)).send({});
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.ok(Array.isArray(res.body.suggestions));
+    assert.ok(["ai", "rules"].includes(res.body.source));
+    // Whatever the source, every suggestion must name a real operation.
+    const { OPERATIONS } = await import("./services/dataFixes.js");
+    for (const s of res.body.suggestions) {
+      assert.ok(OPERATIONS[s.op], `suggested an operation outside the catalogue: ${s.op}`);
+    }
+    const after = (await auth(agent.get(`/api/datasets/${fixId}/versions`))).body.length;
+    assert.equal(after, before, "suggesting must not modify anything");
+  });
+
   test("refuses an operation that would change nothing", async () => {
     const res = await auth(agent.post(`/api/fixes/${fixId}/apply`))
       .send({ op: "drop-missing", params: { column: "ร้าน" } });
