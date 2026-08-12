@@ -148,6 +148,106 @@ describe("Dataset routes (real router)", () => {
   });
 });
 
+describe("Inference routes (v21.2)", () => {
+  // A dataset with two groups, a numeric column, and questionnaire-style
+  // items — enough to exercise every branch of the route.
+  const SURVEY = [
+    "สาขา,ยอดขาย,ข้อ1,ข้อ2,ข้อ3,เพศ",
+    "A,120,4,4,5,ชาย",
+    "A,135,5,5,5,หญิง",
+    "A,128,4,4,4,ชาย",
+    "B,210,2,2,1,หญิง",
+    "B,198,1,2,2,ชาย",
+    "B,225,2,1,2,หญิง",
+  ].join("\n");
+  let surveyId;
+
+  test("uploads the survey dataset the tests run against", async () => {
+    const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(SURVEY), "survey.csv");
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    surveyId = res.body.id;
+  });
+
+  test("requires auth", async () => {
+    assert.equal((await agent.post(`/api/inference/${surveyId}`).send({ test: "t-test" })).status, 401);
+  });
+
+  test("lists which tests this dataset can support", async () => {
+    const res = await auth(agent.get(`/api/inference/${surveyId}/available`));
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.ok(Array.isArray(res.body.tests) && res.body.tests.length === 6);
+    assert.ok(res.body.numericColumns.includes("ยอดขาย"));
+    assert.ok(res.body.categoricalColumns.includes("สาขา"));
+  });
+
+  test("t-test compares two branches and reports a p-value", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "t-test", valueColumn: "ยอดขาย", groupColumn: "สาขา" });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.test, "independent-t");
+    assert.ok(Number.isFinite(res.body.p), "p must be a number");
+    assert.equal(res.body.computedBy, "deterministic", "ADR-0001: not AI-generated");
+    assert.deepEqual(res.body.groupNames.sort(), ["A", "B"]);
+  });
+
+  test("t-test refuses when the grouping column has the wrong number of groups", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "t-test", valueColumn: "ยอดขาย", groupColumn: "ข้อ1" });
+    assert.equal(res.status, 400);
+    assert.match(res.body.errorEn, /exactly 2 groups/);
+  });
+
+  test("ANOVA runs across the grouping column", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "anova", valueColumn: "ยอดขาย", groupColumn: "สาขา" });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.test, "one-way-anova");
+    assert.ok(Number.isFinite(res.body.f));
+  });
+
+  test("chi-square builds a contingency table from two categorical columns", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "chi-square", xColumn: "สาขา", yColumn: "เพศ" });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.df, 1, "2x2 table");
+    assert.ok(Array.isArray(res.body.rowLabels));
+  });
+
+  test("correlation and regression both run on two numeric columns", async () => {
+    for (const t of ["correlation", "regression"]) {
+      const res = await auth(agent.post(`/api/inference/${surveyId}`))
+        .send({ test: t, xColumn: "ข้อ1", yColumn: "ยอดขาย" });
+      assert.equal(res.status, 200, `${t}: ${JSON.stringify(res.body)}`);
+    }
+  });
+
+  test("Cronbach's alpha runs across the questionnaire items", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "cronbach", itemColumns: ["ข้อ1", "ข้อ2", "ข้อ3"] });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.nItems, 3);
+    assert.ok(typeof res.body.interpretationTh === "string");
+  });
+
+  test("Cronbach refuses with fewer than two items", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`))
+      .send({ test: "cronbach", itemColumns: ["ข้อ1"] });
+    assert.equal(res.status, 400);
+  });
+
+  test("an unknown test name lists what is available instead of guessing", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`)).send({ test: "mann-whitney" });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.available.includes("t-test"));
+  });
+
+  test("another user cannot run tests on someone else's dataset", async () => {
+    const res = await auth(agent.post(`/api/inference/${surveyId}`), otherToken)
+      .send({ test: "t-test", valueColumn: "ยอดขาย", groupColumn: "สาขา" });
+    assert.equal(res.status, 403);
+  });
+});
+
 describe("Collaboration routes (real router)", () => {
   test("comment with an @mention notifies the mentioned user", async () => {
     const c = await auth(agent.post("/api/collab/comments"))

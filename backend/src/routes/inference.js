@@ -22,28 +22,40 @@ import {
 
 const log = serviceLogger("inference");
 
+/**
+ * parseFileStreaming returns rows as POSITIONAL ARRAYS, not objects keyed by
+ * column name — ["A", "120"], not { สาขา: "A" }. Every accessor here resolves
+ * a header name to its index first. (An earlier version indexed by name and
+ * silently found nothing, which surfaced as "0 groups" rather than an error.)
+ */
+const indexOf = (headers, name) => headers.indexOf(name);
+
+const toNumber = (v) => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v.replace(/,/g, ""));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
 /** Pull one column out of parsed rows as numbers, dropping blanks. */
-function column(rows, name) {
-  return rows.map((r) => {
-    const v = r[name];
-    if (typeof v === "number") return v;
-    if (typeof v === "string" && v.trim() !== "") {
-      const n = Number(v.replace(/,/g, ""));
-      return Number.isFinite(n) ? n : null;
-    }
-    return null;
-  }).filter((v) => v !== null);
+function column(rows, headers, name) {
+  const i = indexOf(headers, name);
+  if (i < 0) return [];
+  return rows.map((r) => toNumber(r[i])).filter((v) => v !== null);
 }
 
 /** Split a numeric column by the distinct values of a grouping column. */
-function groupBy(rows, valueCol, groupCol) {
+function groupBy(rows, headers, valueCol, groupCol) {
+  const vi = indexOf(headers, valueCol), gi = indexOf(headers, groupCol);
   const buckets = new Map();
+  if (vi < 0 || gi < 0) return buckets;
   for (const r of rows) {
-    const g = String(r[groupCol] ?? "").trim();
+    const g = String(r[gi] ?? "").trim();
     if (!g) continue;
-    const raw = r[valueCol];
-    const v = typeof raw === "number" ? raw : Number(String(raw ?? "").replace(/,/g, ""));
-    if (!Number.isFinite(v)) continue;
+    const v = toNumber(r[vi]);
+    if (v === null) continue;
     if (!buckets.has(g)) buckets.set(g, []);
     buckets.get(g).push(v);
   }
@@ -77,7 +89,7 @@ export function mountInferenceRoutes(app) {
 
       switch (test) {
         case "t-test": {
-          const buckets = groupBy(sampleRows, valueColumn, groupColumn);
+          const buckets = groupBy(sampleRows, headers, valueColumn, groupColumn);
           const keys = [...buckets.keys()];
           if (keys.length !== 2) {
             return res.status(400).json({
@@ -90,30 +102,34 @@ export function mountInferenceRoutes(app) {
           break;
         }
         case "paired-t":
-          result = pairedTTest(column(sampleRows, beforeColumn), column(sampleRows, afterColumn));
+          result = pairedTTest(column(sampleRows, headers, beforeColumn), column(sampleRows, headers, afterColumn));
           break;
         case "anova": {
-          const buckets = groupBy(sampleRows, valueColumn, groupColumn);
+          const buckets = groupBy(sampleRows, headers, valueColumn, groupColumn);
           result = { ...oneWayAnova([...buckets.values()]), groupNames: [...buckets.keys()] };
           break;
         }
         case "chi-square": {
           // Build the contingency table from two categorical columns.
-          const rowVals = [...new Set(sampleRows.map((r) => String(r[xColumn] ?? "").trim()).filter(Boolean))];
-          const colVals = [...new Set(sampleRows.map((r) => String(r[yColumn] ?? "").trim()).filter(Boolean))];
+          const xi = indexOf(headers, xColumn), yi = indexOf(headers, yColumn);
+          if (xi < 0 || yi < 0) {
+            return res.status(400).json({ error: "ไม่พบคอลัมน์ที่เลือก", errorEn: "selected column not found" });
+          }
+          const rowVals = [...new Set(sampleRows.map((r) => String(r[xi] ?? "").trim()).filter(Boolean))];
+          const colVals = [...new Set(sampleRows.map((r) => String(r[yi] ?? "").trim()).filter(Boolean))];
           const table = rowVals.map((rv) =>
             colVals.map((cv) => sampleRows.filter(
-              (r) => String(r[xColumn] ?? "").trim() === rv && String(r[yColumn] ?? "").trim() === cv
+              (r) => String(r[xi] ?? "").trim() === rv && String(r[yi] ?? "").trim() === cv
             ).length)
           );
           result = { ...chiSquareTest(table), rowLabels: rowVals, colLabels: colVals };
           break;
         }
         case "correlation":
-          result = pearsonCorrelation(column(sampleRows, xColumn), column(sampleRows, yColumn));
+          result = pearsonCorrelation(column(sampleRows, headers, xColumn), column(sampleRows, headers, yColumn));
           break;
         case "regression":
-          result = linearRegression(column(sampleRows, xColumn), column(sampleRows, yColumn));
+          result = linearRegression(column(sampleRows, headers, xColumn), column(sampleRows, headers, yColumn));
           break;
         case "cronbach":
           if (!Array.isArray(itemColumns) || itemColumns.length < 2) {
@@ -122,7 +138,7 @@ export function mountInferenceRoutes(app) {
               errorEn: "select at least 2 questionnaire items",
             });
           }
-          result = cronbachAlpha(itemColumns.map((c) => column(sampleRows, c)));
+          result = cronbachAlpha(itemColumns.map((c) => column(sampleRows, headers, c)));
           break;
         default:
           return res.status(400).json({
@@ -149,7 +165,11 @@ export function mountInferenceRoutes(app) {
       const ds = await getDatasetWithContent(req.params.id);
       if (!ds?.version) return res.status(404).json({ error: "Dataset not found" });
 
-      const cols = JSON.parse(ds.version.col_analysis || "[]");
+      // col_analysis comes back already parsed from some code paths and as a
+      // JSON string from others — handle both rather than assuming.
+      const raw = ds.version.col_analysis;
+      const cols = Array.isArray(raw) ? raw
+        : (typeof raw === "string" ? JSON.parse(raw || "[]") : []);
       const numeric = cols.filter((c) => c.type === "numeric").map((c) => c.col);
       const text    = cols.filter((c) => c.type !== "numeric").map((c) => c.col);
 
