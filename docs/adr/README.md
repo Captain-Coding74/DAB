@@ -18,3 +18,4 @@ from memory, and so a decision that *should* be revisited can be found.
 | [0006](0006-agent-reads-stats-not-rows.md) | The AI agent queries computed stats, never raw rows | Accepted |
 | [0007](0007-runtime-palette-for-canvas-surfaces.md) | Colours needed in JavaScript live in one runtime palette | Accepted |
 | [0008](0008-accepted-dependency-risks.md) | Accepted dependency risks: ExcelJS chain + react-router, no --force | Accepted |
+| [0009](0009-ai-row-editing.md) | AI row editing sends raw data, and says so | Accepted, with limits |

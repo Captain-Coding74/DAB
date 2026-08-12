@@ -17,8 +17,11 @@
  * because "what did you change and why" is a question with a right answer.
  */
 import { requireAuth } from "../auth.js";
+import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
 import { serviceLogger } from "../logger.js";
 import { applyFix, OPERATIONS } from "../services/dataFixes.js";
+import { suggestFixes } from "../services/fixSuggest.js";
+import { aiEditRows, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
 
 const log = serviceLogger("fixes");
 
@@ -31,7 +34,7 @@ function toCsv(headers, rows) {
   return [headers.map(esc).join(","), ...rows.map((r) => r.map(esc).join(","))].join("\n");
 }
 
-export function mountFixRoutes(app) {
+export function mountFixRoutes(app, { ai } = {}) {
   /** What can be fixed, for the UI to offer. */
   app.get("/api/fixes/catalogue", requireAuth, (_req, res) => {
     res.json({
@@ -39,6 +42,35 @@ export function mountFixRoutes(app) {
       note: "AI เสนอได้ แต่การแก้ไขทั้งหมดคำนวณแบบตายตัว และต้องยืนยันก่อนเสมอ",
       noteEn: "The AI may propose; every fix is deterministic and requires confirmation.",
     });
+  });
+
+  /**
+   * Ask what this dataset needs. The model picks from the catalogue and
+   * explains why; every suggestion is validated before it is returned, and
+   * nothing is applied. Falls back to deterministic rules when the model is
+   * unavailable, so this works offline.
+   */
+  app.post("/api/fixes/:id/suggest", analyzeLimiter(), requireAuth, async (req, res, next) => {
+    try {
+      const ctx = await load(req, res); if (!ctx) return;
+      const { parseFileStreaming } = await import("../services/streaming.js");
+      const { getVersionBytes } = await import("../db/datasetRepository.js");
+      const parsed = await parseFileStreaming(await getVersionBytes(ctx.version), ctx.version.file_name);
+
+      const { suggestions, source } = await suggestFixes(ai, {
+        headers: parsed.headers,
+        colAnalysis: parsed.colAnalysis,
+        totalRows: parsed.totalRows,
+        dupeCount: parsed.dupeCount,
+      });
+
+      log.info({ datasetId: req.params.id, count: suggestions.length, source }, "fixes suggested");
+      res.json({
+        suggestions, source,
+        note: "ยังไม่มีอะไรถูกแก้ — กด preview เพื่อดูผลก่อน",
+        noteEn: "Nothing has been changed. Preview a suggestion to see its effect.",
+      });
+    } catch (err) { next(err); }
   });
 
   /** Dry run — never writes. */
@@ -57,6 +89,84 @@ export function mountFixRoutes(app) {
         sample: result.rows.slice(0, 10),
         headers: ctx.headers,
         applied: false,
+      });
+    } catch (err) { next(err); }
+  });
+
+  /**
+   * Free-text AI edit — the model rewrites actual cell values.
+   *
+   * This is the one place raw rows leave the server (see the header of
+   * services/aiEdit.js). It PREVIEWS only: the response carries a cell-level
+   * diff and the edited rows, and nothing is stored until the caller posts
+   * them back to /ai-edit/apply. Sensitive-looking columns are named in the
+   * response so a UI can warn before the user commits.
+   */
+  app.post("/api/fixes/:id/ai-edit", analyzeLimiter(), speedLimiter(), requireAuth, async (req, res, next) => {
+    try {
+      const ctx = await load(req, res); if (!ctx) return;
+      const { instruction } = req.body || {};
+
+      const result = await aiEditRows(ai, { headers: ctx.headers, rows: ctx.rows, instruction });
+      if (!result.ok) return res.status(400).json(result);
+
+      res.json({
+        applied: false,
+        instruction: result.instruction,
+        changes: result.changes,
+        changeCount: result.changes.length,
+        rows: result.rows,
+        headers: ctx.headers,
+        sensitiveColumns: detectSensitiveColumns(ctx.headers),
+        warningTh: "ข้อมูลดิบถูกส่งไปยัง AI เพื่อแก้ไข — ตรวจสอบรายการเปลี่ยนแปลงก่อนยืนยัน",
+        warningEn: "Raw cell values were sent to the AI. Review every change before confirming.",
+        maxRows: MAX_AI_EDIT_ROWS,
+      });
+    } catch (err) { next(err); }
+  });
+
+  /** Commit an AI edit the caller has reviewed. Writes a new version. */
+  app.post("/api/fixes/:id/ai-edit/apply", requireAuth, async (req, res, next) => {
+    try {
+      const ctx = await load(req, res); if (!ctx) return;
+      const { rows, instruction } = req.body || {};
+
+      // Re-validate: the client could post back anything, and the shape rules
+      // exist to protect the dataset, not just the model's output.
+      const { validateEdit, diffRows } = await import("../services/aiEdit.js");
+      const shape = validateEdit(ctx.rows, rows);
+      if (!shape.ok) return res.status(400).json(shape);
+
+      const changes = diffRows(ctx.rows, rows, ctx.headers);
+      if (changes.length === 0) {
+        return res.status(400).json({ error: "ไม่มีอะไรเปลี่ยนแปลง", errorEn: "nothing would change" });
+      }
+
+      const DR = await import("../db/datasetRepository.js");
+      const storage = await import("../services/storage.js");
+      const { parseFileStreaming } = await import("../services/streaming.js");
+      const { computeQualityScore } = await import("../services/qualityScore.js");
+
+      const csv = Buffer.from(toCsv(ctx.headers, rows), "utf-8");
+      const parsed = await parseFileStreaming(csv, ctx.version.file_name);
+      const quality = computeQualityScore(parsed.colAnalysis, parsed.totalRows, parsed.dupeCount);
+      const stored = await storage.put(
+        storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: ctx.version.file_name }), csv);
+
+      const note = `AI edit: ${String(instruction || "").slice(0, 80)} — ${changes.length} cell(s) changed`;
+      const version = await DR.addDatasetVersion({
+        datasetId: req.params.id, fileName: ctx.version.file_name,
+        storageKey: stored.key, storageSha256: stored.sha256,
+        fileType: ctx.version.file_type,
+        totalRows: parsed.totalRows, totalCols: parsed.headers.length,
+        colAnalysis: parsed.colAnalysis, qualityScore: quality?.score ?? null,
+        changeNote: note, uploadedBy: req.user.userId, sizeBytes: csv.length,
+      });
+
+      log.info({ datasetId: req.params.id, changed: changes.length }, "AI edit applied as new version");
+      res.status(201).json({
+        applied: true, version, changes, changeCount: changes.length, log: note,
+        reversibleEn: "the original version is untouched and still selectable",
       });
     } catch (err) { next(err); }
   });
