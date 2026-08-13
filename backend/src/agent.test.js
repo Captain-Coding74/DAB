@@ -74,7 +74,14 @@ describe("runAgent", () => {
     ]);
     const { reply, steps } = await runAgent({ client, statsJson: STATS, question: "avg revenue?" });
     assert.equal(reply, "avg คือ 120 (ตรวจแล้ว)");
-    assert.deepEqual(steps, [{ tool: "get_column_detail", input: { column: "revenue" } }]);
+    // The trail now records the OUTCOME, not just the request: a refused tool
+    // and a successful one used to look identical, which undermines the point
+    // of showing the trail at all (ADR-0006).
+    assert.equal(steps.length, 1);
+    assert.equal(steps[0].tool, "get_column_detail");
+    assert.deepEqual(steps[0].input, { column: "revenue" });
+    assert.equal(steps[0].ok, true, "a successful tool call is marked ok");
+    assert.equal(steps[0].error, undefined);
     // second call must include the tool_result with the real avg
     const second = client.calls[1];
     const toolResult = second.messages.at(-1).content[0];
@@ -114,5 +121,29 @@ describe("runAgent", () => {
     const { reply } = await runAgent({ client, statsJson: STATS, question: "x" });
     assert.equal(reply, "ok");
     assert.match(client.calls[1].messages.at(-1).content[0].content, /unknown tool/);
+  });
+});
+
+describe("the agent trail is honest and bounded", () => {
+  test("a refused tool is visibly refused, not silently identical to success", async () => {
+    let c = 0;
+    const client = { messages: { create: async () => { c++; return c === 1
+      ? { stop_reason: "tool_use", content: [{ type: "tool_use", id: "x", name: "exfiltrate_all", input: {} }] }
+      : { stop_reason: "end_turn", content: [{ type: "text", text: "done" }] }; } } };
+    const { steps } = await runAgent({ client, statsJson: { colAnalysis: [] }, analysisText: "x", question: "q" });
+    assert.equal(steps[0].ok, false);
+    assert.match(steps[0].error, /unknown tool/);
+  });
+
+  test("a huge tool input cannot balloon the stored trail", async () => {
+    // input is whatever the MODEL sent, echoed into a trail stored per analysis
+    // and rendered in the UI. A 50 KB input across five rounds produced a
+    // 250 KB trail before this was bounded.
+    let c = 0;
+    const client = { messages: { create: async () => { c++; return c <= 5
+      ? { stop_reason: "tool_use", content: [{ type: "tool_use", id: "x" + c, name: "list_columns", input: { junk: "y".repeat(50000) } }] }
+      : { stop_reason: "end_turn", content: [{ type: "text", text: "done" }] }; } } };
+    const { steps } = await runAgent({ client, statsJson: { colAnalysis: [] }, analysisText: "x", question: "q" });
+    assert.ok(JSON.stringify(steps).length < 10000, "the trail must stay small");
   });
 });

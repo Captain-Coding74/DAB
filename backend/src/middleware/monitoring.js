@@ -115,9 +115,21 @@ export function errorHandler(err, req, res, next) {
   // v13 (found by E2E): upload rejections are client errors, not server errors.
   // Multer's fileFilter and limit errors were surfacing as 500s in production
   // while testApp mapped them to 400 — a prod/test drift.
+  /* Any multer error is the CLIENT sending a bad upload, not the server
+     failing. The original list caught size and type rejections but missed
+     malformed multipart bodies: a filename containing a null byte produced
+     "Malformed part header" and a 500, so a client mistake looked like a DAB
+     outage in the logs and in monitoring. Matching on err.name covers the
+     whole family instead of guessing at messages one at a time. */
   const isUploadReject =
+    err.name === "MulterError" ||
     err.code === "LIMIT_FILE_SIZE" ||
-    /only$|only\b|CSV\/Excel|file too large/i.test(err.message || "");
+    /* Anchored to the phrases the upload path actually produces. The bare
+     /only\b/ this replaces matched ANY error containing the word "only" —
+     including unrelated server faults, which then reported as client errors
+     and hid real failures from monitoring. */
+  /(csv\/excel|only csv|file too large|malformed part|unexpected end of form|missing boundary|invalid file type)/i
+    .test(err.message || "");
 
   const status = err.status || err.statusCode || (isUploadReject ? 400 : 500);
   res.status(status).json({

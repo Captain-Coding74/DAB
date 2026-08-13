@@ -129,7 +129,7 @@ export function mountFixRoutes(app, { ai } = {}) {
   /** Commit an AI edit the caller has reviewed. Writes a new version. */
   app.post("/api/fixes/:id/ai-edit/apply", requireAuth, async (req, res, next) => {
     try {
-      const ctx = await load(req, res); if (!ctx) return;
+      const ctx = await load(req, res, true); if (!ctx) return;
       const { rows, instruction } = req.body || {};
 
       // Re-validate: the client could post back anything, and the shape rules
@@ -175,7 +175,7 @@ export function mountFixRoutes(app, { ai } = {}) {
   /** Apply — writes a NEW version, never mutates the existing one. */
   app.post("/api/fixes/:id/apply", requireAuth, async (req, res, next) => {
     try {
-      const ctx = await load(req, res); if (!ctx) return;
+      const ctx = await load(req, res, true); if (!ctx) return;
       const { op, params } = req.body || {};
       const result = applyFix(ctx.rows, ctx.headers, op, params || {});
       if (result.error) return res.status(400).json(result);
@@ -224,13 +224,25 @@ export function mountFixRoutes(app, { ai } = {}) {
 }
 
 /** Shared load + permission check. Returns null after sending a response. */
-async function load(req, res) {
+async function load(req, res, needsWrite = false) {
   const { getUserDatasetRole, getDatasetWithContent, getVersionBytes } =
     await import("../db/datasetRepository.js");
   const { parseFileStreaming } = await import("../services/streaming.js");
 
   const role = await getUserDatasetRole(req.params.id, req.user.userId);
   if (!role) { res.status(403).json({ error: "No access to this dataset" }); return null; }
+  /* datasets.js has canEdit(role) and applies it to every write. These routes
+     only checked that SOME role existed, so a viewer — someone given read
+     access to look at a shared thesis dataset — could POST /apply and write a
+     new dataset version, permanently altering data they cannot edit. Reading
+     is fine for any role; writing is not. */
+  if (needsWrite && !["owner", "editor"].includes(role)) {
+    res.status(403).json({
+      error: "ต้องมีสิทธิ์แก้ไข — บัญชีนี้ดูได้อย่างเดียว",
+      errorEn: "editor access required — this account has read-only access",
+    });
+    return null;
+  }
 
   const ds = await getDatasetWithContent(req.params.id);
   if (!ds?.version) { res.status(404).json({ error: "Dataset not found" }); return null; }

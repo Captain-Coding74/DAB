@@ -84,8 +84,23 @@ export async function runAgent({ client, statsJson, analysisText, question, maxS
     const results = [];
     for (const block of msg.content) {
       if (block.type !== "tool_use") continue;
-      steps.push({ tool: block.name, input: block.input });
       const out = runTool(block.name, block.input, statsJson);
+      /* The step recorded only what the model ASKED for, never what came back,
+         so a refused tool looked identical to a successful one in the trail
+         shown to the user. ADR-0006 sells that trail as proof the agent checked
+         real statistics — it has to show the check's outcome, not just the
+         request. Records the error, or a short summary of what was returned. */
+      /* input is whatever the MODEL sent, echoed straight into a trail that is
+         stored per analysis and rendered in the UI. Measured: a 50 KB tool
+         input across five rounds produced a 250 KB trail. Tool inputs are a
+         column name and little else, so a short cap loses nothing real. */
+      const safeInput = JSON.stringify(block.input ?? {}).slice(0, 500);
+      steps.push({
+        tool: block.name,
+        input: safeInput.length < 500 ? block.input : { truncated: safeInput },
+        ok: !out?.error,
+        ...(out?.error ? { error: out.error } : { rows: Array.isArray(out) ? out.length : undefined }),
+      });
       results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(out).slice(0, 4000) });
     }
     messages.push({ role: "user", content: results });

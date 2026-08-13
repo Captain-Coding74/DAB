@@ -40,7 +40,7 @@ export function mountAuthRoutes(app) {
     } catch (err) { next(err); }
   });
 
-  app.post("/api/auth/refresh", async (req, res) => {
+  app.post("/api/auth/refresh", async (req, res, next) => {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) return res.status(400).json({ error: "refreshToken required" });
@@ -55,7 +55,12 @@ export function mountAuthRoutes(app) {
       await R.storeRefreshToken(user.id, hashToken(newRt), refreshExpiresAt());
       await R.revokeRefreshToken(hashToken(refreshToken));
       res.json({ accessToken: signAccess({ userId: user.id, username: user.username }), refreshToken: newRt });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+    /* Was res.status(500).json({ error: err.message }) — the only route in the
+       codebase returning a raw internal message to the client, and reachable
+       WITHOUT authentication. A database or driver error would have gone
+       straight to an anonymous caller. next(err) routes through the shared
+       handler, which logs the detail and returns a sanitised response. */
+    } catch (err) { next(err); }
   });
 
   app.post("/api/auth/logout", requireAuth, async (req, res) => {

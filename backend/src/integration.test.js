@@ -128,6 +128,41 @@ describe("POST /api/auth/refresh", () => {
   });
 });
 
+describe("auth hardening", () => {
+  test("a refresh token cannot be used as an access token", async () => {
+    // Signs a refresh-shaped token directly rather than registering a user:
+    // authLimiter allows 10 auth attempts per IP per 15 minutes, and adding
+    // registrations here starved the logout-all tests further down the file.
+    const jwt = (await import("jsonwebtoken")).default;
+    const asRefresh = jwt.sign({ userId: "x", jti: "abc" }, process.env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+    const r = await agent.get("/api/auth/me").set("Authorization", `Bearer ${asRefresh}`);
+    assert.equal(r.status, 401, "the two secrets must not be interchangeable");
+  });
+
+  test("a forged token is rejected", async () => {
+    const jwt = (await import("jsonwebtoken")).default;
+    const forged = jwt.sign({ userId: "x", username: "y" }, "attacker-secret-32-chars-long!!", { expiresIn: "15m" });
+    assert.equal((await agent.get("/api/auth/me").set("Authorization", `Bearer ${forged}`)).status, 401);
+  });
+
+  test("an alg=none token is rejected", async () => {
+    const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const none = `${b64({ alg: "none", typ: "JWT" })}.${b64({ userId: "x" })}.`;
+    assert.equal((await agent.get("/api/auth/me").set("Authorization", `Bearer ${none}`)).status, 401);
+  });
+
+  test("/api/auth/refresh does not return internal error text", async () => {
+    // It was the only route in the codebase returning err.message to the
+    // client, and it needs no authentication to reach — so a database or
+    // driver error would have gone straight to an anonymous caller.
+    const r = await agent.post("/api/auth/refresh").send({ refreshToken: "not-a-jwt" });
+    assert.equal(r.status, 401);
+    const body = JSON.stringify(r.body);
+    for (const leak of ["SQLITE", "ENOENT", "/home/", "at Object.", "node_modules"])
+      assert.ok(!body.includes(leak), `error response leaked internals: ${body.slice(0, 120)}`);
+  });
+});
+
 describe("GET /api/auth/me", () => {
   test("returns profile for authenticated user", async () => {
     const res = await agent.get("/api/auth/me")

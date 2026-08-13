@@ -340,6 +340,82 @@ describe("Data fix routes (v21.3)", () => {
       .send({ op: "drop-duplicates" });
     assert.equal(res.status, 403);
   });
+
+  test("a VIEWER can preview a fix but not apply one", async () => {
+    // datasets.js has canEdit(role) on every write; these routes only checked
+    // that SOME role existed, so someone given read access to look at a shared
+    // thesis dataset could POST /apply and permanently write a new version.
+    const share = await auth(agent.post(`/api/datasets/${fixId}/share`))
+      .send({ username: other.username, role: "viewer" });
+    assert.equal(share.status, 200, JSON.stringify(share.body));
+
+    const preview = await auth(agent.post(`/api/fixes/${fixId}/preview`), otherToken)
+      .send({ op: "drop-duplicates" });
+    assert.equal(preview.status, 200, "a viewer may still look");
+
+    const apply = await auth(agent.post(`/api/fixes/${fixId}/apply`), otherToken)
+      .send({ op: "drop-duplicates" });
+    assert.equal(apply.status, 403, "a viewer must not write a new version");
+
+    const aiApply = await auth(agent.post(`/api/fixes/${fixId}/ai-edit/apply`), otherToken)
+      .send({ rows: [["1", "2"]], instruction: "x" });
+    assert.equal(aiApply.status, 403, "nor through the ai-edit path");
+  });
+});
+
+describe("Scheduled reports respect dataset access", () => {
+  test("you cannot schedule a report against a dataset you cannot read", async () => {
+    // The WORKSPACE role was checked but the DATASET was not, so anyone could
+    // create a workspace they own and schedule a recurring report against
+    // someone else's private dataset, delivered to any address. The scheduler
+    // is a stub today, which is why this would have shipped unnoticed and gone
+    // live the day email delivery landed.
+    const up = await auth(agent.post("/api/datasets"))
+      .attach("file", Buffer.from("secret,value\n1,2\n3,4\n"), "private.csv");
+    assert.equal(up.status, 201);
+
+    const ws = await auth(agent.post("/api/workspaces"), otherToken).send({ name: "outsider ws" });
+    assert.equal(ws.status, 201);
+
+    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`), otherToken)
+      .send({ name: "exfil", datasetId: up.body.id, cronExpr: "0 9 * * *", recipients: ["x@y.com"] });
+    assert.equal(res.status, 403, "must not schedule against another user's dataset");
+  });
+
+  test("a schedule with no dataset attached is still allowed", async () => {
+    const ws = await auth(agent.post("/api/workspaces")).send({ name: "mine" });
+    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`))
+      .send({ name: "plain", cronExpr: "0 9 * * *", recipients: ["me@x.com"] });
+    assert.equal(res.status, 201);
+  });
+});
+
+describe("Telemetry is operator-only", () => {
+  test("a logged-in stranger cannot read the global summary", async () => {
+    // It was requireAuth only. The payload carries no raw names, but it does
+    // report e.g. {"bySegment":{"pharmacy":1},"categories":{"patient":1}} —
+    // telling any registered user that SOMEONE here uploaded a pharmacy file
+    // with patient columns. On a small deployment that is close to identifying.
+    delete process.env.TELEMETRY_ADMINS;
+    const res = await auth(agent.get("/api/telemetry/summary"), otherToken);
+    assert.equal(res.status, 403);
+  });
+
+  test("anonymous callers are rejected before the operator check", async () => {
+    assert.equal((await agent.get("/api/telemetry/summary")).status, 401);
+  });
+
+  test("a listed operator can read it", async () => {
+    process.env.TELEMETRY_ADMINS = user.username;
+    const res = await auth(agent.get("/api/telemetry/summary"));
+    assert.equal(res.status, 200);
+    delete process.env.TELEMETRY_ADMINS;
+  });
+
+  test("closed by default when no allowlist is configured", async () => {
+    delete process.env.TELEMETRY_ADMINS;
+    assert.equal((await auth(agent.get("/api/telemetry/summary"))).status, 403);
+  });
 });
 
 describe("Collaboration routes (real router)", () => {
@@ -431,6 +507,10 @@ describe("Demo routes (public, no auth, no AI)", () => {
 });
 
 describe("Upload telemetry (privacy-safe, v20.2)", () => {
+  /* The summary endpoint is operator-only now (TELEMETRY_ADMINS); these
+     tests assert what it CONTAINS, so they run as an operator. */
+  before(() => { process.env.TELEMETRY_ADMINS = user.username; });
+  after(()  => { delete process.env.TELEMETRY_ADMINS; });
   const PHARMACY_CSV = "วันที่,ชื่อยา,ล็อต,วันหมดอายุ,คงเหลือ,ราคา\n" +
     "14/01/2569,พาราเซตามอล,L42,30/06/2569,120,15\n" +
     "15/01/2569,ยาแก้ไอน้ำดำ,L43,31/12/2569,40,55\n";

@@ -21,6 +21,19 @@ export function mountScheduleRoutes(app) {
       if (!member || !["owner","admin"].includes(member.role)) return res.status(403).json({ error: "Insufficient role" });
       const { name, datasetId, prompt, cronExpr, recipients, format } = req.body;
       if (!name || !cronExpr || !recipients?.length) return res.status(400).json({ error: "name, cronExpr, recipients required" });
+
+      /* datasetId came straight from the body and was stored unchecked. The
+         WORKSPACE role was verified but the DATASET was not, so anyone could
+         create a workspace they own and schedule a recurring report against
+         somebody else's private dataset, delivered to any address they chose.
+         The scheduler is a stub today, so nothing is sent — which is exactly
+         why this would have shipped unnoticed and become a live exfiltration
+         path the day email delivery landed. */
+      if (datasetId) {
+        const { getUserDatasetRole } = await import("../db/datasetRepository.js");
+        const role = await getUserDatasetRole(datasetId, req.user.userId);
+        if (!role) return res.status(403).json({ error: "No access to that dataset" });
+      }
       const sr = await R.createScheduledReport({ workspaceId: req.params.id, userId: req.user.userId, name, datasetId, prompt: prompt||"สรุปภาพรวม", cronExpr, recipients, format });
       res.status(201).json(sr);
     } catch (err) { next(err); }
