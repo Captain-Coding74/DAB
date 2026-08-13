@@ -4,6 +4,7 @@ import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command } from "lu
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
 import { Toasts, Skeleton, Modal, Kbd, Wordmark } from "./components/ui";
+import { useLang } from "./lib/i18n";
 import ErrorBoundary from "./components/errors";
 import CommandPalette, { firePaletteAction } from "./components/palette";
 import PerfOverlay from "./components/perf";
@@ -75,6 +76,7 @@ function ShortcutsHelp() {
 }
 
 function Nav() {
+  const { t, lang, setLang } = useLang();
   const user           = useAppStore(s => s.user);
   const logout         = useAppStore(s => s.logout);
   const dark           = useAppStore(s => s.dark);
@@ -108,21 +110,31 @@ function Nav() {
 
         <div className="flex items-center gap-1">
           <NavLink viewTransition to="/" end className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
-            <BarChart2 size={14}/><span className="hidden sm:block">Analyze</span>
+            <BarChart2 size={14}/><span className="hidden sm:block">{t("nav.analyze")}</span>
           </NavLink>
           {user && (
             <>
               <NavLink viewTransition to="/history" onMouseEnter={prefetch.history} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
-                <History size={14}/><span className="hidden sm:block">History</span>
+                <History size={14}/><span className="hidden sm:block">{t("nav.history")}</span>
               </NavLink>
               <NavLink viewTransition to="/workspace" onMouseEnter={prefetch.workspace} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
-                <Users size={14}/><span className="hidden sm:block">Workspace</span>
+                <Users size={14}/><span className="hidden sm:block">{t("nav.workspace")}</span>
               </NavLink>
             </>
           )}
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="lang-switch flex items-center rounded-md overflow-hidden border border-gray-200 dark:border-gray-800"
+               role="group" aria-label="Language">
+            {["en", "th"].map(code => (
+              <button key={code} onClick={() => setLang(code)} aria-pressed={lang === code}
+                className={`num text-[11px] px-2 py-1 leading-none min-h-[28px] transition-colors ${
+                  lang === code ? "bg-brand-500 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-900"}`}>
+                {code.toUpperCase()}
+              </button>
+            ))}
+          </div>
           <button data-tour="palette" onClick={() => setPaletteOpen(true)} aria-label="เปิด command palette (Ctrl+K)"
             className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
             <Command size={12}/><span className="num text-[10px]">Ctrl K</span>

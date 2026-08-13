@@ -22,6 +22,11 @@ export function computeQualityScore(colAnalysis, totalRows, dupeCount) {
 
   // ── 2. Uniqueness (20 pts) ────────────────────────────
   const dupePct       = totalRows > 0 ? dupeCount / totalRows : 0;
+  /* A file that is 99% duplicate rows previously scored 80/100 (grade B): it
+     lost all 20 uniqueness points but kept 50 from consistency, validity and
+     timeliness, none of which can detect duplication. Heavy duplication is not
+     a 20-point problem, it invalidates the dataset — so past 30% it also
+     scales the whole score down. */
   const uniquenessScore = Math.max(0, 1 - dupePct * 2) * 20;
 
   // ── 3. Consistency (25 pts) ───────────────────────────
@@ -51,18 +56,38 @@ export function computeQualityScore(colAnalysis, totalRows, dupeCount) {
   }
 
   // ── 5. Timeliness (10 pts) ────────────────────────────
-  // If no date column found, award full points (can't penalise)
+  /* Previously: full marks when no date column exists, "can't penalise".
+     That hands 10 free points to most files and makes the score less able to
+     discriminate. A dimension that cannot be assessed is excluded from the
+     total instead of being awarded. */
+  // If no date column found, this dimension is NOT SCORED (see rescale below)
   const dateCols = colAnalysis.filter(c =>
     c.col?.toLowerCase().match(/date|time|created|updated|at$/)
   );
-  const timelinessScore = dateCols.length === 0 ? 10 : (() => {
-    // Give 10 pts — date detection was present
-    return 10;
-  })();
+  /* Timeliness returned a constant 10 whether or not a date column existed —
+     it could not fail, so it was 10 points of pure inflation on every file.
+     Now it is scored only when there IS a date column, and the total is
+     rescaled over the dimensions that were actually assessed. */
+  const timelinessApplies = dateCols.length > 0;
+  const timelinessScore = timelinessApplies ? 10 : 0;
+  const maxPossible = 30 + 20 + 25 + 15 + (timelinessApplies ? 10 : 0);
 
-  const total = Math.round(
-    completenessScore + uniquenessScore + consistencyScore + validityScore + timelinessScore
-  );
+  const rawTotal = completenessScore + uniquenessScore + consistencyScore
+                 + validityScore + timelinessScore;
+
+  /* Heavy duplication is not a 20-point problem — it invalidates the file.
+     A 99%-duplicate dataset previously scored 80/100 (grade B) because it
+     kept all 50 points from consistency, validity and timeliness, none of
+     which can detect duplication. Past 30% duplicate rows the whole score is
+     scaled down so the grade reflects a dataset nobody should analyse. */
+  const dupePenalty = dupePct > 0.3 ? Math.max(0.25, 1 - (dupePct - 0.3)) : 1;
+
+  /* Same for completeness: past 40% missing the file is not a B-grade file
+     with a low completeness score, it is unusable. */
+  const missPct = totalCells > 0 ? missingCells / totalCells : 0;
+  const missPenalty = missPct > 0.4 ? Math.max(0.3, 1 - (missPct - 0.4)) : 1;
+
+  const total = Math.round((rawTotal / maxPossible) * 100 * dupePenalty * missPenalty);
 
   // ── Grade ─────────────────────────────────────────────
   const grade = total >= 90 ? "A" : total >= 75 ? "B" : total >= 60 ? "C" : total >= 45 ? "D" : "F";

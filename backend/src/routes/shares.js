@@ -47,7 +47,15 @@ export function mountShareRoutes(app) {
       }
       await R.incrementShareViewCount(req.params.token);
       const data = { ...report };
+      /* getSharedReport does SELECT sr.*, so the row carries every column of
+         shared_reports. Only password_hash was stripped, which meant a public
+         link handed the owner's user_id and the internal analysis_id to anyone
+         holding the URL. Neither is used by SharePage — view_count is, and
+         stays. */
       delete data.password_hash;
+      delete data.user_id;
+      delete data.analysis_id;
+      delete data.id;
       if (data.stats_json) data.stats_json = JSON.parse(data.stats_json);
       if (data.chart_config) data.chart_config = JSON.parse(data.chart_config);
       res.json(data);

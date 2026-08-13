@@ -28,6 +28,7 @@ import { parse }  from "csv-parse";
 import ExcelJS   from "exceljs";
 import { Readable } from "stream";
 import { serviceLogger } from "../logger.js";
+import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
          decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
 
@@ -81,6 +82,33 @@ class FreqCounter {
   get unique() { return this.freq.size; }
 }
 
+/**
+ * A compact fingerprint of an ENTIRE row.
+ *
+ * Duplicate detection used to hash only the first four columns "to save
+ * memory". On a wide export that is catastrophically wrong: an Amazon sales
+ * file whose first columns are date, region, category and channel reported
+ * 111,152 duplicates out of 113,036 rows — 98% — when the true count was
+ * near zero, because the row is made unique by an order id further along.
+ *
+ * Hashing every cell fixes the correctness problem; hashing to a 64-bit
+ * string rather than storing the row keeps the memory saving that motivated
+ * the shortcut. FNV-1a over two offsets, so a collision needs both to clash.
+ */
+function rowFingerprint(row) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < row.length; i++) {
+    const cell = String(row[i] ?? "");
+    for (let j = 0; j < cell.length; j++) {
+      h1 ^= cell.charCodeAt(j); h1 = Math.imul(h1, 0x01000193) >>> 0;
+      h2 = (h2 + cell.charCodeAt(j)) >>> 0; h2 = Math.imul(h2, 0x85ebca6b) >>> 0;
+    }
+    h1 ^= 0x7c; h1 = Math.imul(h1, 0x01000193) >>> 0;   // cell separator
+    h2 = (h2 ^ 0x7c) >>> 0;
+  }
+  return `${h1.toString(36)}:${h2.toString(36)}`;
+}
+
 // ── Reservoir sampler (keep N random rows for preview) ────
 class ReservoirSampler {
   constructor(k = 5) { this.k = k; this.reservoir = []; this.n = 0; }
@@ -109,6 +137,22 @@ function makeAccumulators(headers) {
     reservoir:   [],
     reservoirCap: 10_000,
     overflowQ:   false,
+    /* Trend sums over EVERY row in file order.
+       autoForecast fitted its line to sampleRows — a reservoir SAMPLE in
+       sampling order — which destroys the time sequence. On the bundled
+       sales.csv the real columns trend at R2 0.80-0.85, but fitted to 5
+       shuffled rows they came out at 0.02-0.05, so nothing cleared the
+       0.5 threshold and the forecast tab was silently empty. Six numbers
+       per column is all a least-squares line needs, and costs no memory. */
+    /* After a column has shown its hand, stop guessing on every cell.
+       parseFlexibleDate runs FIRST on every value — necessary, because
+       parseFloat("2026-01-14") is 2026 and would leak dates into numeric
+       stats. But on a 113k x 18 export that is 2 million date attempts,
+       most on columns like "Completed" or "ORD-99213" that were never
+       going to be dates. Once SNIFF_ROWS values have gone by with no date
+       at all, skip the attempt for the rest of the column. */
+    sniffed: 0, dateHopeless: false,
+    trendN: 0, trendSx: 0, trendSy: 0, trendSxx: 0, trendSxy: 0, trendSyy: 0,
   }));
 }
 
@@ -119,7 +163,12 @@ function updateAccumulator(acc, value) {
   // v20: dates FIRST — parseFloat("2026-01-14") is 2026, which used to
   // leak date columns into numeric stats. Original string still feeds the
   // frequency table so top-values remain what the user typed.
-  const d = parseFlexibleDate(value);
+  const d = acc.dateHopeless ? null : parseFlexibleDate(value);
+  if (!acc.dateHopeless) {
+    acc.sniffed++;
+    // 200 values with not one date means this column has no dates in it.
+    if (acc.sniffed >= 200 && acc.dateCount === 0) acc.dateHopeless = true;
+  }
   if (d) {
     acc.dateCount++;
     if (d.be) acc.beCount++;
@@ -135,6 +184,10 @@ function updateAccumulator(acc, value) {
   if (n !== null) {
     acc.numericCount++;
     acc.onlineStat.update(n);
+    // x is the row position, so the fitted line is a trend over the file.
+    const x = ++acc.trendN;
+    acc.trendSx += x; acc.trendSy += n;
+    acc.trendSxx += x * x; acc.trendSxy += x * n; acc.trendSyy += n * n;
     acc.freqCounter.update(value);
     if (acc.reservoir.length < acc.reservoirCap) acc.reservoir.push(n);
     else acc.overflowQ = true;
@@ -168,6 +221,12 @@ function finalizeColumn(col, acc) {
       min: s.min, max: s.max, avg: s.avg, median: q2,
       stdDev: s.stdDev, sum: s.sum, q1, q3, iqr, outlierCount,
       quantileApprox: acc.overflowQ,
+      /* Exposed so autoForecast can fit a trend over the whole column in
+         order, rather than over a shuffled sample of it. */
+      trend: acc.trendN >= 4 ? {
+        n: acc.trendN, sx: acc.trendSx, sy: acc.trendSy,
+        sxx: acc.trendSxx, sxy: acc.trendSxy, syy: acc.trendSyy,
+      } : null,
     };
   } else {
     const top = acc.freqCounter.top(10);
@@ -204,6 +263,7 @@ async function streamCSV(buffer) {
     let dupeCount  = 0;
     const dupeSet  = new Set();
     const sampler  = new ReservoirSampler(5);
+    let pairs = null;   // built once headers are known
     const readable = Readable.from(text);
 
     const parser = parse({ bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter });
@@ -213,9 +273,24 @@ async function streamCSV(buffer) {
       if (row.every(v => v === "")) return; // ",,," lines are not data (parity with XLSX)
       totalRows++;
       sampler.update(row);
-      row.forEach((val, i) => { if (accs[i]) updateAccumulator(accs[i], val); });
-      // Duplicate detection (hash first 4 cols to save memory)
-      const key = row.slice(0, 4).join("|||");
+      /* Walk the HEADER, not the row. A row shorter than the header is normal
+         in real exports — trailing empty fields get dropped on the way out of
+         Excel — and row.forEach simply never visits those cells, so they were
+         invisible rather than missing. Measured: a 5-column file where two
+         rows were short reported 1 missing cell instead of 6, and the quality
+         grade rose because completeness was scored against a shrunken
+         denominator. */
+      for (let i = 0; i < accs.length; i++) {
+        if (accs[i]) updateAccumulator(accs[i], i < row.length ? row[i] : "");
+      }
+        /* Correlations over every row, not over the five-row sample. */
+        if (pairs) {
+          pairs.update(accs.map((a, i) => {
+            if (!a || a.dateCount > a.totalCount * 0.5) return null;   // dates are not measurements
+            return i < row.length ? parseFlexibleNumber(row[i]) : null;
+          }));
+        }
+      const key = rowFingerprint(row);
       if (dupeSet.has(key)) dupeCount++;
       else dupeSet.add(key);
     };
@@ -228,6 +303,7 @@ async function streamCSV(buffer) {
       skipped = hIdx;
       headers = finalizeHeaders(pre[hIdx]);
       accs    = makeAccumulators(headers);
+      pairs   = new PairAccumulator(headers.length);
       for (let j = hIdx + 1; j < pre.length; j++) ingest(pre[j]);
       pre = null;
     };
@@ -249,6 +325,7 @@ async function streamCSV(buffer) {
       }
       const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
       resolve({ headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+             pairwise: pairs ? buildCorrelation(headers, colAnalysis, pairs) : null,
                 normalization: { encoding, delimiter, skippedPreHeaderRows: skipped } });
     });
 
@@ -322,6 +399,7 @@ async function streamXLSX(buffer) {
   const colCount = headers.length;
 
   let totalRows = 0, dupeCount = 0;
+  const pairs = new PairAccumulator(headers.length);
   const accs    = makeAccumulators(headers);
   const sampler = new ReservoirSampler(5);
   const dupeSet = new Set();
@@ -334,14 +412,23 @@ async function streamXLSX(buffer) {
 
     totalRows++;
     sampler.update(row);
-    row.forEach((val, i) => { if (accs[i]) updateAccumulator(accs[i], val); });
-    const key = row.slice(0, 4).join("|||");
+    // Same as the CSV path: walk the header width so cells absent from a
+    // short row count as missing rather than vanishing.
+    for (let i = 0; i < accs.length; i++) {
+      if (accs[i]) updateAccumulator(accs[i], i < row.length ? row[i] : "");
+    }
+      pairs.update(accs.map((a, ci) => {
+        if (!a || a.dateCount > a.totalCount * 0.5) return null;
+        return ci < row.length ? parseFlexibleNumber(row[ci]) : null;
+      }));
+    const key = rowFingerprint(row);
     if (dupeSet.has(key)) dupeCount++;
     else dupeSet.add(key);
   }
 
   const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
   return { headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+           pairwise: buildCorrelation(headers, colAnalysis, pairs),
            normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: hIdx } };
 }
 

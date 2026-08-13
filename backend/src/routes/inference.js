@@ -15,6 +15,7 @@
  */
 import { requireAuth } from "../auth.js";
 import { serviceLogger } from "../logger.js";
+import { parseAllRows } from "../services/fullRows.js";
 import {
   independentTTest, pairedTTest, oneWayAnova, chiSquareTest,
   pearsonCorrelation, linearRegression, cronbachAlpha,
@@ -82,7 +83,19 @@ export function mountInferenceRoutes(app) {
       if (!ds?.version) return res.status(404).json({ error: "Dataset not found" });
 
       const buffer = await getVersionBytes(ds.version);
-      const { sampleRows, headers } = await parseFileStreaming(buffer, ds.version.file_name);
+      /* Every row, not sampleRows.
+         sampleRows is a five-row reservoir sample. Running a t-test on it gave
+         "each group needs at least 2 values" on a 600-respondent survey — and
+         where it did not refuse, it would have produced a p-value from five
+         rows that a student might put in a thesis. */
+      const { headers, rows: allRows } = parseAllRows(buffer, ds.version.file_name);
+      if (!allRows) {
+        return res.status(415).json({
+          error: "การทดสอบทางสถิติรองรับเฉพาะไฟล์ CSV — กรุณาบันทึกเป็น CSV ก่อน",
+          errorEn: "statistical tests currently support CSV only — export the sheet as CSV first",
+        });
+      }
+      const sampleRows = allRows;
 
       const { test, valueColumn, groupColumn, xColumn, yColumn, beforeColumn, afterColumn, itemColumns } = req.body || {};
       let result;

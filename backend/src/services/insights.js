@@ -29,6 +29,8 @@ const fmt = (n) =>
     : n.toFixed(2)
     : String(n);
 
+import { isIndexColumn } from "../analyze.js";
+
 export function generateInsights({ colAnalysis = [], totalRows = 0, dupeCount = 0, corr = null, forecasts = [] } = {}) {
   const out = [];
   const push = (id, severity, icon, title, detail, metric = null) =>
@@ -95,7 +97,13 @@ export function generateInsights({ colAnalysis = [], totalRows = 0, dupeCount = 
   // ── 5. Likely ID columns (high-cardinality text) ────────
   for (const c of colAnalysis) {
     if (c.type !== "text" || !c.count || c.count <= 20) continue;
-    if (c.unique / c.count >= 0.95) {
+    /* Uniqueness alone is not evidence of an ID. Customer names, free-text
+       survey answers, product descriptions and addresses are all naturally
+       near-unique, and a thesis with open-ended responses had DAB announcing
+       that the responses were an ID column. Require the NAME to look like an
+       identifier too — the same rule the correlation matrix uses — so the
+       claim rests on something more than cardinality. */
+    if (c.unique / c.count >= 0.95 && isIndexColumn(c.col, [])) {
       push(`idcol:${c.col}`, "info", "🆔",
         `"${c.col}" น่าจะเป็นรหัส (ID)`,
         `ค่าไม่ซ้ำ ${c.unique.toLocaleString()} จาก ${c.count.toLocaleString()} แถว (${((c.unique / c.count) * 100).toFixed(0)}%) — ไม่เหมาะกับการทำกราฟแบบจัดกลุ่ม`);

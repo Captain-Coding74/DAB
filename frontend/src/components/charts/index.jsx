@@ -92,7 +92,23 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
   // parseFloat over every cell is the expensive part of this component.
   const { headers, data } = React.useMemo(() => {
     const hs = colAnalysis.map(c => c.col);
-    return { headers: hs, data: toChartData(hs, sampleRows).slice(0, 12) };
+    const shaped = toChartData(hs, sampleRows);
+
+    /* sampleRows is a bounded RESERVOIR SAMPLE — random rows in random order,
+       not the file's order. Slicing it unsorted produced charts that looked
+       like the data was scrambled: months running 2, 6, 3 and category labels
+       repeating along the axis. Sort by the x-axis column before slicing so
+       the series reads left to right. */
+    const xCol = colAnalysis.find(c => c.type === "text") || colAnalysis[0];
+    const key  = xCol?.col;
+    if (key) {
+      shaped.sort((a, b) => {
+        const av = a[key], bv = b[key];
+        if (typeof av === "number" && typeof bv === "number") return av - bv;
+        return String(av).localeCompare(String(bv), "th");
+      });
+    }
+    return { headers: hs, data: shaped.slice(0, 12) };
   }, [colAnalysis, sampleRows]);
 
   const numCols = colAnalysis.filter(c => c.type === "numeric");
@@ -106,7 +122,34 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
 
 
   const xKey     = lblCol?.col || headers[0];
-  const yKeys    = numCols.slice(0, 3).map(c => c.col);
+  /* Not simply the first three numeric columns.
+     Two things went wrong with that on real files:
+       1. An index column (month, year, id, no.) is a POSITION, not a
+          measurement. Plotting it as a series is meaningless, and it steals
+          one of the three slots.
+       2. Series on wildly different scales flatten each other. With revenue
+          at ~2400 and promo_spend at ~20, promo_spend renders as a line along
+          the axis and looks like zero — the data is there, it is just
+          invisible. Prefer columns of comparable magnitude so every plotted
+          series is actually readable. */
+  const INDEXY = /^(month|year|day|week|quarter|period|no\.?|id|index|ลำดับ|เดือน|ปี|วันที่)$/i;
+  const plottable = numCols.filter(c => !INDEXY.test(String(c.col).trim()));
+  const candidates = plottable.length ? plottable : numCols;
+
+  const magnitude = (c) => {
+    const m = Math.max(Math.abs(c.max ?? 0), Math.abs(c.min ?? 0), Math.abs(c.avg ?? 0));
+    return m > 0 ? Math.log10(m) : 0;
+  };
+  const anchor = candidates.reduce((a, b) => (magnitude(b) > magnitude(a) ? b : a), candidates[0]);
+  const yKeys = candidates
+    /* One order of magnitude, not two. At 2 the filter still admitted a
+       series 100x smaller than the anchor, which renders as a 1%-tall sliver
+       along the axis and reads as zero — measured on a real file: revenue
+       ~2400 next to promo_spend ~28 passed the check and was still invisible.
+       One readable series beats three where two cannot be seen. */
+    .filter(c => c === anchor || Math.abs(magnitude(c) - magnitude(anchor)) < 1)
+    .slice(0, 3)
+    .map(c => c.col);
 
   // Pie holds meaning up to ~6 slices; past that, colours cycle and thin
   // slices become indistinguishable. Top 5 by value, remainder rolled up.

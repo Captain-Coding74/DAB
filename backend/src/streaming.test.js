@@ -16,6 +16,58 @@ async function xlsxBuffer(build) {
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
+describe("missing values in short rows", () => {
+  test("cells absent from a short row count as missing", async () => {
+    // Regression: ingest walked the ROW, so a row shorter than the header
+    // never visited the trailing columns and their absent cells were invisible
+    // rather than missing. Real exports drop trailing empty fields constantly,
+    // so a 113k-row file reported MISSING = 0 and an inflated quality grade.
+    const csv = ["a,b,c,d,e", "1,2,3,4,5", "1,2,3", "1,2,3,4,5", "1,2", "1,2,3,4,"].join("\n");
+    const res = await parseFileStreaming(Buffer.from(csv), "short.csv");
+    const byCol = Object.fromEntries(res.colAnalysis.map(c => [c.col, c.missing]));
+    assert.equal(byCol.c, 1, "one row stops before c");
+    assert.equal(byCol.d, 2);
+    assert.equal(byCol.e, 3, "two short rows plus one explicit empty");
+    assert.equal(res.colAnalysis.reduce((s, c) => s + (c.missing || 0), 0), 6);
+  });
+
+  test("a fully populated file still reports no missing", async () => {
+    const csv = ["a,b,c", "1,2,3", "4,5,6"].join("\n");
+    const res = await parseFileStreaming(Buffer.from(csv), "full.csv");
+    assert.equal(res.colAnalysis.reduce((s, c) => s + (c.missing || 0), 0), 0);
+  });
+});
+
+describe("duplicate detection", () => {
+  test("a wide export with repeating leading columns is NOT all duplicates", async () => {
+    // Regression: duplicates were keyed on the first FOUR columns only. A real
+    // Amazon sales export beginning date,region,category,channel reported
+    // 111,152 duplicates out of 113,036 rows — 98% — because those four repeat
+    // constantly while an order id further along makes each row unique.
+    const lines = ["date,region,category,channel,sku,qty"];
+    let id = 0;
+    for (const d of ["2024-01-05", "2024-01-06"])
+      for (const r of ["North", "South"])
+        for (const c of ["Books", "Toys"])
+          for (let k = 0; k < 10; k++) lines.push(`${d},${r},${c},Retail,SKU-${++id},${k}`);
+    const res = await parseFileStreaming(Buffer.from(lines.join("\n")), "wide.csv");
+    assert.equal(res.totalRows, 80);
+    assert.equal(res.dupeCount, 0, "every row is unique beyond column four");
+  });
+
+  test("genuine duplicates are still counted", async () => {
+    const csv = ["a,b,c", "1,2,3", "1,2,3", "4,5,6", "1,2,3"].join("\n");
+    const res = await parseFileStreaming(Buffer.from(csv), "d.csv");
+    assert.equal(res.dupeCount, 2);
+  });
+
+  test("rows differing only in the last column are distinct", async () => {
+    const csv = ["a,b,c,d,e", "1,1,1,1,X", "1,1,1,1,Y", "1,1,1,1,Z"].join("\n");
+    const res = await parseFileStreaming(Buffer.from(csv), "t.csv");
+    assert.equal(res.dupeCount, 0);
+  });
+});
+
 describe("XLSX parsing (exceljs)", () => {
   test("produces identical stats to the equivalent CSV", async () => {
     const buf = await xlsxBuffer(ws => {

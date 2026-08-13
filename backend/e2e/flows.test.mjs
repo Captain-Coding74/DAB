@@ -241,6 +241,18 @@ describe("E2E · Journey B — registered: analyze → share → history → del
     assert.ok(d.analysis.includes("[MOCK]"));
     assert.equal(d.title, "Q3 report");
   });
+  test("a public share leaks no internal identifiers", async () => {
+    // getSharedReport does SELECT sr.*, so the row carries every column of
+    // shared_reports. Only password_hash was stripped, which handed the
+    // owner's user_id and the internal analysis_id to anyone with the link.
+    const r = await get(`/api/public/share/${shareToken}`, null, { "X-Share-Password": "hunter2" });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    for (const leak of ["user_id", "analysis_id", "password_hash", "id"])
+      assert.equal(body[leak], undefined, `public share must not expose ${leak}`);
+    assert.ok(body.analysis !== undefined, "the report itself is still returned");
+    assert.equal(typeof body.view_count, "number", "view_count is used by the page");
+  });
 
   test("the report appears in history, then delete removes it", async () => {
     const list = await (await get("/api/history", token)).json();

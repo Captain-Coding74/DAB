@@ -10,7 +10,7 @@
  * grounds its report in checked statistics instead of re-deriving them.
  */
 import { analyzeColumns, detectMissing, detectDuplicates,
-         correlationMatrix, autoForecast, recommendCharts,
+         correlationMatrix, autoForecast, autoForecastFromAnalysis, recommendCharts,
          buildSummaryString } from "../analyze.js";
 import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.js";
 import { computeQualityScore } from "./qualityScore.js";
@@ -20,12 +20,21 @@ import { generateInsights }    from "./insights.js";
  * Everything derivable from a parsed file, in one call.
  * Input: the output of parseFileStreaming().
  */
-export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows }) {
+export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null }) {
   const missing     = colAnalysis.filter(c => c.missing > 0)
     .map(c => ({ col: c.col, missing: c.missing, total: totalRows, pct: c.missingPct }));
   const dupes       = { count: dupeCount };
-  const corr        = correlationMatrix(headers, sampleRows);
-  const forecasts   = autoForecast(headers, sampleRows);
+  /* Prefer the exact matrix built over EVERY row during parsing.
+     correlationMatrix(headers, sampleRows) correlates a FIVE-ROW reservoir
+     sample: with n=5 two unrelated columns clear the 0.7 "strong" threshold
+     20% of the time, so an 8-column file invented roughly six findings. */
+  const corr        = pairwise ?? correlationMatrix(headers, sampleRows);
+  /* Prefer the full-column sums: autoForecast(headers, sampleRows) fits its
+     line to a reservoir SAMPLE in sampling order, which had every bundled
+     demo file reporting no trend at all despite R2 around 0.8 in the real
+     data. Fall back only if the parser produced no trend sums. */
+  const fromAnalysis = autoForecastFromAnalysis(colAnalysis);
+  const forecasts   = fromAnalysis.length ? fromAnalysis : autoForecast(headers, sampleRows);
   const chartRecs   = recommendCharts(colAnalysis);
   const autoCharts  = autoChartConfig(colAnalysis);
   const suggestions = generatePromptSuggestions(colAnalysis, null);
@@ -39,17 +48,40 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
  * The analysis prompt. v12: deterministic findings ride along as verified
  * facts — the model comments on and extends them rather than guessing.
  */
+/** A question longer than this is not a question. */
+const MAX_QUESTION = 500;
+
 export function buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle, sampleRows }) {
+  /* req.body.question reached the prompt unbounded, and express.json allows a
+     1 MB body — so a single request could bury the statistics under a wall of
+     text and burn the AI budget on every call. Capped here rather than in the
+     routes so every caller is covered. */
+  const q = String(question ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION) || "สรุปภาพรวมข้อมูลทั้งหมด";
   const { quality, summaryStr, insights } = bundle;
   const findings = insights?.length
     ? `\nผลตรวจเชิงสถิติที่ยืนยันแล้ว (อ้างอิงได้เลย):\n` +
       insights.slice(0, 5).map(i => `- [${i.severity}] ${i.title} — ${i.detail}`).join("\n") + "\n"
     : "";
   return (
-    `คุณคือนักวิเคราะห์ข้อมูลมืออาชีพ วิเคราะห์ข้อมูลนี้แล้ว${question}\n\n` +
+    `คุณคือนักวิเคราะห์ข้อมูลมืออาชีพ วิเคราะห์ข้อมูลนี้แล้ว${q}\n\n` +
     `Dataset: ${totalRows.toLocaleString()} rows | ${headers.length} cols${fileType ? ` | ${fileType}` : ""} | quality: ${quality?.score || "?"}/100\n\n` +
-    `${summaryStr}\n${findings}\nSample:\n${headers.join(",")}\n${sampleRows.map(r => r.join(",")).join("\n")}\n\n` +
-    `วิเคราะห์ภาษาไทย 4 ส่วน:\n1)สรุปภาพรวม\n2)สิ่งน่าสนใจ (เชื่อมโยงกับผลตรวจที่ยืนยันแล้วถ้ามี)\n3)ปัญหาที่พบ\n4)คำแนะนำ`
+    /* The sample block used to be labelled just "Sample:", which reads as "here
+         is the start of the data". It is a RANDOM reservoir sample of five rows,
+         in sampling order, so a model narrating it ("January started strong…")
+         would be inventing a sequence that does not exist. Say what it is. */
+      `${summaryStr}\n${findings}\n` +
+      `ตัวอย่างข้อมูล ${sampleRows.length} แถว (สุ่มมาจาก ${totalRows.toLocaleString()} แถว — ไม่ใช่แถวแรกและไม่เรียงตามลำดับ ห้ามใช้สรุปแนวโน้มหรือลำดับเวลา):\n` +
+      `${headers.join(",")}\n${sampleRows.map(r => r.join(",")).join("\n")}\n\n` +
+    /* ADR-0001 says the statistics are deterministic and the model only
+         interprets them. The prompt handed over verified numbers but never said
+         the model must not compute its own, so it could quietly produce an
+         average or a percentage nobody checked — indistinguishable, to the
+         reader, from the ones this codebase proved correct. */
+      `กติกา:\n` +
+      `- ใช้เฉพาะตัวเลขที่ให้มาข้างต้น ห้ามคำนวณตัวเลขใหม่เอง และห้ามเดาค่าที่ไม่มีในข้อมูล\n` +
+      `- ถ้าจะอ้างตัวเลข ต้องเป็นตัวเลขที่ปรากฏด้านบนเท่านั้น\n` +
+      `- ถ้าข้อมูลไม่พอจะสรุป ให้บอกตรง ๆ ว่าไม่พอ ดีกว่าเดา\n\n` +
+      `วิเคราะห์ภาษาไทย 4 ส่วน:\n1)สรุปภาพรวม\n2)สิ่งน่าสนใจ (เชื่อมโยงกับผลตรวจที่ยืนยันแล้วถ้ามี)\n3)ปัญหาที่พบ\n4)คำแนะนำ`
   );
 }
 

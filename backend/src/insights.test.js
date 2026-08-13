@@ -16,6 +16,104 @@ const textCol = (over = {}) => ({
   unique: 3, top: [{ value: "A", count: 40, pct: "40.0" }], ...over,
 });
 
+import { correlationMatrix, isIndexColumn } from "./analyze.js";
+
+describe("the streaming correlation path applies the same exclusions", () => {
+  test("index and date columns stay out of the pairwise matrix", async () => {
+    // Regression: buildCorrelation in services/pairwise.js replaced
+    // correlationMatrix but filtered on type alone, so Day, Year and
+    // Customer_ID walked straight back into the matrix that analyze.js had
+    // carefully excluded them from. Two paths, one rule.
+    const { parseFileStreaming } = await import("./services/streaming.js");
+    const rows = ["Day,Year,Customer_ID,Unit_Cost,Revenue"];
+    for (let i = 0; i < 300; i++)
+      rows.push(`${(i % 28) + 1},${2020 + (i % 5)},C${i},${5 + (i % 20)},${100 + i}`);
+    const res = await parseFileStreaming(Buffer.from(rows.join("\n")), "s.csv");
+    const cols = res.pairwise?.cols ?? [];
+    for (const bad of ["Day", "Year", "Customer_ID"])
+      assert.ok(!cols.includes(bad), `${bad} must not be correlated`);
+    assert.ok(cols.includes("Unit_Cost") && cols.includes("Revenue"), "real measures stay");
+  });
+
+  test("every reported correlation carries its true sample size", async () => {
+    // The old path correlated a FIVE-row reservoir sample regardless of file
+    // size, where unrelated columns clear |r|>=0.7 about 20% of the time.
+    const { parseFileStreaming } = await import("./services/streaming.js");
+    const rows = ["a,b"];
+    for (let i = 0; i < 2000; i++) rows.push(`${Math.sin(i)},${Math.sin(i) * 3 + 1}`);
+    const res = await parseFileStreaming(Buffer.from(rows.join("\n")), "n.csv");
+    const strong = res.pairwise?.strong ?? [];
+    assert.ok(strong.length > 0, "a real relationship should be found");
+    assert.equal(strong[0].n, 2000, "n must be the whole file, not the sample");
+  });
+});
+
+
+describe("the ID-column insight needs more than uniqueness", () => {
+  test("a real identifier is flagged", () => {
+    for (const col of ["Customer_ID", "order_id", "SKU"]) {
+      const r = generateInsights({
+        colAnalysis: [{ col, type: "text", count: 1000, missing: 0, missingPct: "0.0", unique: 1000, top: [] }],
+        totalRows: 1000, dupeCount: 0, corr: null, forecasts: [],
+      });
+      assert.ok(r.some(x => /รหัส \(ID\)/.test(x.title)), `${col} should be flagged`);
+    }
+  });
+
+  test("names and free-text answers are NOT called identifiers", () => {
+    // Uniqueness alone flagged customer names, open-ended survey responses,
+    // product names and addresses as ID columns — all naturally near-unique
+    // and none of them identifiers. A thesis with open-ended questions had
+    // DAB announcing the responses were an ID column.
+    for (const [col, unique] of [["ชื่อลูกค้า", 980], ["ความคิดเห็น", 990], ["Product_Name", 960], ["Address", 1000]]) {
+      const r = generateInsights({
+        colAnalysis: [{ col, type: "text", count: 1000, missing: 0, missingPct: "0.0", unique, top: [] }],
+        totalRows: 1000, dupeCount: 0, corr: null, forecasts: [],
+      });
+      assert.ok(!r.some(x => /รหัส \(ID\)/.test(x.title)), `${col} must not be called an ID`);
+    }
+  });
+});
+
+
+describe("identifier columns, without eating real words", () => {
+  test("identifiers are excluded", () => {
+    for (const n of ["id", "Customer_ID", "CustomerID", "user_id", "OrderID",
+                     "SKU", "order-id", "order_code", "รหัสลูกค้า", "เลขที่ใบสั่ง"])
+      assert.equal(isIndexColumn(n, [101, 102, 103]), true, `${n} should be excluded`);
+  });
+
+  test("real words ending in -id keep their column", () => {
+    // A plain /id$/ rule silently dropped every one of these. In a science
+    // thesis Humid, Liquid, Solid and Acid are measurements, and losing them
+    // with no message is worse than the noise the rule was meant to remove.
+    for (const n of ["Humid", "Liquid", "Solid", "Valid", "Fluid", "Acid",
+                     "Rapid", "Paid", "Grid", "Lipid", "Void", "Humidity"])
+      assert.equal(isIndexColumn(n, [10, 25, 13]), false, `${n} must be kept`);
+  });
+});
+
+
+describe("date columns never enter a correlation matrix", () => {
+  test("a Date column is excluded by name", () => {
+    for (const n of ["Date", "Order_Date", "Ship_Date", "created_at", "วันที่"])
+      assert.equal(isIndexColumn(n, [2024, 2024, 2023]), true, `${n} should be excluded`);
+    for (const n of ["Revenue", "Unit_Cost", "Profit"])
+      assert.equal(isIndexColumn(n, [100, 250, 90]), false, `${n} should be kept`);
+  });
+
+  test("a date-shaped column is excluded even under an odd name", () => {
+    // parseFloat("2024-01-05") is 2024, so an unguarded date column reports a
+    // confident correlation computed on the YEAR alone — 1/365th of the data.
+    const headers = ["ts_field", "Revenue"];
+    const rows = Array.from({ length: 40 }, (_, i) =>
+      [`202${Math.floor(i / 12)}-0${(i % 9) + 1}-15`, 1000 - i * 10]);
+    const c = correlationMatrix(headers, rows);
+    assert.ok(!c || !c.cols.includes("ts_field"), "a date-shaped column must not be correlated");
+  });
+});
+
+
 describe("generateInsights", () => {
   test("returns empty array for empty input", () => {
     assert.deepEqual(generateInsights({}), []);

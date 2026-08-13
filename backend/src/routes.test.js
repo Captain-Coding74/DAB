@@ -190,6 +190,24 @@ describe("Inference routes (v21.2)", () => {
     assert.deepEqual(res.body.groupNames.sort(), ["A", "B"]);
   });
 
+  test("a large survey uses EVERY row, not the five-row sample", async () => {
+    // Regression: the route read sampleRows, a bounded reservoir sample. A
+    // 600-respondent survey came back "each group needs at least 2 values",
+    // and where it did not refuse it would have returned a p-value computed
+    // from five rows.
+    const lines = ["กลุ่ม,คะแนน"];
+    for (let i = 0; i < 300; i++) lines.push(`ก,${50 + (i % 10)}`);
+    for (let i = 0; i < 300; i++) lines.push(`ข,${62 + (i % 10)}`);
+    const up = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(lines.join("\n")), "survey.csv");
+    assert.equal(up.status, 201, JSON.stringify(up.body));
+
+    const res = await auth(agent.post(`/api/inference/${up.body.id}`))
+      .send({ test: "t-test", valueColumn: "คะแนน", groupColumn: "กลุ่ม" });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.n, 600, "all 600 rows must reach the test");
+    assert.ok(res.body.p < 0.001, "a 12-point gap across 600 people is unmissable");
+  });
+
   test("t-test refuses when the grouping column has the wrong number of groups", async () => {
     const res = await auth(agent.post(`/api/inference/${surveyId}`))
       .send({ test: "t-test", valueColumn: "ยอดขาย", groupColumn: "ข้อ1" });
