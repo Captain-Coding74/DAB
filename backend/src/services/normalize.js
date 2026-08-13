@@ -100,11 +100,34 @@ const THAI_MONTHS = {
  *   2-digit ≥ 43  → BE 25xx (BE 2543 = CE 2000; Thai docs write "69" for 2569)
  *   2-digit < 43  → CE 20xx
  */
+/* How far ahead a date may plausibly sit. Wide because expiry dates are a
+   first-class case here — a pharmacy file legitimately carries วันหมดอายุ years
+   out — but not so wide that a misparse survives. */
+const MAX_YEARS_AHEAD = 12;
+
 function normalizeYear(y) {
-  if (y >= 2400 && y <= 2800) return { year: y - 543, be: true };
+  const thisYear = new Date().getUTCFullYear();
+
+  if (y >= 2400 && y <= 2800) {
+    const ce = y - 543;
+    /* BE 2799 became CE 2256 — 230 years out, accepted silently. A four-digit
+       year that lands that far ahead is a misparse, not a date. */
+    if (ce > thisYear + MAX_YEARS_AHEAD) return null;
+    return { year: ce, be: true };
+  }
   if (y >= 1900 && y <= 2200) return { year: y, be: false };
   if (y >= 100) return null;
-  if (y >= 43) return { year: 2500 + y - 543, be: true };
+
+  if (y >= 43) {
+    /* Thai documents write "69" for BE 2569, so a two-digit year usually means
+       25xx. But the same rule sent "95" to CE 2052 and "99" to CE 2056 —
+       decades ahead — when a file writing "95" almost always means 1995. When
+       the Buddhist reading lands implausibly far in the future, the Gregorian
+       19xx reading is the better one. */
+    const beYear = 2500 + y - 543;
+    if (beYear > thisYear + MAX_YEARS_AHEAD) return { year: 1900 + y, be: false };
+    return { year: beYear, be: true };
+  }
   return { year: 2000 + y, be: false };
 }
 
@@ -260,11 +283,36 @@ export function detectHeaderRow(rows, maxScan = 10) {
   return best;
 }
 
-/** Drop trailing empty header cells; name remaining blanks col_i (0-based). */
+/**
+ * Drop trailing empty header cells; name remaining blanks col_i (0-based);
+ * make every name unique.
+ *
+ * Blanks were renamed but DUPLICATES were not, and Excel exports and merged
+ * reports repeat a header constantly. Everything downstream resolves a column
+ * by name — the statistical tests, the fix catalogue, the AI edit path, the
+ * correlation matrix — and every one of them lands on the FIRST match. Two
+ * columns called ยอดขาย with different values (250 and 832.5 in the case that
+ * found this) meant the second was silently unreachable: a user picking it in
+ * the UI got the first one's data, with nothing to indicate the swap.
+ *
+ * Suffixes are 1-based and human-facing, so the second ยอดขาย becomes
+ * "ยอดขาย (2)" — recognisable in a dropdown rather than an opaque col_7.
+ */
 export function finalizeHeaders(cells) {
   let end = cells.length;
   while (end > 0 && cells[end - 1] === "") end--;
+
   const out = [];
-  for (let i = 0; i < end; i++) out.push(cells[i] === "" ? `col_${i}` : cells[i]);
+  const taken = new Set();
+  for (let i = 0; i < end; i++) {
+    const base = cells[i] === "" ? `col_${i}` : cells[i];
+    let name = base, n = 1;
+    /* Keep incrementing until the name is genuinely free. A plain counter
+       reintroduced the very collision this fixes: a file already containing
+       "a (2)" met a duplicate "a", which was renamed to "a (2)" as well. */
+    while (taken.has(name)) name = `${base} (${++n})`;
+    taken.add(name);
+    out.push(name);
+  }
   return out;
 }

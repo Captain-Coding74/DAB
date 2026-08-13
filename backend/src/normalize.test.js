@@ -37,6 +37,77 @@ async function xlsxBuffer(build) {
 }
 
 // ── 1. cleanCell / Thai digits ──────────────────────────────
+describe("column names are unique", () => {
+  test("repeated headers are made distinguishable", () => {
+    // Excel exports and merged reports repeat a header constantly. Everything
+    // downstream resolves a column by NAME — the statistical tests, the fix
+    // catalogue, the AI edit path, the correlation matrix — and all of them
+    // land on the first match, so the second column was unreachable: a user
+    // picking it in the UI silently got the first one's data.
+    assert.deepEqual(finalizeHeaders(["ยอดขาย", "ยอดขาย", "ยอดขาย"]),
+      ["ยอดขาย", "ยอดขาย (2)", "ยอดขาย (3)"]);
+  });
+
+  test("renaming cannot create a NEW collision", () => {
+    // A plain counter reintroduced the bug it fixes: a file already holding
+    // "a (2)" met a duplicate "a", which was also renamed to "a (2)".
+    for (const cells of [["a", "a", "a (2)"], ["a (2)", "a", "a"], ["a", "a (2)", "a", "a (3)", "a"]]) {
+      const out = finalizeHeaders(cells);
+      assert.equal(out.length, new Set(out).size, `collision in ${JSON.stringify(out)}`);
+    }
+  });
+
+  test("names that are already unique are left alone", () => {
+    assert.deepEqual(finalizeHeaders(["a", "b", "c"]), ["a", "b", "c"]);
+    // Case matters in a CSV: Revenue and revenue are different columns.
+    assert.deepEqual(finalizeHeaders(["Revenue", "revenue"]), ["Revenue", "revenue"]);
+  });
+
+  test("blanks are still named and trailing ones still dropped", () => {
+    assert.deepEqual(finalizeHeaders(["a", "", "c"]), ["a", "col_1", "c"]);
+    assert.deepEqual(finalizeHeaders(["", "", ""]), []);
+  });
+});
+
+
+describe("year disambiguation stays plausible", () => {
+  test("two-digit years that would land decades ahead read as the past", () => {
+    // "69" means BE 2569 in Thai documents, so the rule mapped two-digit years
+    // to 25xx. The same rule sent "95" to CE 2052 and "99" to CE 2056 — a 1995
+    // sales record dated thirty years in the future, silently corrupting every
+    // date range and trend built on it.
+    assert.equal(parseFlexibleDate("14/01/95").iso, "1995-01-14");
+    assert.equal(parseFlexibleDate("14/01/99").iso, "1999-01-14");
+    assert.equal(parseFlexibleDate("14/01/90").iso, "1990-01-14");
+  });
+
+  test("two-digit years near today still read as Buddhist Era", () => {
+    assert.equal(parseFlexibleDate("14/01/68").iso, "2025-01-14");
+    assert.equal(parseFlexibleDate("14/01/69").iso, "2026-01-14");
+    assert.equal(parseFlexibleDate("14/01/69").be, true);
+  });
+
+  test("expiry dates a few years out are NOT rejected", () => {
+    // Pharmacy files carry วันหมดอายุ legitimately in the future, so the
+    // plausibility window has to be wide enough to keep them.
+    assert.equal(parseFlexibleDate("30/06/2570").iso, "2027-06-30");
+    assert.equal(parseFlexibleDate("31/12/2575").iso, "2032-12-31");
+  });
+
+  test("a four-digit year landing centuries ahead is refused", () => {
+    // BE 2799 became CE 2256 and was accepted without complaint.
+    assert.equal(parseFlexibleDate("2799-12-31"), null);
+    assert.equal(parseFlexibleDate("2599-01-14"), null);
+  });
+
+  test("the historical cases the parser was built for still hold", () => {
+    assert.equal(parseFlexibleDate("2482-01-01").iso, "1939-01-01");
+    assert.equal(parseFlexibleDate("2543-01-01").iso, "2000-01-01");
+    assert.equal(parseFlexibleDate("๑๔/๐๑/๒๕๖๙").iso, "2026-01-14");
+  });
+});
+
+
 describe("cleanCell + thaiDigitsToArabic", () => {
   test("strips zero-width chars and NBSP", () => {
     assert.equal(cleanCell("\u200Bราคา\u00A0ขาย\uFEFF"), "ราคา ขาย");
