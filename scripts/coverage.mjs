@@ -110,7 +110,14 @@ const COV_FLAGS = "--test --experimental-test-coverage --test-coverage-exclude='
 const TEST_ENV  = "JWT_SECRET=test-secret-32chars-long!!!! JWT_REFRESH_SECRET=test-refresh-32chars-long! NODE_ENV=test";
 
 const backend = run("backend", join(ROOT, "backend"),
-  `${TEST_ENV} node ${COV_FLAGS} src/stats.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/integration.test.js src/routes.test.js`);
+  /* This list was hardcoded and separate from package.json's test script, so
+     every suite added since it was written — inference, PLS-SEM, Kalman,
+     panel, data fixes, storage, prompt, quality — was excluded from the
+     coverage run. Those services then reported as "never loaded by an
+     in-process test" despite having passing tests, and the uncounted-files
+     budget drifted upward for no real reason. Kept in sync by hand for now;
+     the budget failing is the signal to update both. */
+  `${TEST_ENV} node ${COV_FLAGS} src/stats.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js src/integration.test.js src/routes.test.js`);
 
 const frontend = run("frontend", join(ROOT, "frontend"),
   `node ${COV_FLAGS} src/lib/api.test.js src/lib/grade.test.js`);
