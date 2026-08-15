@@ -5,13 +5,13 @@
 import * as R from "../db/repository.js";
 import { requireAuth } from "../auth.js";
 import { cache } from "../services/cache.js";
+import { pageParams } from "../pagination.js";
 
 export function mountHistoryRoutes(app) {
   // ── History ───────────────────────────────────────────────
   app.get("/api/history", requireAuth, async (req, res, next) => {
     try {
-      const limit  = Math.min(parseInt(req.query.limit)||20, 100);
-      const offset = parseInt(req.query.offset)||0;
+      const { limit, offset } = pageParams(req.query, { defaultLimit: 20 });
       const page   = `${Math.floor(offset/limit)}_${limit}`;
       const ck     = `user:${req.user.userId}:history:${page}`;
       let cached   = await cache.get(ck);

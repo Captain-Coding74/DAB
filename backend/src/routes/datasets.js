@@ -13,6 +13,7 @@ import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
+import { pageParams } from "../pagination.js";
 
 const router = express.Router();
 
@@ -47,8 +48,7 @@ function canEdit(role)   { return ["owner", "editor"].includes(role); }
 router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { folderId, starred, trashed, search, workspaceId, view } = req.query;
-    const limit  = Math.min(parseInt(req.query.limit) || 30, 100);
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = pageParams(req.query, { defaultLimit: 30 });
 
     let items, total;
     if (view === "shared") {

@@ -6,6 +6,7 @@ import { requireAuth } from "../auth.js";
 import * as CR from "../db/collabRepository.js";
 import * as DR from "../db/datasetRepository.js";
 import { findUserByUsername } from "../db/repository.js";
+import { pageParams } from "../pagination.js";
 
 const router = express.Router();
 
@@ -100,8 +101,7 @@ router.get("/activity", requireAuth, async (req, res, next) => {
   try {
     const { workspaceId, datasetId } = req.query;
     if (!workspaceId && !datasetId) return res.status(400).json({ error: "workspaceId or datasetId required" });
-    const limit  = Math.min(parseInt(req.query.limit) || 30, 100);
-    const offset = parseInt(req.query.offset) || 0;
+    const { limit, offset } = pageParams(req.query, { defaultLimit: 30 });
     res.json(await CR.getActivityFeed({ workspaceId, datasetId, limit, offset }));
   } catch (err) { next(err); }
 });
