@@ -22,7 +22,9 @@
     "perf:render": "node scripts/perf-render.mjs",
     "audit:gate": "node scripts/audit-gate.mjs",
     "dashboard": "node scripts/dashboard.mjs",
-    "test:browser": "npm run test:browser -w backend"
+    "test:browser": "npm run test:browser -w backend",
+    "perf:load": "node scripts/perf-load.mjs",
+    "perf:leak": "node scripts/perf-load.mjs --leak"
   },
   "devDependencies": {
     "@sparticuz/chromium": "^149.0.0",
