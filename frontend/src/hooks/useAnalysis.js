@@ -12,6 +12,24 @@ import { startSpan } from "../lib/perf";
 
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
 
+/**
+ * A message worth showing a user.
+ *
+ * These handlers printed err.message straight into a toast. For a server error
+ * that is a translated Thai string, but a dropped connection produces the
+ * browser's own "Failed to fetch" / "NetworkError when attempting to fetch
+ * resource" — English, technical, and exactly what a judge would see if the
+ * wifi hiccups mid-demo. Network faults get a Thai message; everything else is
+ * passed through unchanged, since the server already speaks Thai.
+ */
+function friendlyError(err) {
+  const m = String(err?.message || "");
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(m)) {
+    return "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่";
+  }
+  return m || "เกิดข้อผิดพลาด";
+}
+
 export function useAnalysis() {
   const toast              = useAppStore(s => s.toast);
   const currentAnalysis    = useAppStore(s => s.currentAnalysis);
@@ -41,7 +59,7 @@ export function useAnalysis() {
       setCurrentAnalysis({ ...data, fileName: file.name, perceivedMs });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
-    } catch (err) { endSpan(); toast(err.message, "error"); }
+    } catch (err) { endSpan(); toast(friendlyError(err), "error"); }
     finally { setLoading(false); }
   }, [file, toast, setCurrentAnalysis]);
 
@@ -59,7 +77,7 @@ export function useAnalysis() {
       setCurrentAnalysis({ ...data, fileName: displayName || id, perceivedMs });
       toast(`ตรวจเสร็จใน ${data.durationMs} ms — สถิติล้วน ไม่ใช้ AI ⚡`);
       return data;
-    } catch (err) { endSpan(); toast(err.message, "error"); }
+    } catch (err) { endSpan(); toast(friendlyError(err), "error"); }
     finally { setLoading(false); }
   }, [toast, setCurrentAnalysis]);
 
@@ -79,7 +97,7 @@ export function useAnalysis() {
       a.href = url; a.download = `report.${format === "pdf" ? "pdf" : "xlsx"}`; a.click();
       URL.revokeObjectURL(url);
       toast(`${format.toUpperCase()} ดาวน์โหลดแล้ว!`);
-    } catch (err) { toast(err.message, "error"); }
+    } catch (err) { toast(friendlyError(err), "error"); }
     finally { setExporting(null); }
   }, [file, currentAnalysis, toast]);
 
@@ -89,7 +107,7 @@ export function useAnalysis() {
       const data = await postJSON(`/api/analyses/${currentAnalysis.savedId}/share`, { title: file?.name });
       await navigator.clipboard.writeText(data.shareUrl);
       toast("Copy link แล้ว! 🔗");
-    } catch (err) { toast(err.message, "error"); }
+    } catch (err) { toast(friendlyError(err), "error"); }
   }, [currentAnalysis, file, toast]);
 
   return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, runDemo, exportReport, shareReport };

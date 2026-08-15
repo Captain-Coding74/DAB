@@ -7,11 +7,18 @@ import { computeQualityScore } from "../services/qualityScore.js";
 import { computeStatsBundle } from "../services/analysisPipeline.js";
 import { generatePDF, generateExcel } from "../export.js";
 import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
+import { optionalAuth } from "../auth.js";
 
 export function mountExportRoutes(app, { upload }) {
   // v9: exports now share the analyze limiter — PDF generation is CPU-heavy
   // and previously had no limits at all (easy DoS vector).
-  app.post("/api/export/pdf", analyzeLimiter(), speedLimiter(), upload.single("file"), async (req, res, next) => {
+  /* optionalAuth so the rate limiter can key by USER, exactly as
+     /api/analyze does. Without it req.user is undefined, maxByAuth falls to
+     the anonymous allowance of 20, and every signed-in user is capped as if
+     they were anonymous — while everyone behind one office NAT shares a
+     single bucket. Export stays open to anonymous callers by design (the
+     demo needs it); this is about correct accounting, not locking it. */
+  app.post("/api/export/pdf", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
     try {
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,
          forecasts []. A student downloading their report got one that always
@@ -26,7 +33,13 @@ export function mountExportRoutes(app, { upload }) {
     } catch (err) { next(err); }
   });
 
-  app.post("/api/export/excel", analyzeLimiter(), speedLimiter(), upload.single("file"), async (req, res, next) => {
+  /* optionalAuth so the rate limiter can key by USER, exactly as
+     /api/analyze does. Without it req.user is undefined, maxByAuth falls to
+     the anonymous allowance of 20, and every signed-in user is capped as if
+     they were anonymous — while everyone behind one office NAT shares a
+     single bucket. Export stays open to anonymous callers by design (the
+     demo needs it); this is about correct accounting, not locking it. */
+  app.post("/api/export/excel", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
     try {
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,
          forecasts []. A student downloading their report got one that always

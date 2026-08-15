@@ -50,7 +50,6 @@ export function requestMetrics(req, res, next) {
     const isErr = res.statusCode >= 400;
 
     metrics.totalReqs++;
-    if (isErr) metrics.totalErrors++;
 
     if (!metrics.requests[route]) {
       metrics.requests[route] = { count: 0, errors: 0, latencies: [] };
@@ -107,10 +106,10 @@ export async function metricsHandler(req, res) {
 
 // ── Error tracking ────────────────────────────────────────
 export function errorHandler(err, req, res, next) {
-  metrics.totalErrors++;
-  logger.error({ err, url: req.url, method: req.method, userId: req.user?.userId }, "Unhandled error");
 
-  if (res.headersSent) return next(err);
+  /* Headers already sent: the status is out of our hands, so record it as a
+     server fault — that is what a half-written response is. */
+  if (res.headersSent) { metrics.totalErrors++; logger.error({ err, url: req.url }, "Error after response started"); return next(err); }
 
   // v13 (found by E2E): upload rejections are client errors, not server errors.
   // Multer's fileFilter and limit errors were surfacing as 500s in production
@@ -132,6 +131,20 @@ export function errorHandler(err, req, res, next) {
     .test(err.message || "");
 
   const status = err.status || err.statusCode || (isUploadReject ? 400 : 500);
+
+  /* Log AFTER the status is known. This used to fire at error level with a
+     full stack trace before anything was classified, so a user picking the
+     wrong file type produced "ERROR: Unhandled error" and fifteen lines of
+     multer/busboy internals — and incremented totalErrors, inflating the
+     error rate and able to trip an alert for a non-event. A 4xx is the
+     client being wrong: warn, no stack. A 5xx is us: error, full detail. */
+  const clientFault = status >= 400 && status < 500;
+  if (clientFault) {
+    logger.warn({ status, url: req.url, method: req.method, reason: err.message }, "Request rejected");
+  } else {
+    metrics.totalErrors++;
+    logger.error({ err, url: req.url, method: req.method, userId: req.user?.userId }, "Unhandled error");
+  }
   res.status(status).json({
     error:     process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
     requestId: req.id,

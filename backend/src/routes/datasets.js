@@ -42,6 +42,19 @@ const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize
 const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
 
 function canAccess(role) { return role !== null; }
+/**
+ * Resolve the caller's role on a dataset, or answer the request and return
+ * null. Six routes each inlined these two lines after the permission matrix
+ * found them unguarded, which pushed this file past its size ratchet — the
+ * ratchet was right, repeating a guard six times is how one copy gets missed.
+ */
+async function requireDatasetRole(req, res, { write = false } = {}) {
+  const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
+  if (!role) { res.status(403).json({ error: "No access to this dataset" }); return null; }
+  if (write && !canEdit(role)) { res.status(403).json({ error: "Editor access required" }); return null; }
+  return role;
+}
+
 function canEdit(role)   { return ["owner", "editor"].includes(role); }
 
 // ── List / Filter datasets ──────────────────────────────────
@@ -199,8 +212,7 @@ router.get("/:id/preview", requireAuth, async (req, res, next) => {
 // ── Rename ─────────────────────────────────────────────────
 router.patch("/:id/rename", requireAuth, async (req, res, next) => {
   try {
-    const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
-    if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: "name required" });
     await DR.renameDataset(req.params.id, name);
@@ -211,8 +223,7 @@ router.patch("/:id/rename", requireAuth, async (req, res, next) => {
 
 router.patch("/:id/description", requireAuth, async (req, res, next) => {
   try {
-    const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
-    if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     await DR.updateDatasetDescription(req.params.id, req.body.description || "");
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -221,6 +232,8 @@ router.patch("/:id/description", requireAuth, async (req, res, next) => {
 // ── Star / Unstar ─────────────────────────────────────────
 router.patch("/:id/star", requireAuth, async (req, res, next) => {
   try {
+    /* No dataset check: any logged-in user could star someone else's file. */
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     await DR.toggleStar(req.params.id, req.body.starred);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -229,8 +242,7 @@ router.patch("/:id/star", requireAuth, async (req, res, next) => {
 // ── Move to folder ─────────────────────────────────────────
 router.patch("/:id/move", requireAuth, async (req, res, next) => {
   try {
-    const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
-    if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     await DR.moveDataset(req.params.id, req.body.folderId || null);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -250,6 +262,8 @@ router.delete("/:id", requireAuth, async (req, res, next) => {
 
 router.post("/:id/restore", requireAuth, async (req, res, next) => {
   try {
+    /* No dataset check: any logged-in user could un-trash someone else's file. */
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     await DR.restoreDataset(req.params.id);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -274,8 +288,7 @@ router.post("/trash/empty", requireAuth, async (req, res, next) => {
 // ── Versioning ───────────────────────────────────────────────
 router.post("/:id/versions", requireAuth, upload.single("file"), async (req, res, next) => {
   try {
-    const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
-    if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     if (!verifyFileMagic(req.file.buffer, req.file.originalname))
       return res.status(400).json({ error: "File content does not match its extension" });
@@ -313,6 +326,9 @@ router.get("/:id/versions", requireAuth, async (req, res, next) => {
 
 router.get("/:id/versions/:versionId", requireAuth, async (req, res, next) => {
   try {
+    /* Fetched a version by id with no dataset check, so any logged-in user
+       could read a specific version of someone else's file. */
+    if (!(await requireDatasetRole(req, res))) return;
     const v = await DR.getVersion(req.params.versionId);
     if (!v) return res.status(404).json({ error: "Not found" });
     res.json(v);
@@ -321,8 +337,7 @@ router.get("/:id/versions/:versionId", requireAuth, async (req, res, next) => {
 
 router.post("/:id/versions/:versionId/restore", requireAuth, async (req, res, next) => {
   try {
-    const role = await DR.getUserDatasetRole(req.params.id, req.user.userId);
-    if (!canEdit(role)) return res.status(403).json({ error: "Editor access required" });
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
     const v = await DR.restoreVersion(req.params.id, req.params.versionId);
     res.json(v);
   } catch (err) { next(err); }
@@ -330,11 +345,19 @@ router.post("/:id/versions/:versionId/restore", requireAuth, async (req, res, ne
 
 // ── Tags ──────────────────────────────────────────────────────
 router.post("/:id/tags", requireAuth, async (req, res, next) => {
-  try { await DR.addTag(req.params.id, req.body.tag); res.json({ success: true }); }
+  /* Had requireAuth and no dataset check at all: any logged-in stranger
+     could tag somebody else's dataset. Found by the generated permission
+     matrix — these routes were never probed by hand. */
+  try {
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
+    await DR.addTag(req.params.id, req.body.tag); res.json({ success: true }); }
   catch (err) { next(err); }
 });
 router.delete("/:id/tags/:tag", requireAuth, async (req, res, next) => {
-  try { await DR.removeTag(req.params.id, req.params.tag); res.json({ success: true }); }
+  /* Same gap as adding a tag. */
+  try {
+    if (!(await requireDatasetRole(req, res, { write: true }))) return;
+    await DR.removeTag(req.params.id, req.params.tag); res.json({ success: true }); }
   catch (err) { next(err); }
 });
 router.get("/tags/all", requireAuth, async (req, res, next) => {
@@ -361,7 +384,11 @@ router.post("/:id/share", requireAuth, async (req, res, next) => {
 });
 
 router.get("/:id/collaborators", requireAuth, async (req, res, next) => {
-  try { res.json(await DR.getDatasetCollaborators(req.params.id)); } catch (err) { next(err); }
+  /* Returned 200 to a total stranger, listing every collaborator's id,
+     username and EMAIL on a dataset they have no access to. */
+  try {
+    if (!(await requireDatasetRole(req, res))) return;
+    res.json(await DR.getDatasetCollaborators(req.params.id)); } catch (err) { next(err); }
 });
 
 router.delete("/:id/collaborators/:userId", requireAuth, async (req, res, next) => {

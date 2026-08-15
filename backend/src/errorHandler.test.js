@@ -21,6 +21,28 @@ function capture(err) {
   return code;
 }
 
+describe("errorHandler logging", () => {
+  test("a client mistake does not count as a server error", async () => {
+    // The log fired at ERROR level with a full stack BEFORE the status was
+    // computed, and incremented totalErrors — so a user picking the wrong file
+    // type produced fifteen lines of multer internals and inflated the error
+    // rate enough to trip an alert for a non-event.
+    const mod = await import("./middleware/monitoring.js");
+    let out = null;
+    const res = { json: (b) => { out = b; } };
+    await mod.metricsHandler({}, res);
+    const before = out.totals.errors;
+
+    for (let i = 0; i < 5; i++) capture(new Error("Only CSV/Excel files are allowed"));
+    await mod.metricsHandler({}, res);
+    assert.equal(out.totals.errors, before, "client rejections must not raise the error count");
+
+    capture(new TypeError("boom"));
+    await mod.metricsHandler({}, res);
+    assert.equal(out.totals.errors, before + 1, "a genuine fault still counts");
+  });
+});
+
 describe("errorHandler status mapping", () => {
   test("multipart failures are client errors", () => {
     assert.equal(capture(Object.assign(new Error("Malformed part header"), { name: "MulterError" })), 400);
