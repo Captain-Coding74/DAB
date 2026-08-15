@@ -390,6 +390,64 @@ describe("Scheduled reports respect dataset access", () => {
   });
 });
 
+describe("An admin cannot take over a workspace", () => {
+  let wsId, adminTok;
+
+  test("setup: owner creates a workspace and invites an admin", async () => {
+    const ws = await auth(agent.post("/api/workspaces")).send({ name: "takeover test" });
+    assert.equal(ws.status, 201);
+    wsId = ws.body.id;
+    const add = await auth(agent.post(`/api/workspaces/${wsId}/members`))
+      .send({ username: other.username, role: "admin" });
+    assert.equal(add.status, 200);
+    adminTok = otherToken;
+  });
+
+  test("an admin cannot promote themselves to owner", async () => {
+    // The caller's role was checked but never the role being GRANTED, so an
+    // admin could promote themselves to owner, demote the real owner, and
+    // remove them — a complete takeover by someone invited to help.
+    const r = await auth(agent.post(`/api/workspaces/${wsId}/members`), adminTok)
+      .send({ username: other.username, role: "owner" });
+    assert.equal(r.status, 403);
+  });
+
+  test("case and padding cannot slip past the check", async () => {
+    // A comparison against the literal string let "OWNER", "Owner" and
+    // " owner " straight through.
+    for (const role of ["OWNER", "Owner", " owner "]) {
+      const r = await auth(agent.post(`/api/workspaces/${wsId}/members`), adminTok)
+        .send({ username: other.username, role });
+      assert.equal(r.status, 403, `role ${JSON.stringify(role)} was accepted`);
+    }
+  });
+
+  test("a malformed role is refused, not a 500", async () => {
+    for (const role of [["owner"], {}, 42]) {
+      const r = await auth(agent.post(`/api/workspaces/${wsId}/members`), adminTok)
+        .send({ username: other.username, role });
+      assert.equal(r.status, 400, `role ${JSON.stringify(role)} should be a client error`);
+    }
+  });
+
+  test("the last owner cannot remove themselves", async () => {
+    // Removing the last owner stranded the workspace: remaining members could
+    // see it but not claim it, not delete it, and the departed owner could not
+    // rejoin — data with nobody able to administer it and no API path back.
+    const me = await auth(agent.get("/api/auth/me"));
+    const r = await auth(agent.delete(`/api/workspaces/${wsId}/members/${me.body.id}`));
+    assert.equal(r.status, 409);
+    assert.match(r.body.errorEn, /last owner/);
+  });
+
+  test("an admin can still do admin things", async () => {
+    const r = await auth(agent.post(`/api/workspaces/${wsId}/members`), adminTok)
+      .send({ username: other.username, role: "member" });
+    assert.equal(r.status, 200);
+  });
+});
+
+
 describe("Telemetry is operator-only", () => {
   test("a logged-in stranger cannot read the global summary", async () => {
     // It was requireAuth only. The payload carries no raw names, but it does
