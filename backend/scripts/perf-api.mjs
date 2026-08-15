@@ -88,9 +88,6 @@ await preflight("/api/metrics", '"uptimeSec"');
 
 console.log("\nRunning API benchmarks (real server, mock AI)…\n");
 
-const health  = await run({ path: "/api/health", title: "health" });
-const metrics = await run({ path: "/api/metrics", title: "metrics", connections: 5, duration: 3 });
-
 // Analyze: the heavy path. Hand-rolling multipart for autocannon proved
 // brittle (it silently benchmarked 404s), so we drive it with the platform's
 // own FormData encoder and compute percentiles ourselves. Slower to run,
@@ -123,52 +120,79 @@ async function loadTest({ fn, concurrency = 4, iterations = 60 }) {
   };
 }
 
-const analyze = await loadTest({
-  concurrency: 4, iterations: 60,
-  fn: () => {
-    const fd = new FormData();
-    fd.append("file", new Blob([csv], { type: "text/csv" }), "p.csv");
-    fd.append("question", "สรุป");
-    return fetch(`${BASE}/api/analyze`, { method: "POST", body: fd });
-  },
-});
+// One full measurement of all three targets. Normal mode runs it once;
+// --update runs it several times, because one pass is one sample of a noisy
+// machine, not a fact about the code.
+async function measureOnce() {
+  const health  = await run({ path: "/api/health", title: "health" });
+  const metrics = await run({ path: "/api/metrics", title: "metrics", connections: 5, duration: 3 });
+  const analyze = await loadTest({
+    concurrency: 4, iterations: 60,
+    fn: () => {
+      const fd = new FormData();
+      fd.append("file", new Blob([csv], { type: "text/csv" }), "p.csv");
+      fd.append("question", "สรุป");
+      return fetch(`${BASE}/api/analyze`, { method: "POST", body: fd });
+    },
+  });
 
-// A benchmark that measures the error path is worse than no benchmark.
-for (const [name, r] of [["health", health], ["metrics", metrics], ["analyze", analyze]]) {
-  const bad = (r.non2xx ?? 0) + (r.errors ?? 0);
-  if (bad > 0 || r["2xx"] === 0) {
-    console.error(`✗ ${name}: ${bad} non-2xx/errors, ${r["2xx"]} successes — benchmark hit the failure path, numbers are meaningless.`);
-    console.error(`  statusCodeStats:`, JSON.stringify(r.statusCodeStats ?? {}));
-    process.exit(2);
+  // A benchmark that measures the error path is worse than no benchmark.
+  for (const [name, r] of [["health", health], ["metrics", metrics], ["analyze", analyze]]) {
+    const bad = (r.non2xx ?? 0) + (r.errors ?? 0);
+    if (bad > 0 || r["2xx"] === 0) {
+      console.error(`✗ ${name}: ${bad} non-2xx/errors, ${r["2xx"]} successes — benchmark hit the failure path, numbers are meaningless.`);
+      console.error(`  statusCodeStats:`, JSON.stringify(r.statusCodeStats ?? {}));
+      process.exit(2);
+    }
   }
-}
 
-const actual = {
-  healthP95Ms:   health.latency.p97_5 ?? health.latency.p99,
-  healthReqSec:  Math.round(health.requests.average),
-  metricsP95Ms:  metrics.latency.p97_5 ?? metrics.latency.p99,
-  analyzeP95Ms:  analyze.latency.p97_5 ?? analyze.latency.p99,
-  analyzeReqSec: Math.round(analyze.requests.average),
-};
-// autocannon reports p97_5; use the plain p95 field when present
-actual.healthP95Ms  = health.latency.p95  ?? actual.healthP95Ms;
-actual.metricsP95Ms = metrics.latency.p95 ?? actual.metricsP95Ms;
-actual.analyzeP95Ms = analyze.latency.p95 ?? actual.analyzeP95Ms;
+  return {
+    healthP95Ms:   health.latency.p95  ?? health.latency.p97_5  ?? health.latency.p99,
+    metricsP95Ms:  metrics.latency.p95 ?? metrics.latency.p97_5 ?? metrics.latency.p99,
+    analyzeP95Ms:  analyze.latency.p95 ?? analyze.latency.p97_5 ?? analyze.latency.p99,
+    healthReqSec:  Math.round(health.requests.average),
+    analyzeReqSec: Math.round(analyze.requests.average),
+  };
+}
 
 const budget = JSON.parse(readFileSync(BUDGET, "utf8"));
 
 if (process.argv.includes("--update")) {
+  // Calibrating from a single pass burned us: a boosted, cache-warm pass
+  // measured health at ~3ms p95, wrote budgets from it, and the very next
+  // cold run on the same machine missed 3 of 5 (metrics 22ms vs 16, analyze
+  // 64 req/s vs a floor of 108). Desktop machines swing 3–5x between
+  // back-to-back runs — boost clocks decay, antivirus scans the fresh temp
+  // dirs. So calibration takes three full passes and keys the budget off the
+  // WORST latency and LOWEST throughput seen, then applies headroom on top.
+  // A budget must be repeatable on a bad minute, not achievable on a good one.
+  const passes = [];
+  for (let i = 1; i <= 3; i++) {
+    console.log(`Calibration pass ${i}/3…`);
+    const p = await measureOnce();
+    console.log(`  health ${p.healthP95Ms}ms p95 / ${p.healthReqSec} req/s · metrics ${p.metricsP95Ms}ms · analyze ${p.analyzeP95Ms}ms / ${p.analyzeReqSec} req/s`);
+    passes.push(p);
+  }
+  const worst = {
+    healthP95Ms:   Math.max(...passes.map(p => p.healthP95Ms)),
+    metricsP95Ms:  Math.max(...passes.map(p => p.metricsP95Ms)),
+    analyzeP95Ms:  Math.max(...passes.map(p => p.analyzeP95Ms)),
+    healthReqSec:  Math.min(...passes.map(p => p.healthReqSec)),
+    analyzeReqSec: Math.min(...passes.map(p => p.analyzeReqSec)),
+  };
   budget.api = {
-    healthP95Ms:   Math.ceil(actual.healthP95Ms  * 2 + 10),
-    metricsP95Ms:  Math.ceil(actual.metricsP95Ms * 2 + 10),
-    analyzeP95Ms:  Math.ceil(actual.analyzeP95Ms * 2 + 50),
-    healthReqSecMin:  Math.floor(actual.healthReqSec  * 0.5),
-    analyzeReqSecMin: Math.floor(actual.analyzeReqSec * 0.5),
+    healthP95Ms:   Math.ceil(worst.healthP95Ms  * 2 + 10),
+    metricsP95Ms:  Math.ceil(worst.metricsP95Ms * 2 + 10),
+    analyzeP95Ms:  Math.ceil(worst.analyzeP95Ms * 2 + 50),
+    healthReqSecMin:  Math.floor(worst.healthReqSec  * 0.5),
+    analyzeReqSecMin: Math.floor(worst.analyzeReqSec * 0.5),
   };
   writeFileSync(BUDGET, JSON.stringify(budget, null, 2) + "\n");
-  console.log("✓ perf-budget.json api targets updated from this run:", budget.api);
+  console.log("\n✓ perf-budget.json api targets updated from the worst of 3 passes:", budget.api);
   process.exit(0);
 }
+
+const actual = await measureOnce();
 
 /**
  * CPU scaling factor (v21). These budgets were calibrated on developer
