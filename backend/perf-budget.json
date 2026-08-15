@@ -1,10 +1,10 @@
 {
   "_comment": "v13 API performance budgets. p95 (not mean) — the mean hides the users having a bad time. Calibrated from a real run, then given headroom so ordinary variance doesn't flake CI while a genuine regression still fails. v21: these numbers were calibrated on developer hardware and are NOT portable — /api/analyze is CPU-bound and a shared 2-core CI runner measures ~4x slower on it (325ms p95 vs the ~77ms this was calibrated from), while I/O-bound health/metrics barely move. CI scales them via PERF_CPU_FACTOR rather than skipping the step; the unscaled run on a developer machine remains the sensitive gate.",
   "api": {
-    "healthP95Ms": 54,
-    "metricsP95Ms": 22,
-    "analyzeP95Ms": 204,
-    "healthReqSecMin": 682,
-    "analyzeReqSecMin": 83
+    "healthP95Ms": 16,
+    "metricsP95Ms": 16,
+    "analyzeP95Ms": 128,
+    "healthReqSecMin": 2500,
+    "analyzeReqSecMin": 110
   }
 }

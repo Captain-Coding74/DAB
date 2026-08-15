@@ -55,13 +55,36 @@ async function waitHealthy() {
   throw new Error("server never became healthy");
 }
 
-const run = (opts) => new Promise((resolve, reject) =>
-  autocannon({ url: BASE, connections: 10, duration: 5, ...opts }, (err, r) => err ? reject(err) : resolve(r)));
+// autocannon ignores a top-level `path` option: lib/run.js parses `url` and
+// copies a whitelist of fields onto it (method, body, headers, …) — `path` is
+// not on that list, so requests silently go to the url's own path. With BASE
+// bare, every earlier run benchmarked GET / — the SPA fallback — under the
+// labels "health" and "metrics". The 2xx guard below couldn't see it because
+// index.html is a 200. The path now lives in the URL itself.
+const run = ({ path, ...opts }) => new Promise((resolve, reject) =>
+  autocannon({ url: BASE + path, connections: 10, duration: 5, ...opts }, (err, r) => err ? reject(err) : resolve(r)));
+
+// Second layer: prove each target is the route we think it is — one real
+// request whose body must carry the route's own marker — before spending five
+// seconds benchmarking the wrong one. A status check alone is exactly the
+// hole the old guard had.
+async function preflight(path, marker) {
+  const res  = await fetch(BASE + path);
+  const body = await res.text();
+  if (!res.ok || !body.includes(marker)) {
+    console.error(`✗ preflight ${path}: HTTP ${res.status}, marker ${JSON.stringify(marker)} ${body.includes(marker) ? "present" : "missing"} — refusing to benchmark.`);
+    console.error(`  body: ${body.slice(0, 120)}`);
+    process.exit(2);
+  }
+}
 
 await waitHealthy();
 
 // Warm the process (JIT, first DB connect) so we measure steady state.
 for (let i = 0; i < 20; i++) await fetch(`${BASE}/api/health`);
+
+await preflight("/api/health",  '"status":"ok"');
+await preflight("/api/metrics", '"uptimeSec"');
 
 console.log("\nRunning API benchmarks (real server, mock AI)…\n");
 
