@@ -216,7 +216,7 @@ export default function Dashboard() {
               {a.suggestions.map((s, i) => (
                 <button key={i} onClick={() => { setCustomPmt(s.prompt); setPrompt(""); }}
                   className="font-mono text-[11px] px-2.5 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors">
-                  ▸ {s.label || s.prompt.slice(0,30)}
+                  ▸ {s.label || (s.prompt.length > 30 ? s.prompt.slice(0, 29) + "…" : s.prompt)}
                 </button>
               ))}
             </div>
@@ -226,7 +226,7 @@ export default function Dashboard() {
         {/* Result tabs */}
         {a && (
           <div>
-            <div data-tour="tabs" role="tablist" aria-label="ผลการวิเคราะห์" className="flex items-center gap-4 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto scrollbar-hide">
+            <div data-tour="tabs" role="tablist" aria-label="ผลการวิเคราะห์" className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 border-b border-gray-200 dark:border-gray-800">
               {TABS.map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} role="tab" aria-selected={activeTab===tab}
                   className={`shrink-0 font-mono text-[11px] uppercase tracking-eyebrow pb-2 -mb-px border-b-2 transition-colors ${activeTab===tab ? "text-gray-900 dark:text-gray-100 border-brand-500" : "text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-700"}`}>

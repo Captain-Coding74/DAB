@@ -133,13 +133,15 @@ export default function WorkspacePanel() {
   return (
     <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
 
-      {/* Workspace selector */}
-      <div className="flex items-center justify-between">
+      {/* Workspace selector — wraps at phone widths; unwrapped, the New
+          Workspace button sat at x=472 on a 390px screen and dragged 82px of
+          horizontal scroll onto the whole page. */}
+      <div className="flex flex-wrap items-center justify-between gap-y-2">
         <div className="flex items-center gap-3">
           <div><p className="eyebrow mb-1">พื้นที่ทีม · Teams</p><h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Workspaces</h2></div>
           {workspaces.length > 0 && (
             <select value={currentWorkspace?.id || ""} onChange={e => setCurrentWorkspace(workspaces.find(w => w.id === e.target.value))}
-              className="text-sm border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-300">
+              className="text-sm min-w-0 max-w-[45vw] sm:max-w-xs border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-300">
               {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           )}

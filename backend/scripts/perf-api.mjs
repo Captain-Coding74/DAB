@@ -1,13 +1,20 @@
 /**
- * scripts/perf-api.mjs — v13 API latency budgets
+ * scripts/perf-api.mjs — API latency budgets (v13, rebuilt v21.7)
  *
- * Spawns the real server (AI_MOCK=1, isolated DB), load-tests the hot paths
- * with autocannon, and fails if p95 latency or throughput regress past the
- * targets in perf-budget.json.
+ * Spawns the real server (AI_MOCK=1, isolated DB), load-tests the hot paths,
+ * and fails if p95 latency or throughput regress past perf-budget.json.
  *
  * We budget p95 (not the mean) because the mean hides exactly the users
- * having a bad time. Analyze is measured separately with a lower bar — it
- * parses a whole file, so it will always be the slow path.
+ * having a bad time. Five targets:
+ *   health, metrics  — cheap public routes, the canary for gross regressions
+ *   analyze          — the anonymous demo path (multipart parse + full stats)
+ *   upload           — the authenticated write path: multipart → streaming
+ *                      parse → object storage → quality score (big_sales.csv)
+ *   inference        — POST /api/inference/:id. parseAllRows reads EVERY row
+ *                      per request by design (v21.2 — the tests need every
+ *                      row), which makes it the heaviest per-request path in
+ *                      the product and the first place an accidental O(n²)
+ *                      would land. Nothing else gated it.
  *
  * Usage: node scripts/perf-api.mjs [--update]
  */
@@ -19,57 +26,31 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT   = join(__dirname, "..");
-const BUDGET = join(ROOT, "perf-budget.json");
-const PORT   = 3299;
-const BASE   = `http://127.0.0.1:${PORT}`;
+const ROOT    = join(__dirname, "..");
+const BUDGET  = join(ROOT, "perf-budget.json");
+const BIG_CSV = readFileSync(join(ROOT, "sample-data", "big_sales.csv"));
 
-const dataDir = mkdtempSync(join(tmpdir(), "dab-perf-"));
-const server = spawn(process.execPath, [join(ROOT, "src", "server.js")], {
-  cwd: ROOT,
-  env: {
-    ...process.env,
-    NODE_ENV: "development",
-    AI_MOCK: "1",
-    PORT: String(PORT),
-    JWT_SECRET: "perf-secret-32-chars-xxxxxxxxxxx",
-    JWT_REFRESH_SECRET: "perf-refresh-32-chars-xxxxxxxxx",
-    SQLITE_DIR: dataDir,
-    LOG_LEVEL: "error",
-    // Rate limiting would throttle the benchmark itself, not the code we're
-    // measuring. Raise the ceiling so we measure the app, not the limiter.
-    RATE_LIMIT_MAX: "1000000",
-  },
-  stdio: ["ignore", "ignore", "pipe"],
+// One active server at a time; the exit hook cleans up whichever is current.
+let active = null;
+process.on("exit", () => {
+  if (!active) return;
+  active.server.kill("SIGKILL");
+  try { rmSync(active.dataDir, { recursive: true, force: true }); } catch {}
 });
-server.stderr.on("data", d => process.env.PERF_DEBUG && console.error(String(d)));
-
-const cleanup = () => { server.kill("SIGKILL"); try { rmSync(dataDir, { recursive: true, force: true }); } catch {} };
-process.on("exit", cleanup);
-
-async function waitHealthy() {
-  for (let i = 0; i < 75; i++) {
-    try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {}
-    await new Promise(r => setTimeout(r, 200));
-  }
-  throw new Error("server never became healthy");
-}
 
 // autocannon ignores a top-level `path` option: lib/run.js parses `url` and
 // copies a whitelist of fields onto it (method, body, headers, …) — `path` is
-// not on that list, so requests silently go to the url's own path. With BASE
-// bare, every earlier run benchmarked GET / — the SPA fallback — under the
-// labels "health" and "metrics". The 2xx guard below couldn't see it because
-// index.html is a 200. The path now lives in the URL itself.
-const run = ({ path, ...opts }) => new Promise((resolve, reject) =>
-  autocannon({ url: BASE + path, connections: 10, duration: 5, ...opts }, (err, r) => err ? reject(err) : resolve(r)));
+// not on that list, so requests silently go to the url's own path. The path
+// must live in the URL itself.
+const run = (base, { path, ...opts }) => new Promise((resolve, reject) =>
+  autocannon({ url: base + path, connections: 10, duration: 5, ...opts }, (err, r) => err ? reject(err) : resolve(r)));
 
-// Second layer: prove each target is the route we think it is — one real
-// request whose body must carry the route's own marker — before spending five
-// seconds benchmarking the wrong one. A status check alone is exactly the
-// hole the old guard had.
-async function preflight(path, marker) {
-  const res  = await fetch(BASE + path);
+// Prove each target is the route we think it is — one real request whose body
+// must carry the route's own marker — before spending seconds benchmarking
+// the wrong one. A status check alone is exactly the hole the old guard had:
+// GET / returns 200 too.
+async function preflight(base, path, marker) {
+  const res  = await fetch(base + path);
   const body = await res.text();
   if (!res.ok || !body.includes(marker)) {
     console.error(`✗ preflight ${path}: HTTP ${res.status}, marker ${JSON.stringify(marker)} ${body.includes(marker) ? "present" : "missing"} — refusing to benchmark.`);
@@ -78,20 +59,65 @@ async function preflight(path, marker) {
   }
 }
 
-await waitHealthy();
+/**
+ * Boot a fresh server: new process, new temp dir, cold JIT — exactly what a
+ * verify run or a CI run is. Returns an authenticated context for the
+ * upload/inference targets.
+ */
+async function bootServer(port) {
+  const base    = `http://127.0.0.1:${port}`;
+  const dataDir = mkdtempSync(join(tmpdir(), "dab-perf-"));
+  const server  = spawn(process.execPath, [join(ROOT, "src", "server.js")], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      NODE_ENV: "development",
+      AI_MOCK: "1",
+      PORT: String(port),
+      JWT_SECRET: "perf-secret-32-chars-xxxxxxxxxxx",
+      JWT_REFRESH_SECRET: "perf-refresh-32-chars-xxxxxxxxx",
+      SQLITE_DIR: dataDir,
+      LOG_LEVEL: "error",
+      // Rate limiting would throttle the benchmark itself, not the code we're
+      // measuring. Raise the ceiling so we measure the app, not the limiter.
+      RATE_LIMIT_MAX: "1000000",
+    },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  server.stderr.on("data", d => process.env.PERF_DEBUG && console.error(String(d)));
+  active = { server, dataDir };
 
-// Warm the process (JIT, first DB connect) so we measure steady state.
-for (let i = 0; i < 20; i++) await fetch(`${BASE}/api/health`);
+  for (let i = 0; i < 75; i++) {
+    try { if ((await fetch(`${base}/api/health`)).ok) break; } catch {}
+    if (i === 74) throw new Error("server never became healthy");
+    await new Promise(r => setTimeout(r, 200));
+  }
 
-await preflight("/api/health",  '"status":"ok"');
-await preflight("/api/metrics", '"uptimeSec"');
+  // Warm the process (JIT, first DB connect) so we measure steady state.
+  for (let i = 0; i < 20; i++) await fetch(`${base}/api/health`);
 
-console.log("\nRunning API benchmarks (real server, mock AI)…\n");
+  await preflight(base, "/api/health",  '"status":"ok"');
+  await preflight(base, "/api/metrics", '"uptimeSec"');
 
-// Analyze: the heavy path. Hand-rolling multipart for autocannon proved
-// brittle (it silently benchmarked 404s), so we drive it with the platform's
-// own FormData encoder and compute percentiles ourselves. Slower to run,
-// but it measures the code path users actually hit.
+  const reg = await fetch(`${base}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: `perf_${Date.now()}`, password: "perfbench123" }),
+  });
+  if (!reg.ok) {
+    console.error(`✗ register failed (HTTP ${reg.status}) — cannot benchmark authenticated routes.`);
+    process.exit(2);
+  }
+  const { accessToken } = await reg.json();
+
+  const stop = () => {
+    server.kill("SIGKILL");
+    try { rmSync(dataDir, { recursive: true, force: true }); } catch {}
+    active = null;
+  };
+  return { base, token: accessToken, stop };
+}
+
 const csv = ["a,b,c", ...Array.from({ length: 200 }, (_, i) => `${i},${i * 2},x${i % 7}`)].join("\n");
 
 async function loadTest({ fn, concurrency = 4, iterations = 60 }) {
@@ -120,24 +146,64 @@ async function loadTest({ fn, concurrency = 4, iterations = 60 }) {
   };
 }
 
-// One full measurement of all three targets. Normal mode runs it once;
-// --update runs it several times, because one pass is one sample of a noisy
-// machine, not a fact about the code.
-async function measureOnce() {
-  const health  = await run({ path: "/api/health", title: "health" });
-  const metrics = await run({ path: "/api/metrics", title: "metrics", connections: 5, duration: 3 });
+// One full measurement of all five targets against a running server.
+// Normal mode runs it once on one server; --update runs it on several
+// freshly-booted servers, because one pass is one sample of a noisy machine,
+// not a fact about the code.
+async function measureOnce({ base, token }) {
+  const health  = await run(base, { path: "/api/health", title: "health" });
+  const metrics = await run(base, { path: "/api/metrics", title: "metrics", connections: 5, duration: 3 });
+
+  // Analyze: the anonymous demo path. Hand-rolling multipart for autocannon
+  // proved brittle (it silently benchmarked 404s), so we drive it with the
+  // platform's own FormData encoder and compute percentiles ourselves.
   const analyze = await loadTest({
     concurrency: 4, iterations: 60,
     fn: () => {
       const fd = new FormData();
       fd.append("file", new Blob([csv], { type: "text/csv" }), "p.csv");
       fd.append("question", "สรุป");
-      return fetch(`${BASE}/api/analyze`, { method: "POST", body: fd });
+      return fetch(`${base}/api/analyze`, { method: "POST", body: fd });
     },
   });
 
+  // Upload: the authenticated write path with a real 732 KB file. Captures a
+  // dataset id so inference can hit a dataset that exists in THIS pass's DB.
+  let datasetId = null;
+  const upload = await loadTest({
+    concurrency: 2, iterations: 6,
+    fn: async () => {
+      const fd = new FormData();
+      fd.append("file", new Blob([BIG_CSV], { type: "text/csv" }), "big_sales.csv");
+      const res = await fetch(`${base}/api/datasets`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (res.ok) {
+        const j = await res.json().catch(() => null);
+        if (j?.id) datasetId = j.id;
+      }
+      return res;
+    },
+  });
+  if (!datasetId) {
+    console.error("✗ upload phase returned no dataset id — cannot benchmark inference.");
+    process.exit(2);
+  }
+
+  // Inference: full-rows statistics on the saved dataset, every request.
+  const inference = await loadTest({
+    concurrency: 3, iterations: 24,
+    fn: () => fetch(`${base}/api/inference/${datasetId}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ test: "regression", xColumn: "Price", yColumn: "Revenue" }),
+    }),
+  });
+
   // A benchmark that measures the error path is worse than no benchmark.
-  for (const [name, r] of [["health", health], ["metrics", metrics], ["analyze", analyze]]) {
+  for (const [name, r] of [["health", health], ["metrics", metrics], ["analyze", analyze], ["upload", upload], ["inference", inference]]) {
     const bad = (r.non2xx ?? 0) + (r.errors ?? 0);
     if (bad > 0 || r["2xx"] === 0) {
       console.error(`✗ ${name}: ${bad} non-2xx/errors, ${r["2xx"]} successes — benchmark hit the failure path, numbers are meaningless.`);
@@ -147,69 +213,80 @@ async function measureOnce() {
   }
 
   return {
-    healthP95Ms:   health.latency.p95  ?? health.latency.p97_5  ?? health.latency.p99,
-    metricsP95Ms:  metrics.latency.p95 ?? metrics.latency.p97_5 ?? metrics.latency.p99,
-    analyzeP95Ms:  analyze.latency.p95 ?? analyze.latency.p97_5 ?? analyze.latency.p99,
-    healthReqSec:  Math.round(health.requests.average),
-    analyzeReqSec: Math.round(analyze.requests.average),
+    healthP95Ms:    health.latency.p95  ?? health.latency.p97_5  ?? health.latency.p99,
+    metricsP95Ms:   metrics.latency.p95 ?? metrics.latency.p97_5 ?? metrics.latency.p99,
+    analyzeP95Ms:   analyze.latency.p95,
+    uploadP95Ms:    upload.latency.p95,
+    inferenceP95Ms: inference.latency.p95,
+    healthReqSec:    Math.round(health.requests.average),
+    analyzeReqSec:   Math.round(analyze.requests.average),
+    inferenceReqSec: Math.round(inference.requests.average),
   };
 }
 
 const budget = JSON.parse(readFileSync(BUDGET, "utf8"));
 
 if (process.argv.includes("--update")) {
-  // Calibrating from a single pass burned us: a boosted, cache-warm pass
-  // measured health at ~3ms p95, wrote budgets from it, and the very next
-  // cold run on the same machine missed 3 of 5 (metrics 22ms vs 16, analyze
-  // 64 req/s vs a floor of 108). Desktop machines swing 3–5x between
-  // back-to-back runs — boost clocks decay, antivirus scans the fresh temp
-  // dirs. So calibration takes three full passes and keys the budget off the
-  // WORST latency and LOWEST throughput seen, then applies headroom on top.
+  // Two calibration lessons, both paid for:
+  //   1. One pass burned us — a boosted, cache-warm pass measured health at
+  //      ~3ms p95 and the very next cold run missed 3 of 5 budgets.
+  //   2. Three passes inside ONE warm process burned us again: all three
+  //      measured hot (worst still 3ms → healthP95Ms 16) because the slow
+  //      mode on a desktop lives BETWEEN invocations — cold node spawn,
+  //      antivirus scanning the fresh temp dir, boost clocks decaying — not
+  //      between back-to-back passes in a warm process.
+  // So every calibration pass now boots its own fresh server, which is
+  // exactly what every future verify run and every CI run is. The budget
+  // keys off the WORST latency and LOWEST throughput seen, plus headroom.
   // A budget must be repeatable on a bad minute, not achievable on a good one.
   const passes = [];
   for (let i = 1; i <= 3; i++) {
-    console.log(`Calibration pass ${i}/3…`);
-    const p = await measureOnce();
-    console.log(`  health ${p.healthP95Ms}ms p95 / ${p.healthReqSec} req/s · metrics ${p.metricsP95Ms}ms · analyze ${p.analyzeP95Ms}ms / ${p.analyzeReqSec} req/s`);
+    console.log(`Calibration pass ${i}/3 (fresh server)…`);
+    const ctx = await bootServer(3299 + i);
+    const p = await measureOnce(ctx);
+    ctx.stop();
+    console.log(`  health ${p.healthP95Ms}ms/${p.healthReqSec}rps · metrics ${p.metricsP95Ms}ms · analyze ${p.analyzeP95Ms}ms/${p.analyzeReqSec}rps · upload ${p.uploadP95Ms}ms · inference ${p.inferenceP95Ms}ms/${p.inferenceReqSec}rps`);
     passes.push(p);
   }
-  const worst = {
-    healthP95Ms:   Math.max(...passes.map(p => p.healthP95Ms)),
-    metricsP95Ms:  Math.max(...passes.map(p => p.metricsP95Ms)),
-    analyzeP95Ms:  Math.max(...passes.map(p => p.analyzeP95Ms)),
-    healthReqSec:  Math.min(...passes.map(p => p.healthReqSec)),
-    analyzeReqSec: Math.min(...passes.map(p => p.analyzeReqSec)),
-  };
+  const worst = (k, dir) => dir === "max" ? Math.max(...passes.map(p => p[k])) : Math.min(...passes.map(p => p[k]));
   budget.api = {
-    healthP95Ms:   Math.ceil(worst.healthP95Ms  * 2 + 10),
-    metricsP95Ms:  Math.ceil(worst.metricsP95Ms * 2 + 10),
-    analyzeP95Ms:  Math.ceil(worst.analyzeP95Ms * 2 + 50),
-    healthReqSecMin:  Math.floor(worst.healthReqSec  * 0.5),
-    analyzeReqSecMin: Math.floor(worst.analyzeReqSec * 0.5),
+    healthP95Ms:      Math.ceil(worst("healthP95Ms", "max")    * 2 + 10),
+    metricsP95Ms:     Math.ceil(worst("metricsP95Ms", "max")   * 2 + 10),
+    analyzeP95Ms:     Math.ceil(worst("analyzeP95Ms", "max")   * 2 + 50),
+    uploadP95Ms:      Math.ceil(worst("uploadP95Ms", "max")    * 2 + 100),
+    inferenceP95Ms:   Math.ceil(worst("inferenceP95Ms", "max") * 2 + 50),
+    healthReqSecMin:    Math.floor(worst("healthReqSec", "min")    * 0.5),
+    analyzeReqSecMin:   Math.floor(worst("analyzeReqSec", "min")   * 0.5),
+    inferenceReqSecMin: Math.floor(worst("inferenceReqSec", "min") * 0.5),
   };
   writeFileSync(BUDGET, JSON.stringify(budget, null, 2) + "\n");
-  console.log("\n✓ perf-budget.json api targets updated from the worst of 3 passes:", budget.api);
+  console.log("\n✓ perf-budget.json api targets updated from the worst of 3 cold passes:", budget.api);
   process.exit(0);
 }
 
-const actual = await measureOnce();
+// Normal mode: refuse to run half-blind. A missing key means new targets were
+// added without recalibrating — silently skipping them is the decorative-
+// benchmark trap this script keeps escaping.
+for (const k of ["healthP95Ms", "metricsP95Ms", "analyzeP95Ms", "uploadP95Ms", "inferenceP95Ms", "healthReqSecMin", "analyzeReqSecMin", "inferenceReqSecMin"]) {
+  if (budget.api[k] == null) {
+    console.error(`✗ perf-budget.json is missing api.${k} — run: npm run perf:api -w backend -- --update`);
+    process.exit(1);
+  }
+}
+
+console.log("\nRunning API benchmarks (real server, mock AI)…\n");
+const ctx = await bootServer(3299);
+const actual = await measureOnce(ctx);
+ctx.stop();
 
 /**
- * CPU scaling factor (v21). These budgets were calibrated on developer
- * hardware (~77ms analyze p95, ~166 req/s). /api/analyze is CPU-bound — it
- * parses a 200-row CSV and computes stats per request — and a shared 2-core
- * CI runner measures ~4x slower on that path. Health and metrics are I/O-bound
- * and barely move, which is why they pass with huge margin on both.
- *
- * So the budgets are scaled rather than skipped — `|| true` would make the
- * benchmark decorative. Latency budgets multiply, throughput budgets divide.
- *
- * Be honest about what this buys. On shared-tenancy runners you cannot have
- * both flake resistance and 2x regression sensitivity: at PERF_CPU_FACTOR=4
- * the analyze ceiling is ~816ms against ~325ms observed, so CI catches GROSS
- * regressions (roughly 2.5x and worse) and tolerates runner variance. The
- * tight gate is the unscaled local one — run `npm run perf:api` on your own
- * machine before merging anything that touches the analyze path.
+ * CPU scaling factor (v21). /api/analyze, upload, and inference are CPU-bound
+ * and a shared 2-core CI runner measures several times slower on them, while
+ * I/O-bound health/metrics barely move. Budgets are scaled rather than
+ * skipped — `|| true` would make the benchmark decorative. Latency budgets
+ * multiply, throughput budgets divide. The tight gate is the unscaled local
+ * one — run `npm run perf:api` on your own machine before merging anything
+ * that touches these paths.
  */
 const F = Number(process.env.PERF_CPU_FACTOR ?? 1) || 1;
 const lat = (ms) => Math.ceil(ms * F);
@@ -217,11 +294,14 @@ const thr = (rps) => Math.floor(rps / F);
 if (F !== 1) console.log(`  (PERF_CPU_FACTOR=${F} — budgets scaled for slower CI hardware)\n`);
 
 const checks = [
-  ["health p95",   actual.healthP95Ms,  lat(budget.api.healthP95Ms),  "≤", "ms"],
-  ["metrics p95",  actual.metricsP95Ms, lat(budget.api.metricsP95Ms), "≤", "ms"],
-  ["analyze p95",  actual.analyzeP95Ms, lat(budget.api.analyzeP95Ms), "≤", "ms"],
-  ["health req/s", actual.healthReqSec, thr(budget.api.healthReqSecMin),  "≥", "req/s"],
-  ["analyze req/s",actual.analyzeReqSec,thr(budget.api.analyzeReqSecMin), "≥", "req/s"],
+  ["health p95",      actual.healthP95Ms,     lat(budget.api.healthP95Ms),      "≤", "ms"],
+  ["metrics p95",     actual.metricsP95Ms,    lat(budget.api.metricsP95Ms),     "≤", "ms"],
+  ["analyze p95",     actual.analyzeP95Ms,    lat(budget.api.analyzeP95Ms),     "≤", "ms"],
+  ["upload p95",      actual.uploadP95Ms,     lat(budget.api.uploadP95Ms),      "≤", "ms"],
+  ["inference p95",   actual.inferenceP95Ms,  lat(budget.api.inferenceP95Ms),   "≤", "ms"],
+  ["health req/s",    actual.healthReqSec,    thr(budget.api.healthReqSecMin),    "≥", "req/s"],
+  ["analyze req/s",   actual.analyzeReqSec,   thr(budget.api.analyzeReqSecMin),   "≥", "req/s"],
+  ["inference req/s", actual.inferenceReqSec, thr(budget.api.inferenceReqSecMin), "≥", "req/s"],
 ];
 
 let failed = 0;
@@ -229,7 +309,7 @@ console.log("Latency / throughput budgets:");
 for (const [label, got, limit, op, unit] of checks) {
   const ok = op === "≤" ? got <= limit : got >= limit;
   if (!ok) failed++;
-  console.log(`  ${ok ? "✓" : "✗"} ${label.padEnd(14)} ${String(got).padStart(7)} ${unit.padEnd(5)} ${op} ${limit}`);
+  console.log(`  ${ok ? "✓" : "✗"} ${label.padEnd(16)} ${String(got).padStart(7)} ${unit.padEnd(5)} ${op} ${limit}`);
 }
 
 if (failed) {

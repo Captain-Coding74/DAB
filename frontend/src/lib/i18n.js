@@ -93,7 +93,10 @@ export const STRINGS = {
    where localStorage does not exist. Reading it at import time without this
    throws before a single test runs. */
 const hasStorage = typeof localStorage !== "undefined";
-const read = () => (hasStorage && localStorage.getItem(KEY) === "th" ? "th" : "en");
+/* Default is Thai: the product is Thai-first and every body string exists in
+   Thai, while English coverage is partial (nav + shared labels). Defaulting to
+   "en" painted an EN-highlighted toggle over a Thai page on first visit. */
+const read = () => (hasStorage && localStorage.getItem(KEY) === "en" ? "en" : "th");
 let current = read();
 const listeners = new Set();
 

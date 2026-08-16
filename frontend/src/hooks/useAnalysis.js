@@ -39,7 +39,7 @@ export function useAnalysis() {
   const [exporting, setExporting] = useState(null);
 
   const selectFile = useCallback((f) => {
-    if (!f || !FILE_RE.test(f.name)) { toast("กรุณาเลือก .csv หรือ .xlsx", "error"); return false; }
+    if (!f || !FILE_RE.test(f.name)) { toast("กรุณาเลือก .csv, .xlsx หรือ .xls", "error"); return false; }
     setFile(f); setCurrentAnalysis(null);
     return true;
   }, [toast, setCurrentAnalysis]);

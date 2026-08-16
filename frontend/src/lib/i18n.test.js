@@ -26,8 +26,11 @@ describe("i18n", () => {
     assert.deepEqual(suspect, [], `these "Thai" values have no Thai characters: ${suspect.join(", ")}`);
   });
 
-  test("English is the default, matching the landing page", () => {
-    assert.equal(t("nav.analyze"), "Analyze");
+  test("Thai is the default, matching the landing page", () => {
+    // Deliberate flip (visual bug hunt): the product is Thai-first — body copy
+    // exists fully in Thai while English coverage is partial, so defaulting to
+    // "en" painted an EN-highlighted toggle over a Thai page on first visit.
+    assert.equal(t("nav.analyze"), "วิเคราะห์");
   });
 
   test("an explicit language is honoured", () => {

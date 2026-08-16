@@ -53,7 +53,18 @@ const COLORS = SERIES;
 function toChartData(headers, rows = []) {
   return rows.map(r => {
     const o = {};
-    headers.forEach((h, i) => { const v = parseFloat(r[i]); o[h] = isNaN(v) ? r[i] : v; });
+    headers.forEach((h, i) => {
+      /* parseFloat("2025-03-09") === 2025 — it stops at the first non-numeric
+         char, so ISO dates became the number 2025 and the x-axis printed
+         "2,025" for every bar. Same corruption for "12A" → 12, "1.2.3" → 1.2.
+         Coerce only when the WHOLE trimmed string is numeric (commas allowed,
+         matching the backend's toNumber). Everything else stays a label. */
+      const raw = r[i];
+      if (typeof raw === "number") { o[h] = raw; return; }
+      const s = String(raw ?? "").trim();
+      const n = Number(s.replace(/,/g, ""));
+      o[h] = s !== "" && Number.isFinite(n) ? n : raw;
+    });
     return o;
   });
 }

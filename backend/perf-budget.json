@@ -3,8 +3,11 @@
   "api": {
     "healthP95Ms": 16,
     "metricsP95Ms": 16,
-    "analyzeP95Ms": 124,
-    "healthReqSecMin": 2635,
-    "analyzeReqSecMin": 118
+    "analyzeP95Ms": 130,
+    "uploadP95Ms": 724,
+    "inferenceP95Ms": 178,
+    "healthReqSecMin": 2549,
+    "analyzeReqSecMin": 118,
+    "inferenceReqSecMin": 29
   }
 }

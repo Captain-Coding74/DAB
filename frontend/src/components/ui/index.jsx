@@ -204,7 +204,7 @@ export function Readout({ label, value, tone, index = 0 }) {
   return (
     <div className="min-w-0">
       <Eyebrow>{label}</Eyebrow>
-      <div className={clsx("num text-xl font-medium mt-0.5 truncate", tone === "alert" ? "text-rule dark:text-rule-dark" : "text-brand-500 dark:text-brand-400")}>{display}</div>
+      <div className={clsx("num text-xl font-medium mt-0.5 truncate", tone === "alert" ? "text-rule dark:text-rule-dark" : "text-brand-700 dark:text-brand-400")}>{display}</div>
     </div>
   );
 }

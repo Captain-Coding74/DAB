@@ -81,7 +81,7 @@
       tSkip: "SKIPPED — banner row", tHeader: "HEADER ✓", tFix1: "B.E.→C.E. · ฿→number", tFix2: "Thai month · acct negative",
     },
   };
-  let lang = localStorage.getItem("dab_landing_lang") || "en";
+  let lang = localStorage.getItem("dab_landing_lang") || "th";  // Thai-first: matches the app default in lib/i18n.js
 
   let appVersion = "";   // set by the /api/health fetch at the end of this IIFE
 
