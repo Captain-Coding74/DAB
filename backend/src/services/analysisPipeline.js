@@ -12,6 +12,8 @@
 import { analyzeColumns, detectMissing, detectDuplicates,
          correlationMatrix, autoForecast, autoForecastFromAnalysis, recommendCharts,
          buildSummaryString } from "../analyze.js";
+import { parseAllRows } from "./fullRows.js";
+import { enrichChartsWithData, alignHeaders } from "./chartSeries.js";
 import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.js";
 import { computeQualityScore } from "./qualityScore.js";
 import { generateInsights }    from "./insights.js";
@@ -20,7 +22,7 @@ import { generateInsights }    from "./insights.js";
  * Everything derivable from a parsed file, in one call.
  * Input: the output of parseFileStreaming().
  */
-export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null }) {
+export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null, buffer = null, fileName = "" }) {
   const missing     = colAnalysis.filter(c => c.missing > 0)
     .map(c => ({ col: c.col, missing: c.missing, total: totalRows, pct: c.missingPct }));
   const dupes       = { count: dupeCount };
@@ -34,9 +36,25 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
      demo file reporting no trend at all despite R2 around 0.8 in the real
      data. Fall back only if the parser produced no trend sums. */
   const fromAnalysis = autoForecastFromAnalysis(colAnalysis);
-  const forecasts   = fromAnalysis.length ? fromAnalysis : autoForecast(headers, sampleRows);
+  /* v21.9: the SAMPLE fallback is gone. autoForecast(headers, sampleRows)
+     fabricated a trend from 5 random rows whenever the parser produced no
+     trend sums — with n=5 a random series clears the r2 bar by luck, so the
+     Forecast tab showed forecast-shaped guesses. Now the fallback runs on
+     EVERY row (parsed once below, shared with the chart series) and an empty
+     result stays empty: the tab's empty state is the honest answer. */
+  let forecasts     = fromAnalysis;
   const chartRecs   = recommendCharts(colAnalysis);
-  const autoCharts  = autoChartConfig(colAnalysis);
+  let autoCharts    = autoChartConfig(colAnalysis);
+  /* v21.9 (roadmap item 1): charts draw the DATA, not the sample. CSV only —
+     parseAllRows declines xlsx by design — and old saved analyses simply
+     lack `data`, so the frontend keeps its sample fallback for both. */
+  if (buffer) {
+    const full = alignHeaders(parseAllRows(buffer, fileName), colAnalysis.map((c) => c.col));
+    if (full.rows?.length) {
+      autoCharts = enrichChartsWithData(autoCharts, full.headers, full.rows);
+      if (!forecasts.length) forecasts = autoForecast(full.headers, full.rows);
+    }
+  }
   const suggestions = generatePromptSuggestions(colAnalysis, null);
   const quality     = computeQualityScore(colAnalysis, totalRows, dupeCount);
   const insights    = generateInsights({ colAnalysis, totalRows, dupeCount, corr, forecasts });

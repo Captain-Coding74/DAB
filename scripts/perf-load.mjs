@@ -38,9 +38,17 @@ const server = spawn("node", ["backend/src/server.js"], {
   stdio: "ignore",
 });
 
-const rss = () => {
-  try { return Math.round(Number(execSync(`ps -o rss= -p ${server.pid}`).toString().trim()) / 1024); }
-  catch { return null; }
+/* v21.9 (roadmap item 3): read RSS from the server's own /api/metrics
+   instead of shelling out to Unix `ps`. The old call silently returned null
+   on Windows — the machine this project is developed on — so the --leak
+   number only ever meant something in CI. The server already reports
+   memory.rssMB (a toFixed(1) string) on every metrics hit. */
+const rss = async () => {
+  try {
+    const m = await (await fetch(`${BASE}/api/metrics`)).json();
+    const mb = Number(m?.memory?.rssMB);
+    return Number.isFinite(mb) ? Math.round(mb) : null;
+  } catch { return null; }
 };
 
 async function waitForBoot() {
@@ -87,16 +95,16 @@ try {
     console.log("\nMemory over 200 analyses");
     const { readFileSync } = await import("node:fs");
     const csv = readFileSync("backend/sample-data/sales.csv");
-    const before = rss();
+    const before = await rss();
     console.log(`  start ${before} MB`);
     for (let i = 1; i <= 200; i++) {
       const fd = new FormData();
       fd.append("question", "q");
       fd.append("file", new Blob([csv]), "sales.csv");
       await fetch(`${BASE}/api/analyze`, { method: "POST", body: fd }).catch(() => {});
-      if (i % 50 === 0) console.log(`  after ${String(i).padStart(3)} ${rss()} MB`);
+      if (i % 50 === 0) console.log(`  after ${String(i).padStart(3)} ${await rss()} MB`);
     }
-    const grew = rss() - before;
+    const grew = (await rss()) - before;
     console.log(`  growth ${grew} MB`);
     // A parser that leaks per-file is invisible in tests and fatal in a day.
     if (grew > BUDGET.leakMB) fail.push(`memory grew ${grew}MB over 200 analyses (budget ${BUDGET.leakMB}MB)`);

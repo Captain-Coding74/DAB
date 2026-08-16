@@ -95,7 +95,14 @@ const tooltipStyle = (dark) => {
 };
 
 export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
-  const [chartType, setChartType] = useState(config?.type || "Bar");
+  /* Backend configs say type:"line"; TYPES are capitalized. The straight
+     `config?.type || "Bar"` never matched a case in renderChart, so every
+     recommended chart silently rendered as Bar. Normalise once. */
+  const capType = (t) => {
+    const c = t ? t[0].toUpperCase() + t.slice(1).toLowerCase() : "";
+    return TYPES.includes(c) ? c : "Bar";
+  };
+  const [chartType, setChartType] = useState(capType(config?.type));
   const dark = useAppStore(st => st.dark);
   const boxRef = React.useRef(null);
 
@@ -103,6 +110,12 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
   // parseFloat over every cell is the expensive part of this component.
   const { headers, data } = React.useMemo(() => {
     const hs = colAnalysis.map(c => c.col);
+    /* v21.9: prefer the backend's full-data aggregates. The sample shaping
+       below stays as the fallback for xlsx uploads and analyses saved
+       before config.data existed. */
+    if (Array.isArray(config?.data) && config.data.length) {
+      return { headers: hs, data: config.data };
+    }
     const shaped = toChartData(hs, sampleRows);
 
     /* sampleRows is a bounded RESERVOIR SAMPLE — random rows in random order,
@@ -132,7 +145,8 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
   );
 
 
-  const xKey     = lblCol?.col || headers[0];
+  const usingServerData = Array.isArray(config?.data) && config.data.length > 0;
+  const xKey     = usingServerData ? config.xAxis : (lblCol?.col || headers[0]);
   /* Not simply the first three numeric columns.
      Two things went wrong with that on real files:
        1. An index column (month, year, id, no.) is a POSITION, not a
@@ -152,7 +166,7 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
     return m > 0 ? Math.log10(m) : 0;
   };
   const anchor = candidates.reduce((a, b) => (magnitude(b) > magnitude(a) ? b : a), candidates[0]);
-  const yKeys = candidates
+  const yKeys = usingServerData ? (config.yAxis || []).slice(0, 3) : candidates
     /* One order of magnitude, not two. At 2 the filter still admitted a
        series 100x smaller than the anchor, which renders as a 1%-tall sliver
        along the axis and reads as zero — measured on a real file: revenue
@@ -174,6 +188,11 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
   const axisProps = { tick: { fontSize: 10, fill: theme.axis }, axisLine: false, tickLine: false, tickFormatter: fmtNum };
   const gridProps = { strokeDasharray: "3 3", stroke: theme.grid, vertical: false };
 
+  /* Series labels carry the aggregation so a bar of "Revenue (รวม)" cannot
+     be read as raw values. sampledEvery / truncatedFrom get a caption. */
+  const agg = config?.aggregations || {};
+  const seriesName = (k) => agg[k] === "avg" ? `${k} (เฉลี่ย)` : agg[k] === "sum" ? `${k} (รวม)` : k;
+
   const renderChart = () => {
     switch (chartType) {
       case "Line": return (
@@ -184,7 +203,7 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
           <YAxis {...axisProps} width={40}/>
           <Tooltip {...tooltipStyle(dark)}/>
           <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-          {yKeys.map((k,i)=><Line key={k} type="monotone" dataKey={k} stroke={COLORS[i]} strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }}/>)}
+          {yKeys.map((k,i)=><Line key={k} type="monotone" dataKey={k} name={seriesName(k)} stroke={COLORS[i]} strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }}/>)}
         </LineChart>
       );
       case "Area": return (
@@ -196,7 +215,7 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
           <YAxis {...axisProps} width={40}/>
           <Tooltip {...tooltipStyle(dark)}/>
           <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-          {yKeys.map((k,i)=><Area key={k} type="monotone" dataKey={k} stroke={COLORS[i]} strokeWidth={2} fill={`url(#g${i})`}/>)}
+          {yKeys.map((k,i)=><Area key={k} type="monotone" dataKey={k} name={seriesName(k)} stroke={COLORS[i]} strokeWidth={2} fill={`url(#g${i})`}/>)}
         </AreaChart>
       );
       case "Scatter": return (
@@ -225,7 +244,7 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
           <YAxis {...axisProps} width={40}/>
           <Tooltip {...tooltipStyle(dark)}/>
           <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}/>
-          {yKeys.map((k,i)=><Bar key={k} dataKey={k} fill={COLORS[i]} radius={[4,4,0,0]}/>)}
+          {yKeys.map((k,i)=><Bar key={k} dataKey={k} name={seriesName(k)} fill={COLORS[i]} radius={[4,4,0,0]}/>)}
         </BarChart>
       );
     }

@@ -46,7 +46,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const buffer    = await getVersionBytes(ds.version);
       const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise } = await parseFileStreaming(buffer, ds.version.file_name);
 
-      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise };
+      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, buffer, fileName: ds.version.file_name };
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
 
@@ -92,7 +92,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, normalization } =
         await parseFileStreaming(req.file.buffer, req.file.originalname);
 
-      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise };
+      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, buffer: req.file.buffer, fileName: req.file.originalname };
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
 

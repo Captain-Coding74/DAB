@@ -8,14 +8,14 @@
   "scripts": {
     "start": "cross-env NODE_ENV=production node src/server.js",
     "dev": "cross-env NODE_ENV=development node --watch src/server.js",
-    "test": "cross-env LOG_LEVEL=silent node --test src/stats.test.js src/routeGuards.test.js src/pagination.test.js src/errorHandler.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js",
+    "test": "cross-env LOG_LEVEL=silent node --test src/stats.test.js src/chartSeries.test.js src/routeGuards.test.js src/pagination.test.js src/errorHandler.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js",
     "test:integration": "cross-env LOG_LEVEL=silent RATE_LIMIT_MAX=1000 JWT_SECRET=test-secret-32chars-long!!!! JWT_REFRESH_SECRET=test-refresh-32chars-long! NODE_ENV=test node --test --test-concurrency=1 src/permissions.test.js src/integration.test.js src/routes.test.js",
     "test:all": "npm test && npm run test:integration",
     "test:smoke": "echo 'Requires a running server on :3099 — see src/scripts/smoketest.mjs header for full boot command' && node src/scripts/smoketest.mjs",
     "db:migrate": "node src/db/migrate.js",
     "test:e2e": "cross-env LOG_LEVEL=silent node --test --test-concurrency=1 --test-timeout=120000 e2e/flows.test.mjs e2e/boot.test.mjs",
     "perf:api": "node scripts/perf-api.mjs",
-    "test:browser": "node --test --test-concurrency=1 --test-timeout=180000 e2e/browser.test.mjs",
+    "test:browser": "node --test --test-concurrency=1 --test-timeout=180000 e2e/browser.test.mjs e2e/geometry.test.mjs",
     "telemetry": "node src/scripts/telemetry-report.mjs"
   },
   "dependencies": {

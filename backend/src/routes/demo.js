@@ -60,7 +60,7 @@ async function analyzeSample(id) {
   const { headers, colAnalysis, totalRows, dupeCount, sampleRows, normalization } =
     await parseFileStreaming(buffer, file);
 
-  const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows };
+  const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, buffer, fileName: file };
   const bundle = computeStatsBundle(parsed);
   const durationMs = Math.round(performance.now() - t0);
 

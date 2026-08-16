@@ -101,12 +101,28 @@ async function launchBrowser() {
   if (process.env.CHROMIUM_PATH) {
     return chromium.launch({ executablePath: process.env.CHROMIUM_PATH, headless: true });
   }
-  const { default: sparticuz } = await import("@sparticuz/chromium");
-  return chromium.launch({
-    executablePath: await sparticuz.executablePath(),
-    args: sparticuz.args,
-    headless: true,
-  });
+  /* Branded local browsers next. @sparticuz/chromium ships a LINUX-ONLY
+     binary (built for Lambda); on Windows it resolves to Temp\chromium and
+     spawn ENOENTs, which cancelled the entire suite on the machine this
+     project is developed on. Chrome or Edge is already installed on
+     effectively every dev machine and playwright-core knows how to find
+     both, so the suite runs locally with zero downloads. */
+  for (const channel of ["chrome", "msedge"]) {
+    try { return await chromium.launch({ channel, headless: true }); } catch { /* not installed */ }
+  }
+  try {
+    const { default: sparticuz } = await import("@sparticuz/chromium");
+    return await chromium.launch({
+      executablePath: await sparticuz.executablePath(),
+      args: sparticuz.args,
+      headless: true,
+    });
+  } catch (err) {
+    throw new Error(
+      "No launchable browser found. Install Google Chrome or Microsoft Edge, " +
+      "or set CHROMIUM_PATH to a Chromium executable. " +
+      "(@sparticuz/chromium only works on Linux.) Last error: " + (err && err.message));
+  }
 }
 
 before(async () => {
