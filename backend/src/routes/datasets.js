@@ -13,7 +13,7 @@ import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
-import { isMember } from "../db/repository.js";
+import foldersRouter from "./folders.js";
 import { pageParams } from "../pagination.js";
 
 const router = express.Router();
@@ -413,47 +413,7 @@ router.delete("/:id/collaborators/:userId", requireAuth, async (req, res, next) 
   } catch (err) { next(err); }
 });
 
-// ── Folders ───────────────────────────────────────────────────
-/* These four routes had requireAuth and nothing else: any logged-in user
-   could list, rename or delete a stranger's folders by id (the permission
-   matrix skips /folders/ paths, so no test probed them). Workspace listings
-   require membership; rename/delete require the folder's owner. */
-router.post("/folders", requireAuth, async (req, res, next) => {
-  try {
-    const { name, parentId, workspaceId } = req.body;
-    if (!name?.trim()) return res.status(400).json({ error: "name required" });
-    if (workspaceId && !(await isMember(workspaceId, req.user.userId)))
-      return res.status(403).json({ error: "Not a member of this workspace" });
-    const folder = await DR.createFolder({ workspaceId, ownerId: req.user.userId, name, parentId });
-    res.status(201).json(folder);
-  } catch (err) { next(err); }
-});
-router.get("/folders/list", requireAuth, async (req, res, next) => {
-  try {
-    const { workspaceId, parentId } = req.query;
-    if (workspaceId && !(await isMember(workspaceId, req.user.userId)))
-      return res.status(403).json({ error: "Not a member of this workspace" });
-    res.json(await DR.getFolders(workspaceId, parentId || null, req.user.userId));
-  } catch (err) { next(err); }
-});
-router.patch("/folders/:id/rename", requireAuth, async (req, res, next) => {
-  try {
-    const folder = await DR.getFolder(req.params.id);
-    if (!folder) return res.status(404).json({ error: "Not found" });
-    if (folder.owner_id !== req.user.userId) return res.status(403).json({ error: "Only the folder owner can rename" });
-    if (!req.body.name?.trim()) return res.status(400).json({ error: "name required" });
-    await DR.renameFolder(req.params.id, req.body.name, req.user.userId);
-    res.json({ success: true });
-  } catch (err) { next(err); }
-});
-router.delete("/folders/:id", requireAuth, async (req, res, next) => {
-  try {
-    const folder = await DR.getFolder(req.params.id);
-    if (!folder) return res.status(404).json({ error: "Not found" });
-    if (folder.owner_id !== req.user.userId) return res.status(403).json({ error: "Only the folder owner can delete" });
-    await DR.deleteFolder(req.params.id, req.user.userId);
-    res.json({ success: true });
-  } catch (err) { next(err); }
-});
+// ── Folders — own resource, own module (routes/folders.js) ────
+router.use("/folders", foldersRouter);
 
 export default router;

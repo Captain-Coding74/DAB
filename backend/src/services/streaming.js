@@ -28,6 +28,7 @@ import { parse }  from "csv-parse";
 import ExcelJS   from "exceljs";
 import { Readable } from "stream";
 import { serviceLogger } from "../logger.js";
+import { OnlineStat, FreqCounter, mulberry32, ReservoirSampler } from "./streamStats.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
          decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
@@ -36,51 +37,6 @@ const log = serviceLogger("streaming");
 
 const STREAM_THRESHOLD = 5 * 1024 * 1024; // 5 MB
 const HEADER_SCAN = 10; // rows buffered up-front to locate the real header
-
-// ── Online statistics (Welford's algorithm) ───────────────
-// Computes mean, variance, min, max in a single pass
-// without storing all values — O(1) memory
-class OnlineStat {
-  constructor() {
-    this.n = 0; this.mean = 0; this.M2 = 0;
-    this.min = Infinity; this.max = -Infinity; this.sum = 0;
-  }
-  update(x) {
-    this.n++; this.sum += x;
-    const delta = x - this.mean;
-    this.mean += delta / this.n;
-    this.M2   += delta * (x - this.mean);
-    if (x < this.min) this.min = x;
-    if (x > this.max) this.max = x;
-  }
-  result() {
-    return {
-      count:  this.n,
-      sum:    this.sum,
-      avg:    this.mean,
-      min:    this.min === Infinity  ? null : this.min,
-      max:    this.max === -Infinity ? null : this.max,
-      stdDev: this.n > 1 ? Math.sqrt(this.M2 / this.n) : 0,
-    };
-  }
-}
-
-// ── Frequency counter (capped at 10k unique values) ───────
-class FreqCounter {
-  constructor(cap = 10_000) { this.freq = new Map(); this.cap = cap; this.overflow = false; }
-  update(v) {
-    if (this.freq.has(v)) { this.freq.set(v, this.freq.get(v) + 1); return; }
-    if (this.freq.size >= this.cap) { this.overflow = true; return; }
-    this.freq.set(v, 1);
-  }
-  top(n = 10) {
-    return [...this.freq.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, n)
-      .map(([value, count]) => ({ value, count, pct: (count / [...this.freq.values()].reduce((a,b)=>a+b,0) * 100).toFixed(1) }));
-  }
-  get unique() { return this.freq.size; }
-}
 
 /**
  * A compact fingerprint of an ENTIRE row.
@@ -107,32 +63,6 @@ function rowFingerprint(row) {
     h2 = (h2 ^ 0x7c) >>> 0;
   }
   return `${h1.toString(36)}:${h2.toString(36)}`;
-}
-
-/* Deterministic PRNG (mulberry32) for the quantile reservoir below.
-   Math.random would make two analyses of the SAME file disagree on
-   median/quartiles once a column passes the reservoir cap — and this
-   product's whole pitch is that the statistics are reproducible. Seeded
-   per column from a constant, so a re-run gives identical numbers. */
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// ── Reservoir sampler (keep N random rows for preview) ────
-class ReservoirSampler {
-  constructor(k = 5) { this.k = k; this.reservoir = []; this.n = 0; }
-  update(row) {
-    this.n++;
-    if (this.reservoir.length < this.k) { this.reservoir.push(row); return; }
-    const j = Math.floor(Math.random() * this.n);
-    if (j < this.k) this.reservoir[j] = [...row];
-  }
 }
 
 // ── Build per-column accumulators ─────────────────────────
