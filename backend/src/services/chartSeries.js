@@ -22,6 +22,7 @@
  * (รวม/เฉลี่ย) instead of implying raw values. Truncation ships as
  * `truncatedFrom` for the same reason: a labelled cut beats a silent one.
  */
+import { parseFlexibleDate } from "./normalize.js";
 
 /** Whole-string numeric coercion — same contract as routes/inference.js,
     plus the two things a Thai shop file actually contains: Thai numerals
@@ -96,14 +97,22 @@ function enrichOne(chart, headers, rows) {
   let keyOf = (v) => String(v ?? "").trim();
   let daily = false;
   if (dateLike) {
+    /* Real parsing, not fixed-width slicing. slice(0, 7) sent '2026-1-5' to
+       a bucket literally labelled '2026-1-' — sorted after October — while
+       '2026-01-05' went to '2026-01', so one January split in two when a
+       file mixes padded and unpadded dates. parseFlexibleDate zero-pads
+       (and reads พ.ศ. years), so both land in the same chronological
+       bucket; a cell that fails to parse buckets as missing, not garbage.
+       Slashes normalise to dashes first — its ISO branch is dash-only. */
+    const dayOf = (v) => parseFlexibleDate(String(v ?? "").replace(/\//g, "-"))?.iso ?? "";
     /* Day buckets while the days fit on an axis; month buckets after.
        One month of daily traffic must be ~30 points, not 1 blob. */
     const days = new Set();
-    for (const r of rows) { const d = String(r[xi] ?? "").trim().slice(0, 10); if (d) days.add(d); if (days.size > 31) break; }
+    for (const r of rows) { const d = dayOf(r[xi]); if (d) days.add(d); if (days.size > 31) break; }
     daily = days.size <= 31;
     keyOf = daily
-      ? (v) => String(v ?? "").trim().slice(0, 10)  // YYYY-MM-DD
-      : (v) => String(v ?? "").trim().slice(0, 7);  // YYYY-MM
+      ? dayOf                          // YYYY-MM-DD
+      : (v) => dayOf(v).slice(0, 7);   // YYYY-MM
   }
 
   const buckets = new Map();

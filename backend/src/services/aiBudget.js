@@ -23,7 +23,13 @@ export function dailyBudget(env = process.env) {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_BUDGET;
 }
 
-const keyFor = (d = new Date()) => `ai:budget:${d.toISOString().slice(0, 10)}`;
+/* Key by the server's LOCAL calendar date, not toISOString()'s UTC date:
+   the UTC day rolls at 07:00 in Thailand, so a budget exhausted in an evening
+   spike stayed exhausted through the whole next local morning. Deploys should
+   set TZ=Asia/Bangkok (the scheduler already pins that zone) so "daily" means
+   the Thai day; the 26h TTL below outlives any offset either way. */
+const keyFor = (d = new Date()) =>
+  `ai:budget:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** Reserve one AI call. → { allowed, used, budget } */
 export async function tryConsumeAI() {

@@ -68,7 +68,7 @@ export function kalmanLocalLevel(series, { sigma2Eps, sigma2Eta }) {
   a[0] = isObserved(series[0]) ? series[0] : 0;
   P[0] = DIFFUSE_P1;
 
-  let logLikelihood = 0, nObserved = 0;
+  let logLikelihood = 0, nObserved = 0, seenFirstObs = false;
 
   for (let t = 0; t < n; t++) {
     if (isObserved(series[t])) {
@@ -80,11 +80,14 @@ export function kalmanLocalLevel(series, { sigma2Eps, sigma2Eta }) {
       a[t + 1] = filtered[t];
       P[t + 1] = P[t] * (1 - K[t]) + sigma2Eta;
 
-      // Prediction error decomposition. The first observation under a diffuse
-      // prior contributes essentially no information, so it is excluded —
-      // this is what statsmodels calls loglikelihood_burn=1, and skipping it
-      // is the difference between matching -632.538 and not.
-      if (t > 0) logLikelihood += -0.5 * (Math.log(2 * Math.PI) + Math.log(F[t]) + (v[t] * v[t]) / F[t]);
+      // Prediction error decomposition. The first OBSERVED point under a
+      // diffuse prior contributes essentially no information, so it is
+      // excluded — this is what statsmodels calls loglikelihood_burn=1, and
+      // skipping it is the difference between matching -632.538 and not.
+      // Keyed to the first observation, not t === 0: a series that starts
+      // with a gap carries the diffuse P ≈ 1e7 to its first real point.
+      if (seenFirstObs) logLikelihood += -0.5 * (Math.log(2 * Math.PI) + Math.log(F[t]) + (v[t] * v[t]) / F[t]);
+      else seenFirstObs = true;
       nObserved++;
     } else {
       // No observation: no update, state carries forward, uncertainty grows.

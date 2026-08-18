@@ -56,16 +56,19 @@ export async function initPool() {
  * query(sql, args) — runs a query and returns rows[]
  *
  * Postgres: uses $1 $2 placeholders
- * SQLite:   uses ? placeholders (converted automatically)
+ * SQLite:   same $1 $2 placeholders, bound as libsql named args
  */
 export async function query(sql, args = []) {
   if (_backend === "postgres") {
     const result = await _pool.query(sql, args);
     return result.rows;
   } else {
-    // Convert $1 $2 → ? for SQLite
-    const sqliteSql = sql.replace(/\$(\d+)/g, "?");
-    const result    = await _sqlite.execute({ sql: sqliteSql, args });
+    // libsql natively binds $N-style named parameters, so pass args as an
+    // object keyed by placeholder. The old textual $N→? rewrite bound values
+    // by order of appearance — a repeated or out-of-order $N silently got the
+    // wrong value (libsql binds NULL to any leftover ?, with no error).
+    const named  = Object.fromEntries(args.map((v, i) => [`$${i + 1}`, v]));
+    const result = await _sqlite.execute({ sql, args: named });
     return result.rows;
   }
 }

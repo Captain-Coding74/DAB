@@ -246,7 +246,17 @@ export function linearRegression(xs, ys) {
     ssRes += (y[i] - yhat) ** 2;
     ssTot += (y[i] - my) ** 2;
   }
-  const r2 = ssTot === 0 ? 1 : 1 - ssRes / ssTot;
+  // Constant y: the slope is exactly 0 and R² is 0/0. Reporting r2 = 1,
+  // p = 0, "significant perfect fit" is the opposite of the truth — mirror
+  // pearsonCorrelation's no-variance path instead.
+  if (ssTot === 0) {
+    return { test: "linear-regression", slope, intercept, n, df: n - 2,
+             r2: NaN, p: NaN, significant: false,
+             equation: `y = ${slope.toFixed(4)}x + ${intercept.toFixed(4)}`,
+             note: "ตัวแปร y ไม่มีความแปรปรวน", noteEn: "y has no variance — nothing to explain" };
+  }
+
+  const r2 = 1 - ssRes / ssTot;
   const df = n - 2;
 
   // Perfect fit ⇒ zero residual variance ⇒ the slope's standard error is 0.

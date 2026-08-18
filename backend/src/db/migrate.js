@@ -221,7 +221,10 @@ const ADDITIVE = [
 
 async function existingColumns(table) {
   if (getBackend() === "postgres") {
-    const r = await query(`SELECT column_name AS name FROM information_schema.columns WHERE table_name=$1`, [table]);
+    // current_schema() filter: without it a same-named table in another schema
+    // (a stale backup, an extension) could report our column as present and
+    // silently skip the ALTER.
+    const r = await query(`SELECT column_name AS name FROM information_schema.columns WHERE table_name=$1 AND table_schema=current_schema()`, [table]);
     return new Set(r.map(c => c.name));
   }
   const r = await query(`PRAGMA table_info(${table})`);

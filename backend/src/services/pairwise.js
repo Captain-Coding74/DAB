@@ -4,11 +4,11 @@ import { isIndexColumn } from "../analyze.js";
  * Exact pairwise correlations, accumulated during the streaming pass.
  *
  * Split out of streaming.js because that file had grown past its ratchet and
- * this is a self-contained concern: six running sums per column pair, updated
- * once per row, turned into a Pearson matrix at the end.
+ * this is a self-contained concern: six running moments per column pair,
+ * updated once per row, turned into a Pearson matrix at the end.
  */
 /**
- * Pairwise sums for an exact correlation matrix over EVERY row.
+ * Pairwise moments for an exact correlation matrix over EVERY row.
  *
  * correlationMatrix used to be handed sampleRows — a reservoir sample of FIVE
  * rows, whatever the file size. Measured: with n=5 and two columns of pure
@@ -16,16 +16,25 @@ import { isIndexColumn } from "../analyze.js";
  * about 2%. On an 8-numeric-column file that is roughly six invented "strong
  * correlations" per report, printed to three decimals over a red-green
  * heatmap. Six numbers per pair, updated per row, gives the real answer.
+ *
+ * CENTERED, NOT RAW SUMS. The first version kept Σx, Σx² and computed
+ * n·Σx² − (Σx)². For values large relative to their spread — epoch-ms
+ * timestamps ~1.7e12, long meter readings — both terms are ~1e24 and float64
+ * keeps only ~16 digits, so the true variance drowns in rounding: the
+ * radicand cancels to zero or negative, Math.sqrt gives NaN, and a perfect
+ * correlation was reported as exactly 0.000. Welford-style co-moments (the
+ * same trick streaming.js's OnlineStat already uses per column) subtract the
+ * running mean BEFORE squaring, so nothing large ever meets its own square.
  */
 export class PairAccumulator {
   constructor(k) {
     this.k = k;
     this.n   = Array.from({ length: k }, () => new Float64Array(k));
-    this.sx  = Array.from({ length: k }, () => new Float64Array(k));
-    this.sy  = Array.from({ length: k }, () => new Float64Array(k));
-    this.sxx = Array.from({ length: k }, () => new Float64Array(k));
-    this.syy = Array.from({ length: k }, () => new Float64Array(k));
-    this.sxy = Array.from({ length: k }, () => new Float64Array(k));
+    this.ma  = Array.from({ length: k }, () => new Float64Array(k));  // running mean of col i
+    this.mb  = Array.from({ length: k }, () => new Float64Array(k));  // running mean of col j
+    this.m2a = Array.from({ length: k }, () => new Float64Array(k));  // Σ(a − ma)²
+    this.m2b = Array.from({ length: k }, () => new Float64Array(k));  // Σ(b − mb)²
+    this.cab = Array.from({ length: k }, () => new Float64Array(k));  // Σ(a − ma)(b − mb)
   }
   /** vals[i] is the numeric value of column i for this row, or null. */
   update(vals) {
@@ -35,9 +44,16 @@ export class PairAccumulator {
       for (let j = i + 1; j < this.k; j++) {
         const b = vals[j];
         if (b === null) continue;      // pairwise-complete, like R's default
-        this.n[i][j]++;
-        this.sx[i][j] += a;  this.sy[i][j] += b;
-        this.sxx[i][j] += a * a; this.syy[i][j] += b * b; this.sxy[i][j] += a * b;
+        const n = ++this.n[i][j];
+        const da = a - this.ma[i][j];
+        const db = b - this.mb[i][j];
+        this.ma[i][j] += da / n;
+        this.mb[i][j] += db / n;
+        // deltas from the OLD mean times deltas from the NEW mean — the
+        // standard Welford update, exact for the (n-1)/n telescoping.
+        this.m2a[i][j] += da * (a - this.ma[i][j]);
+        this.m2b[i][j] += db * (b - this.mb[i][j]);
+        this.cab[i][j] += da * (b - this.mb[i][j]);
       }
     }
   }
@@ -45,10 +61,12 @@ export class PairAccumulator {
   r(i, j) {
     const n = this.n[i][j];
     if (n < 3) return null;
-    const num = n * this.sxy[i][j] - this.sx[i][j] * this.sy[i][j];
-    const da  = Math.sqrt(n * this.sxx[i][j] - this.sx[i][j] ** 2);
-    const db  = Math.sqrt(n * this.syy[i][j] - this.sy[i][j] ** 2);
-    return da && db ? +(num / (da * db)).toFixed(3) : 0;
+    const da = Math.sqrt(this.m2a[i][j]);
+    const db = Math.sqrt(this.m2b[i][j]);
+    // da/db are 0 only for a genuinely constant column now — the moments are
+    // non-negative by construction, so the NaN-from-cancellation path is gone.
+    // The clamp guards the last-digit rounding that could print r = 1.001.
+    return da && db ? +Math.max(-1, Math.min(1, this.cab[i][j] / (da * db))).toFixed(3) : 0;
   }
   count(i, j) { return this.n[i][j]; }
 }

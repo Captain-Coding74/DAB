@@ -109,7 +109,12 @@ describe("runAgent", () => {
     assert.equal(reply, "สรุปจากที่ตรวจมา");
     assert.equal(steps.length, 2, "only maxSteps tool rounds recorded");
     const lastReq = client.calls.at(-1);
-    assert.equal(lastReq.tools, undefined, "final forced call offers no tools");
+    // The final call MUST still define tools — its messages contain
+    // tool_use/tool_result blocks and the real API 400s a request that has
+    // those without a tools param. tool_choice "none" is what forbids
+    // another round, not omitting the tools.
+    assert.ok(Array.isArray(lastReq.tools) && lastReq.tools.length > 0, "final forced call still defines tools");
+    assert.deepEqual(lastReq.tool_choice, { type: "none" }, "final forced call forbids further tool use");
     assert.match(JSON.stringify(lastReq.messages.at(-1)), /หมดรอบ/);
   });
 

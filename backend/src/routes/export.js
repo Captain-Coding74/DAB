@@ -20,6 +20,7 @@ export function mountExportRoutes(app, { upload }) {
      demo needs it); this is about correct accounting, not locking it. */
   app.post("/api/export/pdf", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
     try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,
          forecasts []. A student downloading their report got one that always
          claimed perfect data, with the quality score computed on dupeCount 0 —
@@ -41,6 +42,7 @@ export function mountExportRoutes(app, { upload }) {
      demo needs it); this is about correct accounting, not locking it. */
   app.post("/api/export/excel", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
     try {
+      if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,
          forecasts []. A student downloading their report got one that always
          claimed perfect data, with the quality score computed on dupeCount 0 —

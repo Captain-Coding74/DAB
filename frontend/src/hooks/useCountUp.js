@@ -8,7 +8,18 @@
  */
 import { useEffect, useState } from "react";
 
-const NUMERIC = /^([\d,]+(?:\.\d+)?)(.*)$/;
+// v21.9: the strings we animate come from toLocaleString() in the browser's
+// default locale, so derive THAT locale's separators instead of assuming
+// "," groups and "." is the decimal point. Comma-only parsing turned de-DE's
+// "1.234" into a target of 1.234 — the readout counted 0 → 1 and snapped.
+// (sample six digits: some locales, e.g. es-ES, leave 4-digit numbers ungrouped)
+const localeParts = typeof Intl !== "undefined"
+  ? new Intl.NumberFormat().formatToParts(123456.7)
+  : [];
+const GROUP   = localeParts.find(p => p.type === "group")?.value   || ",";
+const DECIMAL = localeParts.find(p => p.type === "decimal")?.value || ".";
+const escRe   = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const NUMERIC = new RegExp(`^([\\d${escRe(GROUP)}]+(?:${escRe(DECIMAL)}\\d+)?)(.*)$`);
 
 export function useReadoutValue(value, delay = 0) {
   const [display, setDisplay] = useState(() => String(value ?? ""));
@@ -20,8 +31,8 @@ export function useReadoutValue(value, delay = 0) {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (!m || reduced) { setDisplay(raw); return; }
 
-    const target = parseFloat(m[1].replace(/,/g, ""));
-    const grouped = m[1].includes(",");
+    const target = parseFloat(m[1].split(GROUP).join("").replace(DECIMAL, "."));
+    const grouped = m[1].includes(GROUP);
     const suffix = m[2];
     if (!Number.isFinite(target)) { setDisplay(raw); return; }
 

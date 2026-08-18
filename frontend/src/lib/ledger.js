@@ -79,11 +79,17 @@ export const SERIES = [
  * Correlation heatmap cells. Positive runs green, negative runs red, and the
  * diagonal stays neutral. Text colours are picked for contrast against their
  * own cell, not against the page.
+ *
+ * v21.9: the diagonal is identified by POSITION (`isDiagonal`, i === j at the
+ * call site), never by `r === 1` — the backend rounds coefficients to 3
+ * decimals, so a perfect off-diagonal pair (revenue = units × price) arrives
+ * as exactly 1 and was painted in the ignore-me diagonal gray instead of
+ * strong-positive green.
  */
-export const corrCell = (r, dark) => {
+export const corrCell = (r, dark, isDiagonal = false) => {
   const a = Math.abs(r);
   const t = chartTheme(dark);
-  if (r === 1)  return { bg: dark ? LEDGER.gray[800] : LEDGER.gray[100], text: t.axis };
+  if (isDiagonal) return { bg: dark ? LEDGER.gray[800] : LEDGER.gray[100], text: t.axis };
   if (a >= 0.7) return r > 0
     // navy ink on stamp (5.0:1) — white on this green is only 3.37:1
     ? { bg: LEDGER.stamp.DEFAULT, text: LEDGER.gray[950] }

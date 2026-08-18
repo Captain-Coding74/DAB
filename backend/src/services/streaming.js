@@ -109,6 +109,21 @@ function rowFingerprint(row) {
   return `${h1.toString(36)}:${h2.toString(36)}`;
 }
 
+/* Deterministic PRNG (mulberry32) for the quantile reservoir below.
+   Math.random would make two analyses of the SAME file disagree on
+   median/quartiles once a column passes the reservoir cap — and this
+   product's whole pitch is that the statistics are reproducible. Seeded
+   per column from a constant, so a re-run gives identical numbers. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // ── Reservoir sampler (keep N random rows for preview) ────
 class ReservoirSampler {
   constructor(k = 5) { this.k = k; this.reservoir = []; this.n = 0; }
@@ -122,7 +137,7 @@ class ReservoirSampler {
 
 // ── Build per-column accumulators ─────────────────────────
 function makeAccumulators(headers) {
-  return headers.map(() => ({
+  return headers.map((_, colIdx) => ({
     onlineStat:  new OnlineStat(),
     freqCounter: new FreqCounter(),
     missing:     0,
@@ -133,10 +148,14 @@ function makeAccumulators(headers) {
     dateMax:     null,
     totalCount:  0,
     // Reservoir for quantile estimation (Q1/Q2/Q3)
-    // We keep up to 10k values for quantile accuracy
+    // We keep up to 10k values for quantile accuracy.
+    // Past the cap, Algorithm R keeps the sample uniform over the WHOLE
+    // column — the old keep-the-first-10k made the "median" of a sorted
+    // 113k-row export the ~4th percentile. Deterministic seed, see above.
     reservoir:   [],
     reservoirCap: 10_000,
     overflowQ:   false,
+    quantileRng: mulberry32(0x9E3779B9 ^ colIdx),
     /* Trend sums over EVERY row in file order.
        autoForecast fitted its line to sampleRows — a reservoir SAMPLE in
        sampling order — which destroys the time sequence. On the bundled
@@ -190,14 +209,27 @@ function updateAccumulator(acc, value) {
     acc.trendSxx += x * x; acc.trendSxy += x * n; acc.trendSyy += n * n;
     acc.freqCounter.update(value);
     if (acc.reservoir.length < acc.reservoirCap) acc.reservoir.push(n);
-    else acc.overflowQ = true;
+    else {
+      // Algorithm R: the i-th value replaces a random slot with probability
+      // cap/i, so every value has an equal chance of being in the sample.
+      acc.overflowQ = true;
+      const j = Math.floor(acc.quantileRng() * acc.numericCount);
+      if (j < acc.reservoirCap) acc.reservoir[j] = n;
+    }
   } else {
     acc.freqCounter.update(value);
   }
 }
 
 function finalizeColumn(col, acc) {
-  const isNumeric = acc.numericCount > acc.totalCount * 0.6;
+  /* Classify against NON-missing cells, like analyzeColumns (the reference
+     behaviour): a 50%-blank survey column whose answers are all numeric is
+     numeric, not text. totalCount includes blanks, so it was the wrong
+     denominator. Guard 0 for header-only files — 0/0 rendered "NaN%" in the
+     API payload and the AI prompt. */
+  const present    = acc.totalCount - acc.missing;
+  const missingPct = acc.totalCount ? ((acc.missing / acc.totalCount) * 100).toFixed(1) : "0.0";
+  const isNumeric  = present > 0 && acc.numericCount > present * 0.6;
   if (isNumeric) {
     const s = acc.onlineStat.result();
     // Compute Q1/Q3/median from reservoir sample
@@ -217,7 +249,7 @@ function finalizeColumn(col, acc) {
     return {
       col, type: "numeric",
       count: s.count, missing: acc.missing,
-      missingPct: ((acc.missing / acc.totalCount) * 100).toFixed(1),
+      missingPct,
       min: s.min, max: s.max, avg: s.avg, median: q2,
       stdDev: s.stdDev, sum: s.sum, q1, q3, iqr, outlierCount,
       quantileApprox: acc.overflowQ,
@@ -232,14 +264,14 @@ function finalizeColumn(col, acc) {
     const top = acc.freqCounter.top(10);
     const base = {
       col, type: "text",
-      count: acc.totalCount - acc.missing, missing: acc.missing,
-      missingPct: ((acc.missing / acc.totalCount) * 100).toFixed(1),
+      count: present, missing: acc.missing,
+      missingPct,
       unique: acc.freqCounter.unique, top,
       uniqueApprox: acc.freqCounter.overflow,
     };
     // v20: date-majority columns keep type:"text" (contract-safe) but carry
     // semantic metadata for insights/charts.
-    if (acc.dateCount > acc.totalCount * 0.6) {
+    if (present > 0 && acc.dateCount > present * 0.6) {
       base.semantic    = "date";
       base.dateRange   = { min: acc.dateMin, max: acc.dateMax };
       base.buddhistEra = acc.beCount > 0;
@@ -286,7 +318,7 @@ async function streamCSV(buffer) {
         /* Correlations over every row, not over the five-row sample. */
         if (pairs) {
           pairs.update(accs.map((a, i) => {
-            if (!a || a.dateCount > a.totalCount * 0.5) return null;   // dates are not measurements
+            if (!a || a.dateCount > (a.totalCount - a.missing) * 0.5) return null;   // dates are not measurements
             return i < row.length ? parseFlexibleNumber(row[i]) : null;
           }));
         }
@@ -418,7 +450,7 @@ async function streamXLSX(buffer) {
       if (accs[i]) updateAccumulator(accs[i], i < row.length ? row[i] : "");
     }
       pairs.update(accs.map((a, ci) => {
-        if (!a || a.dateCount > a.totalCount * 0.5) return null;
+        if (!a || a.dateCount > (a.totalCount - a.missing) * 0.5) return null;
         return ci < row.length ? parseFlexibleNumber(row[ci]) : null;
       }));
     const key = rowFingerprint(row);
@@ -448,6 +480,19 @@ export async function parseFileStreaming(buffer, originalName) {
   const size = buffer.length;
   const mode = size >= STREAM_THRESHOLD ? "streaming" : "buffered-stream";
   log.debug({ file: originalName, sizeKB: Math.round(size/1024), mode }, "Parsing file");
+
+  /* Legacy .xls (Excel 97-2003) is an OLE compound document — exceljs only
+     reads OOXML zips, so wb.xlsx.load() dies with an opaque "can't find end
+     of central directory" 500. The upload filters accept .xls, so say what
+     to do instead. A .xls that is really a zipped xlsx still parses below. */
+  if (ext === "xls" && buffer.length >= 4 &&
+      buffer[0] === 0xD0 && buffer[1] === 0xCF && buffer[2] === 0x11 && buffer[3] === 0xE0) {
+    const err = new Error(
+      "ไฟล์ .xls รุ่นเก่า (Excel 97-2003) ยังไม่รองรับ — เปิดใน Excel แล้วบันทึกเป็น .xlsx หรือ CSV ก่อนอัปโหลด " +
+      "(legacy .xls is not supported — save the file as .xlsx or CSV first)");
+    err.status = 415;
+    throw err;
+  }
 
   const t0     = performance.now();
   const result = ext === "xlsx" || ext === "xls"

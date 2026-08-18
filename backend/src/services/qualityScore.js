@@ -48,9 +48,12 @@ export function computeQualityScore(colAnalysis, totalRows, dupeCount) {
   if (txtCols.length > 0) {
     const avgUniqueRatio = txtCols.reduce((s, c) => {
       const ratio = (c.unique || 0) / Math.max(c.count || 1, 1);
-      // Very high ratio (all unique) may mean ID column — neutral
+      // Very high ratio (≥95% unique) may mean ID column — neutral 0.7
       // Very low ratio (1–5 unique values) is fine for categories
-      return s + (ratio > 0 && ratio <= 1 ? 1 : 0.7);
+      /* The old test was `ratio > 0 && ratio <= 1`, which is true for every
+         non-empty column — validity was a constant 15/15, the same
+         cannot-fail inflation the timeliness dimension had. */
+      return s + (ratio >= 0.95 ? 0.7 : 1);
     }, 0) / txtCols.length;
     validityScore = avgUniqueRatio * 15;
   }
@@ -61,9 +64,13 @@ export function computeQualityScore(colAnalysis, totalRows, dupeCount) {
      discriminate. A dimension that cannot be assessed is excluded from the
      total instead of being awarded. */
   // If no date column found, this dimension is NOT SCORED (see rescale below)
-  const dateCols = colAnalysis.filter(c =>
-    c.col?.toLowerCase().match(/date|time|created|updated|at$/)
-  );
+  /* Word-boundary matches only. The old substring test /date|time|at$/ made
+     'candidate', 'lifetime' and 'Format' count as date columns — 10 free
+     points, and a possible grade change, from a name that has nothing to do
+     with dates. 'at' counts only as a suffix after a separator (created_at),
+     and the Thai date/time words anchor to a word start (วันที่ขาย). */
+  const DATE_COL_RE = /(^|[_\s-])(date|time|datetime|timestamp|created|updated)([_\s-]|$)|[_\s-]at$|(^|[_\s-])(วันที่|เวลา)/i;
+  const dateCols = colAnalysis.filter(c => DATE_COL_RE.test(String(c.col ?? "")));
   /* Timeliness returned a constant 10 whether or not a date column existed —
      it could not fail, so it was 10 points of pure inflation on every file.
      Now it is scored only when there IS a date column, and the total is

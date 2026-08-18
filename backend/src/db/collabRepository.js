@@ -37,7 +37,22 @@ export async function editComment(id, userId, content) {
   await query(`UPDATE comments SET content=$1, is_edited=1, updated_at=$2 WHERE id=$3 AND user_id=$4`, [content, now(), id, userId]);
 }
 export async function deleteComment(id, userId) {
-  await query(`DELETE FROM comments WHERE id=$1 AND user_id=$2`, [id, userId]);
+  // Only the author may delete — verify BEFORE cascading, because the replies
+  // belong to other people and must only go down with a genuinely deleted
+  // parent. Orphaned replies used to survive and getComments promoted them to
+  // top-level comments with no context.
+  const owned = await query(`SELECT id FROM comments WHERE id=$1 AND user_id=$2`, [id, userId]);
+  if (!owned.length) return;
+  let level = [id];
+  const doomed = [...level];
+  while (level.length) {
+    const ph   = level.map((_, n) => `$${n + 1}`).join(",");
+    const kids = await query(`SELECT id FROM comments WHERE parent_id IN (${ph})`, level);
+    level = kids.map(k => k.id);
+    doomed.push(...level);
+  }
+  const ph = doomed.map((_, n) => `$${n + 1}`).join(",");
+  await query(`DELETE FROM comments WHERE id IN (${ph})`, doomed);
 }
 export async function resolveComment(id) {
   await query(`UPDATE comments SET is_resolved=1 WHERE id=$1`, [id]);
@@ -62,8 +77,14 @@ export async function markMentionsRead(userId) {
 
 /** Parse @username mentions out of comment text */
 export function parseMentions(content) {
-  const matches = content.match(/@([a-zA-Z0-9_]+)/g) || [];
-  return [...new Set(matches.map(m => m.slice(1)))];
+  // Left boundary required: without it the domain of any pasted email address
+  // ("sales@company.com") became a "mention" and notified a stranger whose
+  // username happened to match. An @ at start-of-text or after a non-word
+  // character (space, Thai text, punctuation) is a real mention; one glued to
+  // a word character is an email or handle fragment.
+  const out = new Set();
+  for (const m of String(content || "").matchAll(/(^|[^a-zA-Z0-9_@.])@([a-zA-Z0-9_]+)/g)) out.add(m[2]);
+  return [...out];
 }
 
 // ── Notifications ────────────────────────────────────────────
@@ -142,6 +163,10 @@ export async function addWidget({ dashboardId, analysisId, datasetId, widgetType
     [id, dashboardId, analysisId||null, datasetId||null, widgetType, title||null, JSON.stringify(config), JSON.stringify(position), now()]);
   await query(`UPDATE shared_dashboards SET updated_at=$1 WHERE id=$2`, [now(), dashboardId]);
   return { id };
+}
+export async function getWidget(id) {
+  const r = await query(`SELECT * FROM dashboard_widgets WHERE id=$1`, [id]);
+  return r[0] || null;
 }
 export async function updateWidgetPosition(id, position) {
   await query(`UPDATE dashboard_widgets SET position=$1 WHERE id=$2`, [JSON.stringify(position), id]);

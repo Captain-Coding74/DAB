@@ -23,6 +23,9 @@ function exportChart(container, kind, dark) {
   if (kind === "svg") return save(blob, "svg");
 
   const img = new Image();
+  /* The SVG blob's URL must be revoked too — save() only revokes the PNG's,
+     so every export pinned the serialized SVG in memory until reload. */
+  const svgUrl = URL.createObjectURL(blob);
   img.onload = () => {
     const canvas = document.createElement("canvas");
     canvas.width = width * 2; canvas.height = height * 2;
@@ -32,8 +35,10 @@ function exportChart(container, kind, dark) {
     ctx.scale(2, 2);
     ctx.drawImage(img, 0, 0, width, height);
     canvas.toBlob(b => b && save(b, "png"), "image/png");
+    URL.revokeObjectURL(svgUrl);
   };
-  img.src = URL.createObjectURL(blob);
+  img.onerror = () => URL.revokeObjectURL(svgUrl);
+  img.src = svgUrl;
 }
 
 const brushProps = (dark, xKey) => {
@@ -137,7 +142,10 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
 
   const numCols = colAnalysis.filter(c => c.type === "numeric");
   const lblCol  = colAnalysis.find(c => c.type === "text") || colAnalysis[0];
-  if (!numCols.length || !sampleRows.length) return (
+  const usingServerData = Array.isArray(config?.data) && config.data.length > 0;
+  /* Shared reports pass sampleRows={[]} but carry the full-data aggregates in
+     config.data — server data counts as data, or share pages never chart. */
+  if (!numCols.length || (!sampleRows.length && !usingServerData)) return (
     <div className="flex flex-col items-center justify-center h-40 gap-1.5 text-center px-6">
       <p className="text-sm text-gray-500 dark:text-gray-400">ไม่มีคอลัมน์ตัวเลขให้วาดกราฟ</p>
       <p className="eyebrow">ลองตรวจว่าคอลัมน์ตัวเลขถูกเก็บเป็นข้อความอยู่หรือเปล่า</p>
@@ -145,7 +153,6 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
   );
 
 
-  const usingServerData = Array.isArray(config?.data) && config.data.length > 0;
   const xKey     = usingServerData ? config.xAxis : (lblCol?.col || headers[0]);
   /* Not simply the first three numeric columns.
      Two things went wrong with that on real files:
@@ -218,15 +225,29 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
           {yKeys.map((k,i)=><Area key={k} type="monotone" dataKey={k} name={seriesName(k)} stroke={COLORS[i]} strokeWidth={2} fill={`url(#g${i})`}/>)}
         </AreaChart>
       );
-      case "Scatter": return (
-        <ScatterChart>
-          <CartesianGrid {...gridProps}/>
-          <XAxis dataKey={yKeys[0]} name={yKeys[0]} {...axisProps}/>
-          <YAxis dataKey={yKeys[1]||yKeys[0]} name={yKeys[1]||yKeys[0]} {...axisProps} width={40}/>
-          <Tooltip {...tooltipStyle(dark)} cursor={{ strokeDasharray: "3 3" }}/>
-          <Scatter data={data} fill={COLORS[0]} opacity={0.75}/>
-        </ScatterChart>
-      );
+      case "Scatter": {
+        /* Plot the configured x column against the y column — the old code
+           read yKeys[0] for BOTH axes, so every point sat on the y=x diagonal.
+           Server data stores x under config.xAxis in each point; the sample
+           fallback pairs two DISTINCT numeric columns (magnitude filtering is
+           for overlaid series, not independent axes). Numeric axes space
+           points by value — recharts' default category x-axis spaces them by
+           row index. A non-numeric x (e.g. a bar config switched to กระจาย)
+           keeps the category axis. */
+        const pair = candidates.length >= 2 ? candidates : numCols;
+        const sx = usingServerData ? xKey : pair[0]?.col;
+        const sy = usingServerData ? yKeys[0] : (pair[1] || pair[0])?.col;
+        const sxNumeric = numCols.some(c => c.col === sx);
+        return (
+          <ScatterChart>
+            <CartesianGrid {...gridProps}/>
+            <XAxis type={sxNumeric ? "number" : "category"} dataKey={sx} name={sx} {...axisProps}/>
+            <YAxis type="number" dataKey={sy} name={sy} {...axisProps} width={40}/>
+            <Tooltip {...tooltipStyle(dark)} cursor={{ strokeDasharray: "3 3" }}/>
+            <Scatter data={data} fill={COLORS[0]} opacity={0.75}/>
+          </ScatterChart>
+        );
+      }
       case "Pie": return (
         <PieChart>
           <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({name,percent})=>`${name} ${(percent*100).toFixed(0)}%`} labelLine={false}>
@@ -271,7 +292,10 @@ export function AutoChart({ colAnalysis = [], sampleRows = [], config }) {
         </button>
       </div>
       <div ref={boxRef}>
-        <ResponsiveContainer width="100%" height={220}>
+        {/* Pie gets extra height: its labels sit OUTSIDE the circle, so the
+            top one needs cy − outerRadius − label offset − text ascent ≥ 0.
+            At 220px the first label's text was clipped by the SVG edge. */}
+        <ResponsiveContainer width="100%" height={chartType === "Pie" ? 290 : 220}>
           {renderChart()}
         </ResponsiveContainer>
       </div>

@@ -103,6 +103,12 @@ export function Textarea({ label, className, ...props }) {
 export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
   const boxRef  = React.useRef(null);
   const prevRef = React.useRef(null);
+  /* Consumers pass inline arrows for onClose, so its identity changes on every
+     parent render (every keystroke in a modal form). With onClose in the deps
+     the trap effect re-ran each time and yanked focus back to the X button —
+     read the latest handler through a ref so the effect only runs on open. */
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
 
   React.useEffect(() => {
     if (!open) return;
@@ -112,7 +118,7 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
     (focusables()[0] || box).focus();
 
     const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current(); }
       if (e.key === "Tab") {
         const f = focusables(); if (!f.length) return;
         const first = f[0], last = f[f.length - 1];
@@ -122,7 +128,7 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
     };
     box.addEventListener("keydown", onKey);
     return () => { box.removeEventListener("keydown", onKey); prevRef.current?.focus?.(); };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (

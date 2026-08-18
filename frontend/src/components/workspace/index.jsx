@@ -37,7 +37,17 @@ export default function WorkspacePanel() {
     try {
       const res  = await apiFetch(`/api/workspaces/${currentWorkspace.id}`);
       const data = await res.json();
-      if (res.ok) setMembers(data.members || []);
+      if (res.ok) {
+        setMembers(data.members || []);
+        /* Seed the branding form from the server row — the PATCH overwrites
+           all three columns, so saving an unseeded form wiped existing
+           branding (color back to default, name and logo nulled). */
+        setBrand({
+          brandColor: data.brand_color || DEFAULT_BRAND,
+          brandName:  data.brand_name  || "",
+          brandLogo:  data.brand_logo  || "",
+        });
+      }
     } catch {}
   }
 
@@ -189,7 +199,9 @@ export default function WorkspacePanel() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={m.role==="owner"?"green":m.role==="admin"?"blue":"gray"}>{m.role}</Badge>
-                      {m.role !== "owner" && m.id !== user?.id && (
+                      {/* The auth store only carries { username } — comparing
+                          ids always passed and showed a self-remove button. */}
+                      {m.role !== "owner" && m.username !== user?.username && (
                         <button onClick={() => removeMember(m.id)} className="p-1 text-gray-400 hover:text-red-500 transition">
                           <Trash2 size={13}/>
                         </button>

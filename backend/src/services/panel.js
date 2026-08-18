@@ -277,6 +277,15 @@ export function randomEffects(rows, spec) {
   const between = ols(bCols, bY, n - k - 1);
   if (!between) return { error: "between regression singular", errorEn: "between regression is singular" };
 
+  /* The between regression has n - k - 1 degrees of freedom. At the boundary
+     (e.g. 2 units with 1 regressor) that is 0, sigma2 is NaN, and everything
+     built from it — theta, the quasi-demeaned data, the betas — is NaN too,
+     which the final ols() cannot detect. Saying so beats returning NaN. */
+  if (!(n - k - 1 > 0) || !Number.isFinite(between.sigma2)) {
+    return { error: `ต้องมีหน่วยมากกว่าจำนวนตัวแปรทำนาย + 1 (มี ${n} หน่วย, ${k} ตัวแปร)`,
+             errorEn: `random effects needs more units than regressors + 1 (got ${n} units, ${k} regressors)` };
+  }
+
   // Swamy-Arora: sigma2_between = sigma2_within/T + sigma2_mu
   const sigma2Between = between.sigma2;
   const sigma2Mu = Math.max(0, sigma2Between - sigma2Within / T);

@@ -20,16 +20,19 @@
  * because that is what the change is ultimately for.
  */
 
+import { parseFlexibleNumber } from "./normalize.js";
+
 /** Resolve a header name to its column index. Rows are positional arrays. */
 const idx = (headers, name) => headers.indexOf(name);
 
+/* The ANALYZER's numeric coercion, not a local one. The drop-outliers
+   suggestion comes from stats computed with parseFlexibleNumber ("฿1,234.50",
+   "1,200 บาท", Thai digits ๐-๙, "(500)"), so the fix must parse exactly the
+   values the analysis counted — a comma-only strip rejected every ฿-formatted
+   cell and either refused the fix or silently examined the wrong rows. */
 const toNum = (v) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v.replace(/,/g, ""));
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
+  return parseFlexibleNumber(v);
 };
 
 const isBlank = (v) =>

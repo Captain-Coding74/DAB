@@ -15,15 +15,28 @@ export async function createFolder({ workspaceId, ownerId, name, parentId }) {
     [id, workspaceId||null, ownerId, name, parentId||null, now()]);
   return { id, name, parentId };
 }
-export async function getFolders(workspaceId, parentId = null) {
-  if (parentId) return query(`SELECT * FROM dataset_folders WHERE workspace_id=$1 AND parent_id=$2 ORDER BY name`, [workspaceId, parentId]);
-  return query(`SELECT * FROM dataset_folders WHERE workspace_id=$1 AND parent_id IS NULL ORDER BY name`, [workspaceId]);
+export async function getFolders(workspaceId, parentId = null, ownerId = null) {
+  // Personal folders store workspace_id NULL — `workspace_id=$1` can never
+  // match them (and libsql rejects an undefined argument outright), so branch
+  // explicitly and scope personal listings by owner. Workspace listings are
+  // membership-checked at the route.
+  const scope    = workspaceId ? `workspace_id=$1` : `workspace_id IS NULL AND owner_id=$1`;
+  const scopeArg = workspaceId || ownerId;
+  if (parentId) return query(`SELECT * FROM dataset_folders WHERE ${scope} AND parent_id=$2 ORDER BY name`, [scopeArg, parentId]);
+  return query(`SELECT * FROM dataset_folders WHERE ${scope} AND parent_id IS NULL ORDER BY name`, [scopeArg]);
 }
-export async function renameFolder(id, name) {
-  await query(`UPDATE dataset_folders SET name=$1 WHERE id=$2`, [name, id]);
+export async function getFolder(id) {
+  const r = await query(`SELECT * FROM dataset_folders WHERE id=$1`, [id]);
+  return r[0] || null;
 }
-export async function deleteFolder(id) {
-  await query(`DELETE FROM dataset_folders WHERE id=$1`, [id]);
+/* Rename/delete are owner-scoped in the SQL itself (defence in depth — the
+   routes also check ownership): unscoped, any authenticated user could rename
+   or delete a stranger's folder by id. */
+export async function renameFolder(id, name, ownerId) {
+  await query(`UPDATE dataset_folders SET name=$1 WHERE id=$2 AND owner_id=$3`, [name, id, ownerId]);
+}
+export async function deleteFolder(id, ownerId) {
+  await query(`DELETE FROM dataset_folders WHERE id=$1 AND owner_id=$2`, [id, ownerId]);
 }
 
 // ── Datasets — Create with first version ────────────────────
@@ -34,16 +47,20 @@ export async function createDataset({ datasetId: providedId, workspaceId, ownerI
   const versionId = uuid();
   const t = now();
 
-  await query(
-    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t]
-  );
-
+  // Version row FIRST, dataset row second: the two statements autocommit
+  // separately (withTransaction is a no-op on SQLite), and a crash between
+  // them used to leave a user-visible ghost dataset whose current_version_id
+  // pointed nowhere. An orphaned version row is invisible and harmless.
   await query(
     `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
      VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Initial upload',$12,$13,$14)`,
     [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, ownerId, sizeBytes||0, t]
+  );
+
+  await query(
+    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t]
   );
 
   return { id: datasetId, versionId };
@@ -54,14 +71,20 @@ export async function addDatasetVersion({ datasetId, fileName, fileContent, stor
   const versionId = uuid();
   const t = now();
 
-  const last = await query(`SELECT MAX(version_num) AS v FROM dataset_versions WHERE dataset_id=$1`, [datasetId]);
-  const nextVersion = (last[0]?.v || 0) + 1;
-
-  await query(
+  // Version number is computed INSIDE the insert: the old read-then-write
+  // (SELECT MAX ... then INSERT) let two concurrent uploads both observe v=N
+  // and write duplicate version N+1 rows. A scalar subquery in one statement
+  // is atomic on both backends, and RETURNING reports the number assigned.
+  const inserted = await query(
     `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-      [versionId, datasetId, nextVersion, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||`Version ${nextVersion}`, uploadedBy, sizeBytes||0, t]
+       VALUES ($1,$2,(SELECT COALESCE(MAX(version_num),0)+1 FROM dataset_versions WHERE dataset_id=$2),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING version_num`,
+      [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||null, uploadedBy, sizeBytes||0, t]
   );
+  const nextVersion = inserted[0]?.version_num;
+  if (changeNote == null) {
+    await query(`UPDATE dataset_versions SET change_note=$1 WHERE id=$2`, [`Version ${nextVersion}`, versionId]);
+  }
 
   await query(
     `UPDATE datasets SET current_version_id=$1, total_rows=$2, total_cols=$3, file_type=$4, size_bytes=$5, quality_score=$6, updated_at=$7 WHERE id=$8`,
@@ -89,8 +112,10 @@ export async function getVersion(versionId) {
 export async function restoreVersion(datasetId, versionId) {
   const v = await getVersion(versionId);
   if (!v) throw new Error("Version not found");
-  await query(`UPDATE datasets SET current_version_id=$1, total_rows=$2, total_cols=$3, quality_score=$4, updated_at=$5 WHERE id=$6`,
-    [versionId, v.total_rows, v.total_cols, v.quality_score, now(), datasetId]);
+  // file_type and size_bytes travel with the version too — without them a
+  // restored CSV version under an xlsx dataset kept lying about both.
+  await query(`UPDATE datasets SET current_version_id=$1, total_rows=$2, total_cols=$3, quality_score=$4, file_type=$5, size_bytes=$6, updated_at=$7 WHERE id=$8`,
+    [versionId, v.total_rows, v.total_cols, v.quality_score, v.file_type, v.size_bytes || 0, now(), datasetId]);
   return v;
 }
 
@@ -108,7 +133,10 @@ export async function getDatasetWithContent(id) {
 }
 
 export async function listDatasets({ ownerId, workspaceId, folderId, starred, trashed = false, search, tags, limit = 50, offset = 0 }) {
-  let sql = `SELECT d.*, GROUP_CONCAT(dt.tag) AS tags_csv FROM datasets d LEFT JOIN dataset_tags dt ON dt.dataset_id=d.id WHERE 1=1`;
+  // Tags are fetched in a second batched query rather than aggregated in SQL:
+  // GROUP_CONCAT does not exist on Postgres, and the CSV round-trip corrupted
+  // any tag containing a comma.
+  let sql = `SELECT d.* FROM datasets d WHERE 1=1`;
   const args = [];
   let i = 1;
 
@@ -124,11 +152,20 @@ export async function listDatasets({ ownerId, workspaceId, folderId, starred, tr
 
   if (search) { sql += ` AND (d.name LIKE $${i++} OR d.description LIKE $${i++})`; args.push(`%${search}%`, `%${search}%`); }
 
-  sql += ` GROUP BY d.id ORDER BY d.updated_at DESC LIMIT $${i++} OFFSET $${i++}`;
+  sql += ` ORDER BY d.updated_at DESC LIMIT $${i++} OFFSET $${i++}`;
   args.push(limit, offset);
 
   const rows = await query(sql, args);
-  return rows.map(r => ({ ...r, tags: r.tags_csv ? r.tags_csv.split(",") : [] }));
+  if (!rows.length) return rows;
+
+  const ph      = rows.map((_, n) => `$${n + 1}`).join(",");
+  const tagRows = await query(`SELECT dataset_id, tag FROM dataset_tags WHERE dataset_id IN (${ph})`, rows.map(r => r.id));
+  const byDs    = new Map();
+  for (const t of tagRows) {
+    if (!byDs.has(t.dataset_id)) byDs.set(t.dataset_id, []);
+    byDs.get(t.dataset_id).push(t.tag);
+  }
+  return rows.map(r => ({ ...r, tags: byDs.get(r.id) || [] }));
 }
 
 export async function countDatasets({ ownerId, workspaceId, folderId, starred, trashed = false, search }) {
@@ -172,6 +209,14 @@ export async function restoreDataset(id) {
 }
 
 export async function permanentlyDeleteDataset(id) {
+  // Remove the stored objects FIRST — "permanently delete" must not leave the
+  // user's file bytes on disk/S3 forever. storage.remove is idempotent, so a
+  // version without a key (legacy file_content rows) is a no-op.
+  const versions = await query(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1 AND storage_key IS NOT NULL`, [id]);
+  if (versions.length) {
+    const storage = await import("../services/storage.js");
+    for (const v of versions) await storage.remove(v.storage_key);
+  }
   await query(`DELETE FROM dataset_versions WHERE dataset_id=$1`, [id]);
   await query(`DELETE FROM dataset_tags WHERE dataset_id=$1`, [id]);
   await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1`, [id]);
@@ -187,7 +232,8 @@ export async function emptyTrash(ownerId) {
 
 // ── Tags ───────────────────────────────────────────────────
 export async function addTag(datasetId, tag) {
-  await query(`INSERT OR IGNORE INTO dataset_tags (id,dataset_id,tag) VALUES ($1,$2,$3)`, [uuid(), datasetId, tag.toLowerCase().trim()]);
+  // ON CONFLICT works on both backends; `INSERT OR IGNORE` is SQLite-only.
+  await query(`INSERT INTO dataset_tags (id,dataset_id,tag) VALUES ($1,$2,$3) ON CONFLICT (dataset_id,tag) DO NOTHING`, [uuid(), datasetId, tag.toLowerCase().trim()]);
 }
 export async function removeTag(datasetId, tag) {
   await query(`DELETE FROM dataset_tags WHERE dataset_id=$1 AND tag=$2`, [datasetId, tag.toLowerCase().trim()]);
@@ -198,16 +244,15 @@ export async function getAllTags(ownerId) {
 
 // ── Permissions (sharing with teammates) ────────────────────
 export async function shareDataset(datasetId, userId, role, invitedBy) {
+  // Both backends support this upsert (libsql binds $N by name since the
+  // pool.js fix, so the repeated $4 is safe). The old blanket .catch fallback
+  // did DELETE-then-INSERT: any transient insert failure silently revoked the
+  // collaborator's existing access, and every real error was swallowed.
   await query(
     `INSERT INTO dataset_permissions (id,dataset_id,user_id,role,invited_by,created_at) VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT(dataset_id,user_id) DO UPDATE SET role=$4`,
     [uuid(), datasetId, userId, role, invitedBy, now()]
-  ).catch(async () => {
-    // SQLite fallback if ON CONFLICT syntax differs
-    await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1 AND user_id=$2`, [datasetId, userId]);
-    await query(`INSERT INTO dataset_permissions (id,dataset_id,user_id,role,invited_by,created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [uuid(), datasetId, userId, role, invitedBy, now()]);
-  });
+  );
 }
 export async function getDatasetCollaborators(datasetId) {
   return query(`SELECT u.id,u.username,u.email,u.avatar_url,dp.role,dp.created_at FROM dataset_permissions dp JOIN users u ON u.id=dp.user_id WHERE dp.dataset_id=$1 ORDER BY dp.created_at`, [datasetId]);

@@ -46,15 +46,19 @@ export function initPerf() {
   if (typeof window === "undefined" || store._init) return;
   store._init = true;
 
-  // Navigation timing (after load so the entry is complete)
+  // Navigation timing — loadEventEnd is only populated AFTER the load event
+  // dispatch completes, so inside a load handler it still reads 0. Defer the
+  // read one tick; fall back to duration in case the entry is still settling.
   addEventListener("load", () => {
-    const [nav] = performance.getEntriesByType("navigation");
-    if (!nav) return;
-    store.nav = {
-      ttfbMs: Math.round(nav.responseStart),
-      domContentLoadedMs: Math.round(nav.domContentLoadedEventEnd),
-      loadMs: Math.round(nav.loadEventEnd),
-    };
+    setTimeout(() => {
+      const [nav] = performance.getEntriesByType("navigation");
+      if (!nav) return;
+      store.nav = {
+        ttfbMs: Math.round(nav.responseStart),
+        domContentLoadedMs: Math.round(nav.domContentLoadedEventEnd),
+        loadMs: Math.round(nav.loadEventEnd || nav.duration),
+      };
+    }, 0);
   }, { once: true });
 
   // LCP — keep the last reported entry, per the spec
@@ -80,7 +84,10 @@ export function recordApi(url, ms, ok = true) {
 const percentile = (arr, p) => {
   if (!arr.length) return 0;
   const sorted = [...arr].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100))];
+  // Nearest-rank: the ceil(n*p/100)-th smallest value. floor() here sat one
+  // rank too high whenever n*p/100 was an integer — p95 of 20 samples
+  // returned the absolute maximum, so one outlier faked a budget breach.
+  return sorted[Math.max(0, Math.ceil((sorted.length * p) / 100) - 1)];
 };
 
 /** Aggregate API latency — p95 is the number that reflects a bad experience. */

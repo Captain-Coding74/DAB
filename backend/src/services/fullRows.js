@@ -13,29 +13,31 @@
  * Read every row. CSV only, and deliberately so: an xlsx would need the whole
  * workbook in memory, and the fix catalogue is aimed at survey exports.
  * Returns { headers: null } for anything else so the caller can say why.
+ *
+ * Built on the SAME normalization layer and csv-parse options as streaming.js
+ * (encoding detection, delimiter sniffing, header-row detection, quoted cells
+ * with embedded newlines), so this view of the file cannot drift from the one
+ * colAnalysis was computed on. It used to split on newlines with a hand-rolled
+ * quote machine: a quoted address containing "\n" became two malformed rows,
+ * TIS-620 files decoded to mojibake, and semicolon CSVs collapsed to one
+ * column — corruption a fix then persisted as a new dataset version.
  */
+import { parse } from "csv-parse/sync";
+import { cleanCell, decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
+
 function parseAllRows(buffer, fileName) {
   if (!/\.(csv|tsv|txt)$/i.test(fileName || "")) return { headers: null, rows: null };
 
-  const text = buffer.toString("utf-8");
-  const delim = (text.match(/\t/g) || []).length > (text.match(/,/g) || []).length ? "\t" : ",";
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (!lines.length) return { headers: [], rows: [] };
+  const { text } = decodeSmart(buffer);
+  const delimiter = sniffDelimiter(text);
+  const records = parse(text, { bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter })
+    .map((r) => r.map(cleanCell));
+  if (!records.length) return { headers: [], rows: [] };
 
-  const split = (line) => {
-    const out = []; let cur = "", inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
-      else if (c === delim && !inQ) { out.push(cur); cur = ""; }
-      else cur += c;
-    }
-    out.push(cur);
-    return out;
-  };
-
-  const headers = split(lines[0]).map((h) => h.trim());
-  const rows = lines.slice(1).map(split);
+  const hIdx    = detectHeaderRow(records.slice(0, 10));
+  const headers = finalizeHeaders(records[hIdx]);
+  const rows    = records.slice(hIdx + 1)
+    .filter((r) => !r.every((v) => v === "")); // ",,," lines are not data (parity with streaming)
   return { headers, rows };
 }
 

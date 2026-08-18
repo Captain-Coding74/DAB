@@ -3,6 +3,42 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.10] — 2026-08-19 "Bug hunt"
+71 bugs found by a six-area sweep with adversarial verification of every
+finding (83 candidates; 5 refuted, e.g. the pg-pool "leak" the installed
+version already handles). All fixed; suites green afterward: 314 unit +
+238 integration + e2e + 27 browser + 32 frontend + build.
+- **Postgres was unusable:** `INSERT OR IGNORE` (refresh tokens, workspace
+  members, tags) and `GROUP_CONCAT` (dataset list) are SQLite-only — every
+  register/login/refresh and the dataset page 500'd under `DATABASE_URL`.
+  Now `ON CONFLICT` + a batched tag query (which also un-corrupts tags
+  containing commas). The SQLite `$N→?` rewrite bound repeated/out-of-order
+  placeholders wrong (libsql binds NULL to leftovers, silently) — args now
+  bind by name.
+- **IDOR:** the `analysis:<id>` cache key served one user's analysis to any
+  authenticated caller (now user-scoped); dashboards/widgets, comments,
+  activity, and folders had no ownership/membership checks at all — all now
+  guard with the same `isMember`/`getUserDatasetRole` idiom as workspaces.
+- **Wrong numbers:** per-column null filtering destroyed row pairing for
+  paired-t/correlation/regression/Cronbach (listwise deletion now); PLS-SEM
+  coerced blank cells to 0 (now refuses, naming the indicator); constant-y
+  regression claimed r²=1 p=0; the quantile "reservoir" was a first-10k
+  capture (real Algorithm R, deterministically seeded); one-pass correlation
+  cancelled catastrophically on large offsets (Welford co-moments); scatter
+  plotted the y column against itself.
+- **Behavior:** scheduled reports fired every minute forever (`next_run` now
+  computed by a dependency-free cron evaluator and persisted); the rate
+  limiter re-armed its TTL on every hit (window never reset); multi-upload's
+  magic-byte rejection returned from an inner IIFE (double-send, orphaned
+  storage object, single-file bypass); legacy `.xls` hit the ZIP loader's
+  opaque error (clear bilingual message now); permanent delete left the
+  stored bytes on disk; share unlock never cleared `needsPass`; the modal
+  focus trap re-armed per keystroke; pie labels clipped at the container top.
+- One stale assertion updated: `agent.test.js` required the budget-exhausted
+  final call to omit `tools` — the real API 400s that request shape when
+  messages carry `tool_use` blocks (`tool_choice: none` is the fix it now
+  asserts).
+
 ## [Unreleased] — v21 "Production Polish"
 40% UX polish · 30% performance · 20% documentation · 10% bug fixes
 - **Perf:** `ColumnStatsPanel` moved to its own module (`components/ColumnStats.jsx`).

@@ -9,6 +9,7 @@
  */
 
 import { describeNumeric, describeText } from "./stats.js";
+import { parseFlexibleNumber } from "./services/normalize.js";
 
 // ── Column Analysis ───────────────────────────────────────
 export function analyzeColumns(headers, rows) {
@@ -113,20 +114,34 @@ export function correlationMatrix(headers, rows) {
       const rawVals = rows.map(r => r[i]);
       const dateLike = rawVals.filter(v => typeof v === "string" && ISO_DATE.test(v)).length;
       if (dateLike > rawVals.length * 0.5) return null;
-      const vals = rows.map(r => parseFloat(r[i])).filter(v => !isNaN(v));
+      /* Row-aligned, null = missing. parseFlexibleNumber rather than
+         parseFloat: "1,234.50" must be 1234.5, not 1, and "14/01/2569" must
+         be missing, not 14. Keeping the nulls IN PLACE is what lets pearson
+         pair values by row instead of by filtered position. */
+      const vals = rows.map(r => parseFlexibleNumber(r[i]));
+      const present = vals.filter(v => v !== null);
       // An index column correlates with anything that drifts over time, and
       // "month correlates with sales, r=0.81" tells a user nothing they did
       // not already know. Keep counters out of the matrix entirely.
-      if (isIndexColumn(col, vals)) return null;
-      return vals.length > rows.length * 0.5 ? { col, vals } : null;
+      if (isIndexColumn(col, present)) return null;
+      return present.length > rows.length * 0.5 ? { col, vals } : null;
     })
     .filter(Boolean);
 
   if (numCols.length < 2) return null;
 
   function pearson(a, b) {
-    const n   = Math.min(a.length, b.length);
-    const ax  = a.slice(0, n), bx = b.slice(0, n);
+    /* Pairwise-complete: pair by ROW, keeping only rows where both parse —
+       the same rule as services/pairwise.js. Filtering missing values per
+       column first shifted every later pair onto a different row, so one
+       leading blank turned the reported r into a lag-1 correlation. */
+    const len = Math.min(a.length, b.length);
+    const ax = [], bx = [];
+    for (let i = 0; i < len; i++) {
+      if (a[i] !== null && b[i] !== null) { ax.push(a[i]); bx.push(b[i]); }
+    }
+    const n = ax.length;
+    if (n === 0) return 0;
     const ma  = ax.reduce((s, v) => s + v, 0) / n;
     const mb  = bx.reduce((s, v) => s + v, 0) / n;
     const num = ax.reduce((s, v, i) => s + (v - ma) * (bx[i] - mb), 0);
@@ -234,7 +249,10 @@ export function autoForecastFromAnalysis(colAnalysis = []) {
 export function autoForecast(headers, rows) {
   const results = [];
   headers.forEach((col, i) => {
-    const vals = rows.map(r => parseFloat(r[i])).filter(v => !isNaN(v));
+    /* parseFlexibleNumber, not parseFloat: parseFloat stops at the first
+       comma, so a "1,234.50" revenue column read as 1, 2, 3, … — a perfect
+       artificial trend published with r2 = 1. Null means missing. */
+    const vals = rows.map(r => parseFlexibleNumber(r[i])).filter(v => v !== null);
     if (vals.length < 4) return;
     if (isIndexColumn(col, vals)) return;   // a counter is not a trend
     const xs  = vals.map((_, idx) => idx + 1);

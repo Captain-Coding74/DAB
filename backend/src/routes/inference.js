@@ -40,11 +40,24 @@ const toNumber = (v) => {
   return null;
 };
 
-/** Pull one column out of parsed rows as numbers, dropping blanks. */
-function column(rows, headers, name) {
-  const i = indexOf(headers, name);
-  if (i < 0) return [];
-  return rows.map((r) => toNumber(r[i])).filter((v) => v !== null);
+/**
+ * Pull several columns out of parsed rows as ROW-ALIGNED numeric arrays.
+ *
+ * Listwise deletion: a row is kept only when every requested column parses.
+ * The tests fed from here (paired-t, correlation, regression, Cronbach) all
+ * pair values by array index — dropping blanks per column re-paired row 5's
+ * x with row 7's y and produced a confident, wrong statistic.
+ */
+function columns(rows, headers, names) {
+  const idx = names.map((n) => indexOf(headers, n));
+  const out = names.map(() => []);
+  if (idx.some((i) => i < 0)) return out;
+  for (const r of rows) {
+    const vals = idx.map((i) => toNumber(r[i]));
+    if (vals.some((v) => v === null)) continue;   // incomplete row — drop whole row
+    vals.forEach((v, j) => out[j].push(v));
+  }
+  return out;
 }
 
 /** Split a numeric column by the distinct values of a grouping column. */
@@ -114,9 +127,11 @@ export function mountInferenceRoutes(app) {
           result = { ...independentTTest(buckets.get(keys[0]), buckets.get(keys[1])), groupNames: keys };
           break;
         }
-        case "paired-t":
-          result = pairedTTest(column(sampleRows, headers, beforeColumn), column(sampleRows, headers, afterColumn));
+        case "paired-t": {
+          const [before, after] = columns(sampleRows, headers, [beforeColumn, afterColumn]);
+          result = pairedTTest(before, after);
           break;
+        }
         case "anova": {
           const buckets = groupBy(sampleRows, headers, valueColumn, groupColumn);
           result = { ...oneWayAnova([...buckets.values()]), groupNames: [...buckets.keys()] };
@@ -138,12 +153,16 @@ export function mountInferenceRoutes(app) {
           result = { ...chiSquareTest(table), rowLabels: rowVals, colLabels: colVals };
           break;
         }
-        case "correlation":
-          result = pearsonCorrelation(column(sampleRows, headers, xColumn), column(sampleRows, headers, yColumn));
+        case "correlation": {
+          const [xs, ys] = columns(sampleRows, headers, [xColumn, yColumn]);
+          result = pearsonCorrelation(xs, ys);
           break;
-        case "regression":
-          result = linearRegression(column(sampleRows, headers, xColumn), column(sampleRows, headers, yColumn));
+        }
+        case "regression": {
+          const [xs, ys] = columns(sampleRows, headers, [xColumn, yColumn]);
+          result = linearRegression(xs, ys);
           break;
+        }
         case "cronbach":
           if (!Array.isArray(itemColumns) || itemColumns.length < 2) {
             return res.status(400).json({
@@ -151,7 +170,7 @@ export function mountInferenceRoutes(app) {
               errorEn: "select at least 2 questionnaire items",
             });
           }
-          result = cronbachAlpha(itemColumns.map((c) => column(sampleRows, headers, c)));
+          result = cronbachAlpha(columns(sampleRows, headers, itemColumns));
           break;
         default:
           return res.status(400).json({

@@ -13,6 +13,7 @@ import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
+import { isMember } from "../db/repository.js";
 import { pageParams } from "../pagination.js";
 
 const router = express.Router();
@@ -128,6 +129,20 @@ router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
 router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, res, next) => {
   try {
     if (!req.files?.length) return res.status(400).json({ error: "At least one file required" });
+
+    /* v21: same magic-byte gate on every file in a multi-upload — checked
+       BEFORE anything is written to storage, and returning from the HANDLER.
+       The old check lived inside an async IIFE assigned to totalRows: its
+       `return res.status(400)` only exited the IIFE, so the handler kept
+       running after the 400 was flushed (double-send, dataset row created
+       with the response object as total_rows), the first file's stored
+       object was orphaned, and a single-file upload skipped the gate
+       entirely. */
+    for (const f of req.files) {
+      if (!verifyFileMagic(f.buffer, f.originalname))
+        return res.status(400).json({ error: `${f.originalname}: content does not match extension` });
+    }
+
     const { name, description, folderId, workspaceId } = req.body;
 
     const first = req.files[0];
@@ -135,13 +150,11 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
     const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
     const { headers, colAnalysis, totalRows: firstRows, dupeCount } = await parseFileStreaming(first.buffer, first.originalname);
 
-    const totalRows = req.files.length === 1 ? firstRows : await (async () => {
-      let sum = 0;
-      // v21: same magic-byte gate on every file in a multi-upload
-    for (const f of req.files) {
-      if (!verifyFileMagic(f.buffer, f.originalname)) return res.status(400).json({ error: `${f.originalname}: content does not match extension` }); const r = await parseFileStreaming(f.buffer, f.originalname); sum += r.totalRows; }
-      return sum;
-    })();
+    let totalRows = firstRows;
+    for (let i = 1; i < req.files.length; i++) {
+      const r = await parseFileStreaming(req.files[i].buffer, req.files[i].originalname);
+      totalRows += r.totalRows;
+    }
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
 
     const ds = await DR.createDataset({
@@ -401,21 +414,46 @@ router.delete("/:id/collaborators/:userId", requireAuth, async (req, res, next) 
 });
 
 // ── Folders ───────────────────────────────────────────────────
+/* These four routes had requireAuth and nothing else: any logged-in user
+   could list, rename or delete a stranger's folders by id (the permission
+   matrix skips /folders/ paths, so no test probed them). Workspace listings
+   require membership; rename/delete require the folder's owner. */
 router.post("/folders", requireAuth, async (req, res, next) => {
   try {
     const { name, parentId, workspaceId } = req.body;
+    if (!name?.trim()) return res.status(400).json({ error: "name required" });
+    if (workspaceId && !(await isMember(workspaceId, req.user.userId)))
+      return res.status(403).json({ error: "Not a member of this workspace" });
     const folder = await DR.createFolder({ workspaceId, ownerId: req.user.userId, name, parentId });
     res.status(201).json(folder);
   } catch (err) { next(err); }
 });
 router.get("/folders/list", requireAuth, async (req, res, next) => {
-  try { res.json(await DR.getFolders(req.query.workspaceId, req.query.parentId || null)); } catch (err) { next(err); }
+  try {
+    const { workspaceId, parentId } = req.query;
+    if (workspaceId && !(await isMember(workspaceId, req.user.userId)))
+      return res.status(403).json({ error: "Not a member of this workspace" });
+    res.json(await DR.getFolders(workspaceId, parentId || null, req.user.userId));
+  } catch (err) { next(err); }
 });
 router.patch("/folders/:id/rename", requireAuth, async (req, res, next) => {
-  try { await DR.renameFolder(req.params.id, req.body.name); res.json({ success: true }); } catch (err) { next(err); }
+  try {
+    const folder = await DR.getFolder(req.params.id);
+    if (!folder) return res.status(404).json({ error: "Not found" });
+    if (folder.owner_id !== req.user.userId) return res.status(403).json({ error: "Only the folder owner can rename" });
+    if (!req.body.name?.trim()) return res.status(400).json({ error: "name required" });
+    await DR.renameFolder(req.params.id, req.body.name, req.user.userId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 router.delete("/folders/:id", requireAuth, async (req, res, next) => {
-  try { await DR.deleteFolder(req.params.id); res.json({ success: true }); } catch (err) { next(err); }
+  try {
+    const folder = await DR.getFolder(req.params.id);
+    if (!folder) return res.status(404).json({ error: "Not found" });
+    if (folder.owner_id !== req.user.userId) return res.status(403).json({ error: "Only the folder owner can delete" });
+    await DR.deleteFolder(req.params.id, req.user.userId);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 export default router;

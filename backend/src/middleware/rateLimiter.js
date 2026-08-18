@@ -26,16 +26,22 @@ function makeStore(prefix, windowMs) {
     async increment(key) {
       const ckey     = `${prefix}:${key}`;
       const existing = await cache.get(ckey);
-      const count    = (existing?.count || 0) + 1;
-      const reset    = existing?.reset  || Date.now() + windowMs;
-      await cache.set(ckey, { count, reset }, Math.ceil(windowMs / 1000));
+      // Re-create the entry once its window has passed even if the cache kept
+      // it alive, and — critically — arm the TTL from the REMAINING window,
+      // not a fresh full one. Re-setting a full TTL on every hit turned the
+      // fixed window into a never-expiring one: a client trickling requests
+      // kept its count forever and stayed blocked long past resetTime.
+      const fresh = !existing || existing.reset <= Date.now();
+      const count = fresh ? 1 : existing.count + 1;
+      const reset = fresh ? Date.now() + windowMs : existing.reset;
+      await cache.set(ckey, { count, reset }, Math.max(1, Math.ceil((reset - Date.now()) / 1000)));
       return { totalHits: count, resetTime: new Date(reset) };
     },
     async decrement(key) {
       const ckey = `${prefix}:${key}`;
       const val  = await cache.get(ckey);
       if (val && val.count > 0) {
-        await cache.set(ckey, { ...val, count: val.count - 1 }, Math.ceil(windowMs / 1000));
+        await cache.set(ckey, { ...val, count: val.count - 1 }, Math.max(1, Math.ceil((val.reset - Date.now()) / 1000)));
       }
     },
     async resetKey(key) {

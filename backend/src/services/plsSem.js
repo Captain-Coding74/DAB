@@ -201,10 +201,16 @@ export function plsSem(rows, model, options = {}) {
     for (const it of items) {
       const col = rows.map((r) => {
         const v = r[it];
-        return typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, ""));
+        if (typeof v === "number") return v;
+        const s = String(v ?? "").replace(/,/g, "").trim();
+        // A blank or absent cell is MISSING, not 0 — Number("") is 0, which
+        // silently fabricated a Likert answer of 0 for every skipped question
+        // and dragged that indicator's loading (and every path through it).
+        return s === "" ? NaN : Number(s);
       });
       if (col.some((v) => !Number.isFinite(v))) {
-        return { error: `คอลัมน์ "${it}" มีค่าที่ไม่ใช่ตัวเลข`, errorEn: `indicator "${it}" has non-numeric values` };
+        return { error: `คอลัมน์ "${it}" มีค่าที่ไม่ใช่ตัวเลขหรือค่าว่าง`,
+                 errorEn: `indicator "${it}" has non-numeric or missing values` };
       }
       const z = standardize(col);
       if (!z) {

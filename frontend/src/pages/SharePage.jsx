@@ -24,9 +24,17 @@ export default function SharePage() {
         headers: pass ? { "X-Share-Password": pass } : {},
       });
       const d   = await res.json();
-      if (res.status === 401 && d.passwordProtected) { setNeedsPass(true); setLoading(false); return; }
+      if (res.status === 401 && d.passwordProtected) {
+        setNeedsPass(true);
+        // A 401 after submitting a password means the guess was wrong — the
+        // first load (no password yet) shows the form without an error.
+        if (pass) setError("รหัสผ่านไม่ถูกต้อง · Wrong password");
+        setLoading(false);
+        return;
+      }
       if (!res.ok) { setError(d.error || "ไม่พบรายงาน"); setLoading(false); return; }
       setData(d);
+      setNeedsPass(false); // unlocked — leave the password form
     } catch { setError("โหลดรายงานไม่สำเร็จ"); }
     setLoading(false);
   };

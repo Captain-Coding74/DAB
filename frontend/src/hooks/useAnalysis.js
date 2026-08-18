@@ -5,7 +5,7 @@
  * Uses the centralized api layer; multipart calls pass headers:{} so the
  * browser sets its own multipart boundary.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useAppStore } from "../store";
 import { apiFetch, getJSON, postJSON } from "../lib/api";
 import { startSpan } from "../lib/perf";
@@ -38,14 +38,25 @@ export function useAnalysis() {
   const [loading,   setLoading]   = useState(false);
   const [exporting, setExporting] = useState(null);
 
+  // v21.9: two guards. inFlightRef is a synchronous re-entry lock — the
+  // palette and Ctrl+Enter bypass the disabled button, and each duplicate
+  // call re-uploads the file for a paid AI run. runRef is a generation
+  // counter — a slow response from a previous run (or previous file) must
+  // never clobber newer state, or Export pairs file B with analysis A.
+  const inFlightRef = useRef(false);
+  const runRef      = useRef(0);
+
   const selectFile = useCallback((f) => {
     if (!f || !FILE_RE.test(f.name)) { toast("กรุณาเลือก .csv, .xlsx หรือ .xls", "error"); return false; }
+    runRef.current++;   // invalidate any in-flight run for the previous file
     setFile(f); setCurrentAnalysis(null);
     return true;
   }, [toast, setCurrentAnalysis]);
 
   const analyze = useCallback(async (question) => {
-    if (!file) return;
+    if (!file || inFlightRef.current) return;
+    inFlightRef.current = true;
+    const runId = ++runRef.current;
     setLoading(true);
     const endSpan = startSpan("analyze");   // v13: measure what the USER waits for
     const fd = new FormData();
@@ -56,17 +67,21 @@ export function useAnalysis() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const perceivedMs = endSpan();
+      if (runId !== runRef.current) return;   // superseded — a newer file/run owns the state now
       setCurrentAnalysis({ ...data, fileName: file.name, perceivedMs });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
-    } catch (err) { endSpan(); toast(friendlyError(err), "error"); }
-    finally { setLoading(false); }
+    } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
+    finally { inFlightRef.current = false; setLoading(false); }
   }, [file, toast, setCurrentAnalysis]);
 
   // v20.1: the demo path — no file, no AI, no auth. The server returns the
   // same analysisResponse shape with analysis:null, so every tab downstream
   // renders with zero special plumbing.
   const runDemo = useCallback(async (id, displayName) => {
+    if (inFlightRef.current) return;   // same re-entry + stale-response guards as analyze
+    inFlightRef.current = true;
+    const runId = ++runRef.current;
     setLoading(true);
     setFile(null);
     setCurrentAnalysis(null);
@@ -74,11 +89,12 @@ export function useAnalysis() {
     try {
       const data = await getJSON(`/api/demo/samples/${id}/analysis`);
       const perceivedMs = endSpan();
+      if (runId !== runRef.current) return;
       setCurrentAnalysis({ ...data, fileName: displayName || id, perceivedMs });
       toast(`ตรวจเสร็จใน ${data.durationMs} ms — สถิติล้วน ไม่ใช้ AI ⚡`);
       return data;
-    } catch (err) { endSpan(); toast(friendlyError(err), "error"); }
-    finally { setLoading(false); }
+    } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
+    finally { inFlightRef.current = false; setLoading(false); }
   }, [toast, setCurrentAnalysis]);
 
   const exportReport = useCallback(async (format, question) => {

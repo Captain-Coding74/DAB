@@ -13,6 +13,7 @@ import { analyzeColumns, detectMissing, detectDuplicates,
          correlationMatrix, autoForecast, autoForecastFromAnalysis, recommendCharts,
          buildSummaryString } from "../analyze.js";
 import { parseAllRows } from "./fullRows.js";
+import { parseFlexibleNumber } from "./normalize.js";
 import { enrichChartsWithData, alignHeaders } from "./chartSeries.js";
 import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.js";
 import { computeQualityScore } from "./qualityScore.js";
@@ -52,11 +53,32 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
     const full = alignHeaders(parseAllRows(buffer, fileName), colAnalysis.map((c) => c.col));
     if (full.rows?.length) {
       autoCharts = enrichChartsWithData(autoCharts, full.headers, full.rows);
-      if (!forecasts.length) forecasts = autoForecast(full.headers, full.rows);
+      /* The fallback only sees columns the PARSER classified numeric, with
+         cells pre-coerced by the parser's own number rules. autoForecast's
+         raw parseFloat read "2026-01-14" as 2026, so an ISO date column whose
+         name escaped isIndexColumn ("OrderDate", "วันขาย") became a year-valued
+         step function with a confident R² — the exact leak the dates-first
+         parser design exists to prevent. */
+      if (!forecasts.length) {
+        const numericCols = new Set(colAnalysis
+          .filter((c) => c.type === "numeric" && c.semantic !== "date")
+          .map((c) => c.col));
+        const keep = full.headers.map((h, i) => (numericCols.has(h) ? i : -1)).filter((i) => i >= 0);
+        if (keep.length) {
+          const coerced = full.rows.map((r) => keep.map((i) => {
+            const n = parseFlexibleNumber(r[i]);
+            return n === null ? "" : n;
+          }));
+          forecasts = autoForecast(keep.map((i) => full.headers[i]), coerced);
+        }
+      }
     }
   }
-  const suggestions = generatePromptSuggestions(colAnalysis, null);
+  /* Quality BEFORE suggestions: generatePromptSuggestions gates its
+     "quality issues" prompt on the score, and a hard-coded null made that
+     branch unreachable no matter how bad the file was. */
   const quality     = computeQualityScore(colAnalysis, totalRows, dupeCount);
+  const suggestions = generatePromptSuggestions(colAnalysis, quality);
   const insights    = generateInsights({ colAnalysis, totalRows, dupeCount, corr, forecasts });
   const summaryStr  = buildSummaryString(colAnalysis, missing, dupes, corr, forecasts);
   return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr };

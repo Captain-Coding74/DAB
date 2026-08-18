@@ -106,9 +106,16 @@ export async function runAgent({ client, statsJson, analysisText, question, maxS
     messages.push({ role: "user", content: results });
   }
 
-  // Budget exhausted — ask for the best answer from what was gathered
+  // Budget exhausted — ask for the best answer from what was gathered.
+  // `messages` still carries tool_use/tool_result blocks from the earlier
+  // rounds, and the real API rejects those with a 400 unless `tools` is
+  // defined — so the salvage call itself failed on exactly the questions
+  // that had used the most budget. Offer the tools but forbid another
+  // round: tool_choice "none" forces a text-only answer.
   messages.push({ role: "user", content: "หมดรอบการตรวจแล้ว สรุปคำตอบที่ดีที่สุดจากข้อมูลที่ตรวจมา" });
-  const finalMsg = await client.messages.create({ model, max_tokens: 900, messages });
+  const finalMsg = await client.messages.create({
+    model, max_tokens: 900, tools: AGENT_TOOLS, tool_choice: { type: "none" }, messages,
+  });
   const reply = finalMsg.content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
   return { reply: reply || "(ไม่มีคำตอบ)", steps };
 }

@@ -41,7 +41,11 @@ export default function Tour({ open, onClose }) {
    */
   const measure = () => {
     const el = document.querySelector(step?.target);
-    if (!el) {
+    // A zero-size rect means display:none (e.g. the Ctrl+K button hides below
+    // md) — the element exists but there is nothing to spotlight. Treat it
+    // exactly like an absent target.
+    const r0 = el?.getBoundingClientRect();
+    if (!el || !r0?.width || !r0?.height) {
       // Target isn't on screen (e.g. the tabs, before any analysis) → skip it.
       if (i < STEPS.length - 1) setI(v => v + 1);
       else finish();

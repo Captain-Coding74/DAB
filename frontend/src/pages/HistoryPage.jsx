@@ -16,24 +16,31 @@ export default function HistoryPage() {
   useEffect(() => { if (!user) nav("/auth"); }, [user]);
   useEffect(() => { if (user) fetchHistory(); }, [page, user]);
 
+  // Cached pages return instantly while uncached ones lag — without a
+  // sequence check a slow older request could overwrite the newer page.
+  const reqSeqRef = useRef(0);
   async function fetchHistory() {
+    const seq = ++reqSeqRef.current;
     setLoading(true);
     try {
       const res  = await apiFetch(`/api/history?limit=${LIMIT}&offset=${page * LIMIT}`);
       const data = await res.json();
+      if (seq !== reqSeqRef.current) return; // stale — a newer request superseded this one
       if (res.ok) {
         setItems(Array.isArray(data) ? data : []);
         setTotal(parseInt(res.headers?.get?.("X-Total-Count") || 0));
       }
     } catch {}
-    setLoading(false);
+    if (seq === reqSeqRef.current) setLoading(false);
   }
 
   // v11: undoable delete — remove locally, commit to the server after a
   // 5-second grace window; "เลิกทำ" cancels the commit and restores the row.
   const pendingRef = useRef(new Map());
   useEffect(() => () => {  // navigating away flushes pending deletes now
-    for (const [, p] of pendingRef.current) { clearTimeout(p.timer); p.commit(); }
+    // Dismiss the undo toasts too — the delete just committed, so leaving a
+    // live "เลิกทำ" button on screen would fake a successful undo.
+    for (const [, p] of pendingRef.current) { clearTimeout(p.timer); p.commit(); dismissToast(p.toastId); }
     pendingRef.current.clear();
   }, []);
 
@@ -46,10 +53,10 @@ export default function HistoryPage() {
 
     const commit = () => {
       pendingRef.current.delete(id);
+      setTotal(t => Math.max(0, t - 1)); // keep the heading and pager honest
       apiFetch(`/api/history/${id}`, { method: "DELETE" }).catch(() => {});
     };
     const timer = setTimeout(commit, 5000);
-    pendingRef.current.set(id, { timer, commit });
 
     const toastId = toast("ลบรายงานแล้ว", "info", {
       duration: 5000,
@@ -65,6 +72,7 @@ export default function HistoryPage() {
         },
       },
     });
+    pendingRef.current.set(id, { timer, commit, toastId });
   }
 
   const totalPages    = Math.ceil(total / LIMIT);

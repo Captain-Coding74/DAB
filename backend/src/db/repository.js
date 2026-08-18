@@ -56,11 +56,13 @@ export async function updateLastLogin(id) {
 
 // ── Refresh tokens ─────────────────────────────────────────
 export async function storeRefreshToken(userId, tokenHash, expiresAt) {
-  // INSERT OR IGNORE: token_hash is UNIQUE. With the jti fix in signRefresh
-  // this should never collide, but a raw insert failure here would 500 the
-  // whole login/register request over what's effectively a no-op (the
-  // valid token is already stored) — so we degrade gracefully instead.
-  await query(`INSERT OR IGNORE INTO refresh_tokens (id,user_id,token_hash,expires_at,created_at) VALUES ($1,$2,$3,$4,$5)`,
+  // ON CONFLICT DO NOTHING: token_hash is UNIQUE. With the jti fix in
+  // signRefresh this should never collide, but a raw insert failure here
+  // would 500 the whole login/register request over what's effectively a
+  // no-op (the valid token is already stored) — so we degrade gracefully.
+  // (Was `INSERT OR IGNORE`, which is SQLite-only syntax and broke every
+  // token issue on Postgres; ON CONFLICT works on both backends.)
+  await query(`INSERT INTO refresh_tokens (id,user_id,token_hash,expires_at,created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (token_hash) DO NOTHING`,
     [uuid(),userId,tokenHash,expiresAt,now()]);
 }
 export async function findRefreshToken(tokenHash) {
@@ -95,7 +97,9 @@ export async function getWorkspaceMembers(wsId) {
   return query(`SELECT u.id,u.username,u.email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId]);
 }
 export async function addWorkspaceMember(wsId, userId, role="member", invitedBy=null) {
-  await query(`INSERT OR IGNORE INTO workspace_members (id,workspace_id,user_id,role,invited_by,joined_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+  // Duplicate invites stay a no-op via the UNIQUE(workspace_id,user_id)
+  // constraint — ON CONFLICT is portable where `INSERT OR IGNORE` was not.
+  await query(`INSERT INTO workspace_members (id,workspace_id,user_id,role,invited_by,joined_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (workspace_id,user_id) DO NOTHING`,
     [uuid(),wsId,userId,role,invitedBy,now()]);
 }
 export async function removeWorkspaceMember(wsId, userId) {
@@ -187,7 +191,9 @@ export async function createScheduledReport({ workspaceId, userId, name, dataset
 export async function getScheduledReports(wsId) {
   return query(`SELECT * FROM scheduled_reports WHERE workspace_id=$1 AND is_active=1 ORDER BY created_at DESC`,[wsId]);
 }
-export async function updateScheduledRun(id) { await query(`UPDATE scheduled_reports SET last_run=$1,run_count=run_count+1 WHERE id=$2`,[now(),id]); }
+/** Mark a run and advance next_run — without persisting the next fire time,
+ *  getDueScheduledReports matched every report on every one-minute tick. */
+export async function updateScheduledRun(id, nextRun = null) { await query(`UPDATE scheduled_reports SET last_run=$1,next_run=$2,run_count=run_count+1 WHERE id=$3`,[now(),nextRun,id]); }
 export async function getDueScheduledReports() {
   return query(`SELECT * FROM scheduled_reports WHERE is_active=1 AND (next_run IS NULL OR next_run<=$1)`,[now()]);
 }
