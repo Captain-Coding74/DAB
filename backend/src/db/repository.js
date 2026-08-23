@@ -21,7 +21,7 @@ export class DuplicateUserError extends Error {
 
 // SQLite and Postgres word their unique-violation errors completely
 // differently. Normalise here, once, at the boundary that knows about SQL.
-const isUniqueViolation = (err) =>
+export const isUniqueViolation = (err) =>
   err?.code === "23505" ||                                   // Postgres
   /unique constraint|UNIQUE constraint failed/i.test(err?.message || "") ||  // SQLite
   /SQLITE_CONSTRAINT/i.test(err?.rawCode || err?.code || "");
@@ -50,6 +50,12 @@ export async function findUserById(id) {
   const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1`, [id]);
   return r[0]||null;
 }
+/** Like findUserById but honours the ban flag — refresh must not resurrect a
+ *  deactivated user (login already filters on is_active!=0). */
+export async function findActiveUserById(id) {
+  const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1 AND is_active!=0`, [id]);
+  return r[0]||null;
+}
 export async function updateLastLogin(id) {
   await query(`UPDATE users SET last_login=$1 WHERE id=$2`, [now(),id]);
 }
@@ -71,6 +77,20 @@ export async function findRefreshToken(tokenHash) {
 }
 export async function revokeRefreshToken(h) { await query(`UPDATE refresh_tokens SET revoked=1 WHERE token_hash=$1`,[h]); }
 export async function revokeAllUserTokens(uid) { await query(`UPDATE refresh_tokens SET revoked=1 WHERE user_id=$1`,[uid]); }
+/** Atomically revoke a token ONLY if it is still live. Returns true when this
+ *  call is the one that flipped it — the serialization point for rotation:
+ *  under concurrent refreshes of the same token exactly one caller gets true,
+ *  and a re-presented (already-rotated) token gets false, which the route
+ *  treats as reuse. RETURNING works on both Postgres and libsql. */
+export async function revokeRefreshTokenIfActive(h) {
+  const r = await query(`UPDATE refresh_tokens SET revoked=1 WHERE token_hash=$1 AND revoked=0 RETURNING id`, [h]);
+  return r.length === 1;
+}
+/** Housekeeping: drop revoked or expired tokens so the table cannot grow
+ *  without bound (every login/refresh writes a row; nothing pruned them). */
+export async function pruneRefreshTokens() {
+  await query(`DELETE FROM refresh_tokens WHERE revoked=1 OR expires_at<=$1`, [now()]);
+}
 
 // ── Workspaces ─────────────────────────────────────────────
 export async function createWorkspace({ name, ownerId, description, brandColor }) {

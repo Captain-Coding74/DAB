@@ -143,13 +143,31 @@ export function mountInferenceRoutes(app) {
           if (xi < 0 || yi < 0) {
             return res.status(400).json({ error: "ไม่พบคอลัมน์ที่เลือก", errorEn: "selected column not found" });
           }
-          const rowVals = [...new Set(sampleRows.map((r) => String(r[xi] ?? "").trim()).filter(Boolean))];
-          const colVals = [...new Set(sampleRows.map((r) => String(r[yi] ?? "").trim()).filter(Boolean))];
-          const table = rowVals.map((rv) =>
-            colVals.map((cv) => sampleRows.filter(
-              (r) => String(r[xi] ?? "").trim() === rv && String(r[yi] ?? "").trim() === cv
-            ).length)
-          );
+          /* One O(N) pass: count each (rv, cv) pair into a Map, discovering
+             labels as we go. The old code ran sampleRows.filter() once PER
+             CELL — O(distinctX * distinctY * N) — so two free-text columns on a
+             large CSV (thousands of distinct values each) blocked the event
+             loop for the whole process. A contingency test over that many
+             categories is meaningless anyway (expected counts → 0), so cap the
+             cardinality and refuse rather than grind. */
+          const MAX_CATS = 50;
+          const rowIdx = new Map(), colIdx = new Map(), counts = new Map();
+          for (const r of sampleRows) {
+            const rv = String(r[xi] ?? "").trim(), cv = String(r[yi] ?? "").trim();
+            if (!rv || !cv) continue;
+            if (!rowIdx.has(rv)) rowIdx.set(rv, rowIdx.size);
+            if (!colIdx.has(cv)) colIdx.set(cv, colIdx.size);
+            if (rowIdx.size > MAX_CATS || colIdx.size > MAX_CATS) {
+              return res.status(400).json({
+                error: `chi-square รองรับไม่เกิน ${MAX_CATS} หมวดต่อคอลัมน์ — คอลัมน์ที่เลือกมีค่าที่แตกต่างมากเกินไป`,
+                errorEn: `chi-square supports at most ${MAX_CATS} categories per column — the selected columns have too many distinct values for a contingency test`,
+              });
+            }
+            const key = rowIdx.get(rv) + "|" + colIdx.get(cv);
+            counts.set(key, (counts.get(key) || 0) + 1);
+          }
+          const rowVals = [...rowIdx.keys()], colVals = [...colIdx.keys()];
+          const table = rowVals.map((_, ri) => colVals.map((__, ci) => counts.get(ri + "|" + ci) || 0));
           result = { ...chiSquareTest(table), rowLabels: rowVals, colLabels: colVals };
           break;
         }

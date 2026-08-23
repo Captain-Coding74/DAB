@@ -6,7 +6,25 @@ import * as R from "../db/repository.js";
 import { requireAuth } from "../auth.js";
 import { analyzeLimiter } from "../middleware/rateLimiter.js";
 import { runAgent } from "../services/agent.js";
+import { tryConsumeAI } from "../services/aiBudget.js";
 import { cache } from "../services/cache.js";
+
+/* The global daily AI budget (services/aiBudget.js) was enforced only on
+   /api/analyze. Every other model entry point — chat, streaming chat, the
+   deep-dive agent, and fixes' ai-edit — called the API with no accounting, so
+   the cap could be blown past freely through those routes. Reserve a call
+   here; on exhaustion return 429 (chat has no stats-only fallback to degrade
+   to, unlike analyze). */
+async function aiBudgetOk(res) {
+  const b = await tryConsumeAI();
+  if (b.allowed) return true;
+  res.status(429).json({
+    error: "งบวิเคราะห์ AI รายวันเต็มแล้ว — ลองใหม่พรุ่งนี้",
+    errorEn: "daily AI budget reached — try again tomorrow",
+    aiBudget: "exceeded",
+  });
+  return false;
+}
 
 export function mountChatRoutes(app, { ai }) {
   // ── AI Chat with dataset ──────────────────────────────────
@@ -17,6 +35,8 @@ export function mountChatRoutes(app, { ai }) {
 
       const analysis = await R.getAnalysis(req.params.id, req.user.userId);
       if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+
+      if (!(await aiBudgetOk(res))) return;
 
       const history = await R.getChatHistory(req.params.id);
       const statsJson = analysis.stats_json ? JSON.parse(analysis.stats_json) : {};
@@ -51,6 +71,7 @@ export function mountChatRoutes(app, { ai }) {
 
       const analysis = await R.getAnalysis(req.params.id, req.user.userId);
       if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+      if (!(await aiBudgetOk(res))) return;
       const statsJson = analysis.stats_json ? JSON.parse(analysis.stats_json) : {};
 
       const { reply, steps } = await runAgent({ client: ai, statsJson, analysisText: analysis.analysis, question });
@@ -71,6 +92,7 @@ export function mountChatRoutes(app, { ai }) {
 
       const analysis = await R.getAnalysis(req.params.id, req.user.userId);
       if (!analysis) return res.status(404).json({ error: "Analysis not found" });
+      if (!(await aiBudgetOk(res))) return;   // check before writing SSE headers
 
       const history   = await R.getChatHistory(req.params.id);
       const statsJson = analysis.stats_json ? JSON.parse(analysis.stats_json) : {};

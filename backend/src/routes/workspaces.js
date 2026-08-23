@@ -33,7 +33,12 @@ export function mountWorkspaceRoutes(app) {
     try {
       const member = await R.isMember(req.params.id, req.user.userId);
       if (!member || !["owner","admin"].includes(member.role)) return res.status(403).json({ error: "Insufficient role" });
-      await R.updateWorkspaceBranding({ id: req.params.id, ...req.body });
+      // Pass the three brandable fields explicitly. Spreading req.body let a
+      // caller send { id: "<other-workspace>" } that overrode the path id
+      // (the spread came AFTER id), so a member of one workspace could rewrite
+      // any other workspace's branding — mass-assignment IDOR.
+      const { brandLogo, brandColor, brandName } = req.body || {};
+      await R.updateWorkspaceBranding({ id: req.params.id, brandLogo, brandColor, brandName });
       res.json({ success: true });
     } catch (err) { next(err); }
   });

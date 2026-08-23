@@ -3,6 +3,47 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.11] — 2026-08-23 "Backend hunt II"
+A second backend sweep — auth/security deep-dive, a routes second pass, and a
+regression audit of the v21.10 diff — with adversarial verification of every
+finding. 14 fixed; one candidate (Excel formula injection) refuted as already
+handled. Suites green: 314 unit + 238 integration + 17 browser; quality gate
+passing.
+- **Auth lifecycle (routes/auth.js).** Register/login accepted non-string
+  credentials — a numeric password's `.length` is `undefined`, slipped the
+  `< 6` gate, then threw 500 in bcrypt; a missing username threw 500 on libsql
+  but 401 on Postgres. Both now type-gate first. Refresh resolved the user with
+  no `is_active` check, so a banned user could rotate tokens forever
+  (`findActiveUserById` now). Rotation was a non-atomic check-then-revoke:
+  concurrent refreshes of one token both succeeded — now a conditional
+  `UPDATE ... WHERE revoked=0 RETURNING id` is the serialization point, and a
+  re-presented (already-rotated) token burns the whole chain (reuse detection).
+- **Workspace branding IDOR (routes/workspaces.js).** The PATCH spread
+  `req.body` *after* the path id, so `{ id: "<other-ws>" }` overrode it — any
+  member could rewrite any workspace's branding. Fields are now passed
+  explicitly; the id can only come from the path.
+- **Chi-square DoS (routes/inference.js).** The contingency table ran
+  `rows.filter()` once per cell — O(distinctX·distinctY·N), an event-loop stall
+  on two free-text columns. Rebuilt as one O(N) Map pass with a 50-category cap.
+- **AI budget bypass (routes/chat.js, fixes.js).** The daily budget was enforced
+  only on /api/analyze; chat, streaming chat, the agent, and ai-edit called the
+  model with no accounting. All now reserve via `tryConsumeAI()` and 429 on
+  exhaustion.
+- **trust proxy (config.js, app.js).** Was hardcoded `1`; on the shipped
+  direct-to-Node compose that lets a client forge `X-Forwarded-For` and spoof
+  `req.ip`, defeating the IP-keyed auth limiter. Now `TRUST_PROXY` env, default
+  1 (unchanged for single-proxy deploys), set 0 for direct exposure.
+- **Version-number race (db/datasetRepository.js, migrate.js).** The
+  compute-in-INSERT is atomic on SQLite but not on Postgres READ COMMITTED; a
+  `UNIQUE(dataset_id, version_num)` index now backstops it and the insert
+  retries on conflict.
+- **Lower severity.** `refresh_tokens` grew unbounded → hourly prune in the
+  scheduler; "shared with me" reported the page size as `X-Total-Count` → real
+  count query; `POST /comments/:id/resolve` had no access check → same gate as
+  the other comment routes; timeliness date detection missed camelCase/Thai
+  names → now trusts the parser's `semantic:"date"`; multi-upload orphaned the
+  first stored object if the first file failed to parse → parse before store.
+
 ## [21.10] — 2026-08-19 "Bug hunt"
 71 bugs found by a six-area sweep with adversarial verification of every
 finding (83 candidates; 5 refuted, e.g. the pg-pool "leak" the installed

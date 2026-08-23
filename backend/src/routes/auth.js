@@ -6,13 +6,19 @@ import bcrypt from "bcryptjs";
 import * as R from "../db/repository.js";
 import { cache } from "../services/cache.js";
 import { signAccess, signRefresh, verifyRefresh, hashToken, refreshExpiresAt, requireAuth } from "../auth.js";
+
+/* Bodies arrive as parsed JSON, so a field can be a number, array or object,
+   not just a string. Truthiness + .length checks silently pass a numeric
+   password (its .length is undefined, and undefined<6 is false) and then throw
+   deep in bcrypt/the DB driver as an unclassified 500. Gate the type first. */
+const isCred = (v) => typeof v === "string" && v.length > 0;
 import { authLimiter } from "../middleware/rateLimiter.js";
 
 export function mountAuthRoutes(app) {
   app.post("/api/auth/register", authLimiter(), async (req, res, next) => {
     try {
       const { username, password, email } = req.body;
-      if (!username || !password) return res.status(400).json({ error: "username and password required" });
+      if (!isCred(username) || !isCred(password)) return res.status(400).json({ error: "username and password must be non-empty strings" });
       if (username.length < 3)   return res.status(400).json({ error: "username must be 3+ chars" });
       if (password.length < 6)   return res.status(400).json({ error: "password must be 6+ chars" });
       const hash = await bcrypt.hash(password, 12);
@@ -28,6 +34,12 @@ export function mountAuthRoutes(app) {
   app.post("/api/auth/login", authLimiter(), async (req, res, next) => {
     try {
       const { username, password } = req.body;
+      // Reject non-string/missing credentials as a plain 401 rather than
+      // letting undefined reach findUserByUsername (throws on libsql) or
+      // bcrypt.compare (throws on a non-string) — both surfaced as a 500 on
+      // unauthenticated input, and the libsql-vs-pg divergence made {} a 500
+      // on SQLite but a 401 on Postgres.
+      if (!isCred(username) || !isCred(password)) return res.status(401).json({ error: "Invalid credentials" });
       const user = await R.findUserByUsername(username);
       if (!user || !(await bcrypt.compare(password, user.password_hash)))
         return res.status(401).json({ error: "Invalid credentials" });
@@ -44,16 +56,26 @@ export function mountAuthRoutes(app) {
     try {
       const { refreshToken } = req.body;
       if (!refreshToken) return res.status(400).json({ error: "refreshToken required" });
+      if (typeof refreshToken !== "string") return res.status(400).json({ error: "refreshToken required" });
       let payload; try { payload = verifyRefresh(refreshToken); } catch { return res.status(401).json({ error: "Invalid or expired refresh token" }); }
-      const stored = await R.findRefreshToken(hashToken(refreshToken));
-      if (!stored) return res.status(401).json({ error: "Refresh token revoked" });
-      const user = await R.findUserById(payload.userId);
+      const presented = hashToken(refreshToken);
+      // v21.10 SECURITY: rotation is now atomic AND reuse-detecting. The revoke
+      // is the serialization point — a conditional UPDATE that flips revoked
+      // 0→1 only if the token is still live. Two concurrent refreshes of the
+      // same token race here: exactly one gets true and mints a new token; the
+      // loser (and any later replay of an already-rotated token) gets false,
+      // which means the token was stolen-then-used or double-spent, so we burn
+      // the whole chain. Previously this was a non-atomic check-then-revoke, so
+      // one leaked token could mint two valid successors with no alarm.
+      const flipped = await R.revokeRefreshTokenIfActive(presented);
+      if (!flipped) {
+        await R.revokeAllUserTokens(payload.userId);   // reuse detected → invalidate the chain
+        return res.status(401).json({ error: "Refresh token revoked" });
+      }
+      const user = await R.findActiveUserById(payload.userId);   // a banned user must not rotate forever
       if (!user) return res.status(401).json({ error: "User not found" });
-      // v21 SECURITY: rotate. Issue a new refresh token, revoke the presented
-      // one, so a leaked refresh token is usable for one call, not seven days.
       const newRt = signRefresh({ userId: user.id });
       await R.storeRefreshToken(user.id, hashToken(newRt), refreshExpiresAt());
-      await R.revokeRefreshToken(hashToken(refreshToken));
       res.json({ accessToken: signAccess({ userId: user.id, username: user.username }), refreshToken: newRt });
     /* Was res.status(500).json({ error: err.message }) — the only route in the
        codebase returning a raw internal message to the client, and reachable

@@ -23,6 +23,7 @@ import { parseAllRows } from "../services/fullRows.js";
 import { applyFix, OPERATIONS } from "../services/dataFixes.js";
 import { suggestFixes } from "../services/fixSuggest.js";
 import { aiEditRows, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
+import { tryConsumeAI } from "../services/aiBudget.js";
 
 const log = serviceLogger("fixes");
 
@@ -107,6 +108,15 @@ export function mountFixRoutes(app, { ai } = {}) {
     try {
       const ctx = await load(req, res); if (!ctx) return;
       const { instruction } = req.body || {};
+
+      // ai-edit invokes the model — it must draw from the same daily budget as
+      // every other AI entry point, not sneak past it.
+      const budget = await tryConsumeAI();
+      if (!budget.allowed) return res.status(429).json({
+        error: "งบวิเคราะห์ AI รายวันเต็มแล้ว — ลองใหม่พรุ่งนี้",
+        errorEn: "daily AI budget reached — try again tomorrow",
+        aiBudget: "exceeded",
+      });
 
       const result = await aiEditRows(ai, { headers: ctx.headers, rows: ctx.rows, instruction });
       if (!result.ok) return res.status(400).json(result);

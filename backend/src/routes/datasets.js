@@ -66,8 +66,12 @@ router.get("/", requireAuth, async (req, res, next) => {
 
     let items, total;
     if (view === "shared") {
-      items = await DR.getSharedWithMeDatasets(req.user.userId, { limit, offset });
-      total = items.length;
+      // total must be the real row count, not the current page's length — the
+      // pager and heading read X-Total-Count and were wrong past page one.
+      [items, total] = await Promise.all([
+        DR.getSharedWithMeDatasets(req.user.userId, { limit, offset }),
+        DR.countSharedWithMeDatasets(req.user.userId),
+      ]);
     } else {
       const opts = {
         ownerId: workspaceId ? undefined : req.user.userId,
@@ -147,8 +151,11 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, r
 
     const first = req.files[0];
     const bundleId = randomUUID();
-    const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
+    // Parse BEFORE writing to storage (mirrors the single-upload order): a file
+    // that passes the magic gate but fails to parse used to leave its stored
+    // object orphaned because storage.put ran first.
     const { headers, colAnalysis, totalRows: firstRows, dupeCount } = await parseFileStreaming(first.buffer, first.originalname);
+    const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
 
     let totalRows = firstRows;
     for (let i = 1; i < req.files.length; i++) {

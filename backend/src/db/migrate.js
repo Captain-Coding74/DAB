@@ -161,6 +161,12 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_datasets_folder      ON datasets(folder_id)`,
   `CREATE INDEX IF NOT EXISTS idx_datasets_trashed     ON datasets(is_trashed)`,
   `CREATE INDEX IF NOT EXISTS idx_versions_dataset     ON dataset_versions(dataset_id)`,
+  // A dataset can hold each version number once. This is the backstop that
+  // makes addDatasetVersion's compute-then-insert safe under a Postgres
+  // concurrent race (READ COMMITTED lets two txns read the same MAX): the
+  // second INSERT now fails the constraint and the repository retries with a
+  // fresh number instead of silently writing a duplicate version_num.
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_dataset_num ON dataset_versions(dataset_id, version_num)`,
   `CREATE INDEX IF NOT EXISTS idx_folders_workspace    ON dataset_folders(workspace_id)`,
   `CREATE INDEX IF NOT EXISTS idx_folders_parent       ON dataset_folders(parent_id)`,
   `CREATE INDEX IF NOT EXISTS idx_tags_dataset         ON dataset_tags(dataset_id)`,

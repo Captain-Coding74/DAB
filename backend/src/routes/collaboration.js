@@ -86,8 +86,17 @@ router.delete("/comments/:id", requireAuth, async (req, res, next) => {
 });
 
 router.post("/comments/:id/resolve", requireAuth, async (req, res, next) => {
-  try { await CR.resolveComment(req.params.id); res.json({ success: true }); }
-  catch (err) { next(err); }
+  try {
+    // Same access gate as reading/creating a comment: resolve was the one
+    // comment mutation with no check, so any authenticated user could resolve
+    // threads on datasets/analyses they cannot see.
+    const comment = await CR.getComment(req.params.id);
+    if (!comment) return res.status(404).json({ error: "Not found" });
+    if (!(await canSeeTarget(req, { datasetId: comment.dataset_id, analysisId: comment.analysis_id })))
+      return res.status(403).json({ error: "No access" });
+    await CR.resolveComment(req.params.id);
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
 // ── Notifications ─────────────────────────────────────────────

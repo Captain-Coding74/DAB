@@ -54,6 +54,10 @@ export async function deleteComment(id, userId) {
   const ph = doomed.map((_, n) => `$${n + 1}`).join(",");
   await query(`DELETE FROM comments WHERE id IN (${ph})`, doomed);
 }
+export async function getComment(id) {
+  const r = await query(`SELECT * FROM comments WHERE id=$1`, [id]);
+  return r[0] || null;
+}
 export async function resolveComment(id) {
   await query(`UPDATE comments SET is_resolved=1 WHERE id=$1`, [id]);
 }

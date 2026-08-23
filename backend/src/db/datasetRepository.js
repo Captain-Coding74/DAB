@@ -3,6 +3,7 @@
  * Google Drive-style: store, version, rename, delete, preview, filter
  */
 import { query } from "./pool.js";
+import { isUniqueViolation } from "./repository.js";
 import crypto from "crypto";
 
 const uuid = () => crypto.randomUUID();
@@ -71,17 +72,28 @@ export async function addDatasetVersion({ datasetId, fileName, fileContent, stor
   const versionId = uuid();
   const t = now();
 
-  // Version number is computed INSIDE the insert: the old read-then-write
-  // (SELECT MAX ... then INSERT) let two concurrent uploads both observe v=N
-  // and write duplicate version N+1 rows. A scalar subquery in one statement
-  // is atomic on both backends, and RETURNING reports the number assigned.
-  const inserted = await query(
-    `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
-       VALUES ($1,$2,(SELECT COALESCE(MAX(version_num),0)+1 FROM dataset_versions WHERE dataset_id=$2),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING version_num`,
-      [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||null, uploadedBy, sizeBytes||0, t]
-  );
-  const nextVersion = inserted[0]?.version_num;
+  // Version number is computed INSIDE the insert via a scalar subquery — no
+  // read-then-write gap. On SQLite (serialized writes) that is fully atomic;
+  // on Postgres READ COMMITTED two concurrent inserts can still read the same
+  // MAX, so the UNIQUE(dataset_id, version_num) index rejects the loser and we
+  // retry with the now-higher MAX. Bounded so a genuinely stuck constraint
+  // surfaces instead of spinning.
+  let nextVersion;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const inserted = await query(
+        `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,col_analysis,quality_score,change_note,uploaded_by,size_bytes,created_at)
+           VALUES ($1,$2,(SELECT COALESCE(MAX(version_num),0)+1 FROM dataset_versions WHERE dataset_id=$2),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           RETURNING version_num`,
+          [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, changeNote||null, uploadedBy, sizeBytes||0, t]
+      );
+      nextVersion = inserted[0]?.version_num;
+      break;
+    } catch (err) {
+      if (isUniqueViolation(err) && attempt < 5) continue;   // lost the race — recompute and retry
+      throw err;
+    }
+  }
   if (changeNote == null) {
     await query(`UPDATE dataset_versions SET change_note=$1 WHERE id=$2`, [`Version ${nextVersion}`, versionId]);
   }
@@ -272,6 +284,14 @@ export async function getSharedWithMeDatasets(userId, { limit = 50, offset = 0 }
      WHERE dp.user_id=$1 AND d.is_trashed=0 ORDER BY d.updated_at DESC LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
   );
+}
+export async function countSharedWithMeDatasets(userId) {
+  const r = await query(
+    `SELECT COUNT(*) AS cnt FROM datasets d JOIN dataset_permissions dp ON dp.dataset_id=d.id
+     WHERE dp.user_id=$1 AND d.is_trashed=0`,
+    [userId]
+  );
+  return parseInt(r[0]?.cnt || 0);
 }
 
 

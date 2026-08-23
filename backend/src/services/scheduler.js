@@ -7,7 +7,7 @@
  */
 
 import cron from "node-cron";
-import { getDueScheduledReports, updateScheduledRun } from "../db/repository.js";
+import { getDueScheduledReports, updateScheduledRun, pruneRefreshTokens } from "../db/repository.js";
 import { serviceLogger } from "../logger.js";
 
 const log = serviceLogger("scheduler");
@@ -105,8 +105,20 @@ async function runDueReports() {
   }
 }
 
+async function pruneTokens() {
+  try {
+    await pruneRefreshTokens();
+  } catch (err) {
+    log.error({ err }, "Refresh-token prune failed");
+  }
+}
+
 export function startScheduler() {
   // Run every minute — checks DB for due reports
   cron.schedule("* * * * *", runDueReports, { timezone: "Asia/Bangkok" });
-  log.info("Scheduler started (checks every minute)");
+  // Hourly housekeeping: every login/refresh writes a refresh_tokens row and
+  // nothing deleted revoked/expired ones, so the table grew without bound.
+  cron.schedule("7 * * * *", pruneTokens, { timezone: "Asia/Bangkok" });
+  pruneTokens();   // once at startup so a long-running instance doesn't wait an hour
+  log.info("Scheduler started (reports every minute, token prune hourly)");
 }

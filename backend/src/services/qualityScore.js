@@ -70,7 +70,12 @@ export function computeQualityScore(colAnalysis, totalRows, dupeCount) {
      with dates. 'at' counts only as a suffix after a separator (created_at),
      and the Thai date/time words anchor to a word start (วันที่ขาย). */
   const DATE_COL_RE = /(^|[_\s-])(date|time|datetime|timestamp|created|updated)([_\s-]|$)|[_\s-]at$|(^|[_\s-])(วันที่|เวลา)/i;
-  const dateCols = colAnalysis.filter(c => DATE_COL_RE.test(String(c.col ?? "")));
+  /* Trust the parser's value-based detection first: streaming.js tags a
+     date-majority column with semantic:"date" regardless of its NAME, so a
+     camelCase 'orderDate', an all-Thai header, or a bare 'บันทึก' column that
+     the name regex misses is still counted. The name regex stays as a fallback
+     for columns the parser saw too few rows of to classify. */
+  const dateCols = colAnalysis.filter(c => c.semantic === "date" || DATE_COL_RE.test(String(c.col ?? "")));
   /* Timeliness returned a constant 10 whether or not a date column existed —
      it could not fail, so it was 10 points of pure inflation on every file.
      Now it is scored only when there IS a date column, and the total is

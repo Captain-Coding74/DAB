@@ -50,7 +50,7 @@ import { mountWorkspaceRoutes } from "./routes/workspaces.js";
 import { mountAnalysisRoutes }  from "./routes/analysis.js";
 import { mountInferenceRoutes } from "./routes/inference.js";
 import { mountFixRoutes }       from "./routes/fixes.js";
-import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES } from "./config.js";
+import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, TRUST_PROXY } from "./config.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
@@ -82,7 +82,11 @@ const ai        = createAIClient();   // v13: honours AI_MOCK=1 (blocked in prod
  */
 export function createApp() {
   const app = express();
-  app.set("trust proxy", 1);
+  // Must match the real deployment topology, so it is env-driven (see config).
+  // The default 1 preserves prior behaviour behind a single proxy; a direct
+  // deployment sets TRUST_PROXY=0 so X-Forwarded-For can't spoof req.ip and
+  // defeat the IP-keyed auth limiter.
+  app.set("trust proxy", TRUST_PROXY);
 
   // Security headers. CSP is tuned for the built React SPA + Swagger UI:
   //  - 'unsafe-inline' styles: Swagger UI + Recharts inject inline styles
