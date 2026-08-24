@@ -28,7 +28,7 @@ import { parse }  from "csv-parse";
 import ExcelJS   from "exceljs";
 import { Readable } from "stream";
 import { serviceLogger } from "../logger.js";
-import { OnlineStat, FreqCounter, mulberry32, ReservoirSampler } from "./streamStats.js";
+import { OnlineStat, FreqCounter, mulberry32, ReservoirSampler, HeadRows } from "./streamStats.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
          decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
@@ -225,6 +225,7 @@ async function streamCSV(buffer) {
     let dupeCount  = 0;
     const dupeSet  = new Set();
     const sampler  = new ReservoirSampler(5);
+    const head     = new HeadRows();     // first rows, in order, for previews/exports
     let pairs = null;   // built once headers are known
     const readable = Readable.from(text);
 
@@ -235,6 +236,7 @@ async function streamCSV(buffer) {
       if (row.every(v => v === "")) return; // ",,," lines are not data (parity with XLSX)
       totalRows++;
       sampler.update(row);
+      head.update(row);
       /* Walk the HEADER, not the row. A row shorter than the header is normal
          in real exports — trailing empty fields get dropped on the way out of
          Excel — and row.forEach simply never visits those cells, so they were
@@ -286,7 +288,7 @@ async function streamCSV(buffer) {
         flushPreBuffer();
       }
       const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
-      resolve({ headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+      resolve({ headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir, headRows: head.rows,
              pairwise: pairs ? buildCorrelation(headers, colAnalysis, pairs) : null,
                 normalization: { encoding, delimiter, skippedPreHeaderRows: skipped } });
     });
@@ -331,7 +333,7 @@ async function streamXLSX(buffer) {
   await wb.xlsx.load(buffer);
   const ws = wb.worksheets[0];
   if (!ws || ws.rowCount === 0) {
-    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [],
+    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [], headRows: [],
              normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: 0 } };
   }
 
@@ -355,7 +357,7 @@ async function streamXLSX(buffer) {
   const hIdx    = detectHeaderRow(scanned);
   const headers = finalizeHeaders(scanned[hIdx] || []);
   if (headers.length === 0) {
-    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [],
+    return { headers: [], colAnalysis: [], totalRows: 0, dupeCount: 0, sampleRows: [], headRows: [],
              normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: hIdx } };
   }
   const colCount = headers.length;
@@ -364,6 +366,7 @@ async function streamXLSX(buffer) {
   const pairs = new PairAccumulator(headers.length);
   const accs    = makeAccumulators(headers);
   const sampler = new ReservoirSampler(5);
+  const head    = new HeadRows();
   const dupeSet = new Set();
 
   for (let r = hIdx + 2; r <= ws.rowCount; r++) {
@@ -374,6 +377,7 @@ async function streamXLSX(buffer) {
 
     totalRows++;
     sampler.update(row);
+    head.update(row);
     // Same as the CSV path: walk the header width so cells absent from a
     // short row count as missing rather than vanishing.
     for (let i = 0; i < accs.length; i++) {
@@ -389,7 +393,7 @@ async function streamXLSX(buffer) {
   }
 
   const colAnalysis = accs.map((acc, i) => finalizeColumn(headers[i], acc));
-  return { headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir,
+  return { headers, colAnalysis, totalRows, dupeCount, sampleRows: sampler.reservoir, headRows: head.rows,
            pairwise: buildCorrelation(headers, colAnalysis, pairs),
            normalization: { encoding: null, delimiter: null, skippedPreHeaderRows: hIdx } };
 }

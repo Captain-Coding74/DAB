@@ -236,14 +236,21 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
       });
     }
 
-    // ── Sample data
-    sectionTitle("Data Preview (5 rows)");
+    /* ── Data preview — the FIRST rows, in file order.
+       This used to print `sampleRows`, a five-row uniform random sample drawn
+       from anywhere in the file. Captioned "Data Preview", it showed a reader
+       rows whose dates jumped Aug → Jun → Jul → Sep, which reads as scrambled
+       data, and it printed different rows on every export of the same file.
+       The caller now passes headRows; the caption states the count it shows. */
+    const previewRows = rows.slice(0, 15);
+    sectionTitle(`Data Preview (first ${previewRows.length} rows of ${totalRows.toLocaleString()})`);
     doc.addPage();
     doc.fontSize(8);
-    writeMixed(headers.join("  |  "), { bold: true, x: 50 });
+    writeMixed(headers.join("  |  "), { bold: true, x: 50, width: pageW });
     doc.moveDown(0.2);
-    rows.slice(0, 5).forEach(r => {
-      writeMixed(r.join("  |  "), { x: 50 });
+    previewRows.forEach(r => {
+      if (doc.y > doc.page.height - 70) doc.addPage();
+      writeMixed(r.join("  |  "), { x: 50, width: pageW });
       doc.moveDown(0.1);
     });
 

@@ -26,10 +26,10 @@ export function mountExportRoutes(app, { upload }) {
          claimed perfect data, with the quality score computed on dupeCount 0 —
          so a file with 1,000 duplicates still scored as clean. */
       const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
-      const { headers, colAnalysis, totalRows, dupeCount, sampleRows } = parsed;
+      const { headers, colAnalysis, totalRows, dupeCount, headRows } = parsed;
       const bundle = computeStatsBundle({ ...parsed, buffer: req.file.buffer, fileName: req.file.originalname });
       const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
-      const buf = await generatePDF({ fileName: req.file.originalname, totalRows, headers, rows: sampleRows, colAnalysis, missing: bundle.missing, dupes: bundle.dupes, corr: bundle.corr, forecasts: bundle.forecasts, aiAnalysis: req.body.analysis||"", prompt: req.body.prompt||"—" });
+      const buf = await generatePDF({ fileName: req.file.originalname, totalRows, headers, rows: headRows, colAnalysis, missing: bundle.missing, dupes: bundle.dupes, corr: bundle.corr, forecasts: bundle.forecasts, aiAnalysis: req.body.analysis||"", prompt: req.body.prompt||"—" });
       res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="report.pdf"' }).send(buf);
     } catch (err) { next(err); }
   });
@@ -48,9 +48,9 @@ export function mountExportRoutes(app, { upload }) {
          claimed perfect data, with the quality score computed on dupeCount 0 —
          so a file with 1,000 duplicates still scored as clean. */
       const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
-      const { headers, colAnalysis, totalRows, dupeCount, sampleRows } = parsed;
+      const { headers, colAnalysis, totalRows, dupeCount, headRows } = parsed;
       const bundle = computeStatsBundle({ ...parsed, buffer: req.file.buffer, fileName: req.file.originalname });
-      const buf = await generateExcel({ fileName: req.file.originalname, totalRows, headers, rows: sampleRows, colAnalysis, missing: bundle.missing, dupes: bundle.dupes, corr: bundle.corr, forecasts: bundle.forecasts, aiAnalysis: req.body.analysis||"" });
+      const buf = await generateExcel({ fileName: req.file.originalname, totalRows, headers, rows: headRows, colAnalysis, missing: bundle.missing, dupes: bundle.dupes, corr: bundle.corr, forecasts: bundle.forecasts, aiAnalysis: req.body.analysis||"" });
       res.set({ "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Content-Disposition": 'attachment; filename="report.xlsx"' }).send(buf);
     } catch (err) { next(err); }
   });

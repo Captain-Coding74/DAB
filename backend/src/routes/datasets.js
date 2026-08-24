@@ -222,10 +222,10 @@ router.get("/:id/preview", requireAuth, async (req, res, next) => {
     const ds = await DR.getDatasetWithContent(req.params.id);
     if (!ds?.version) return res.status(404).json({ error: "Not found" });
 
-    const { headers, colAnalysis, sampleRows } = await parseFileStreaming(
+    const { headers, colAnalysis, headRows } = await parseFileStreaming(
       await DR.getVersionBytes(ds.version), ds.version.file_name
     );
-    res.json({ headers, colAnalysis, sampleRows: sampleRows.slice(0, 20), totalRows: ds.version.total_rows });
+    res.json({ headers, colAnalysis, sampleRows: headRows.slice(0, 20), totalRows: ds.version.total_rows });
   } catch (err) { next(err); }
 });
 

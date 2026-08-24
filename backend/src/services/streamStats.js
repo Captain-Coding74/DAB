@@ -66,6 +66,22 @@ export function mulberry32(seed) {
   };
 }
 
+/**
+ * The FIRST n rows, in file order.
+ *
+ * Distinct from ReservoirSampler on purpose. The reservoir is a uniform random
+ * sample, which is the right input for a model asked to characterise a whole
+ * dataset — but it is the wrong thing to show a human. Exports were captioned
+ * "Data Preview" while printing five rows drawn at random from anywhere in the
+ * file, so a reader saw dates jumping Aug → Jun → Jul → Sep and reasonably
+ * concluded their data was scrambled. Previews want the head of the file, in
+ * order, and the same rows on every run.
+ */
+export class HeadRows {
+  constructor(n = 500) { this.n = n; this.rows = []; }
+  update(row) { if (this.rows.length < this.n) this.rows.push([...row]); }
+}
+
 // ── Reservoir sampler (keep N random rows for preview) ────
 export class ReservoirSampler {
   constructor(k = 5) { this.k = k; this.reservoir = []; this.n = 0; }
