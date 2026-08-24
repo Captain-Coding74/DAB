@@ -3,6 +3,29 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.18] — 2026-08-24 "School Edition v1"
+First vertical: Thai schools (teachers' วิจัยในชั้นเรียน / classroom research).
+The general edition is frozen and shippable from tag `general-stable-v21.17`.
+- **PDPA guard** (`services/sensitive.js`, 28 tests): detects บัตรประชาชน
+  columns by the real mod-11 checksum (a lying header cannot hide one),
+  plus student ids, names, birthdates, phones. Applied at the ONE place a
+  file becomes data (parseFileStreaming), so the UI, saved stats_json,
+  chat/agent context, exports and previews all receive the same protected
+  view: citizen ids/phones x'd, identifier aggregates nulled (including the
+  derived IQR — the IQR of an id column is itself a 13-digit number),
+  birthdate ranges reduced to years. The AI boundary applies a STRICT pass
+  on top: no identifier of any kind — not even a student id — leaves for
+  the model, and the prompt summary names masked columns in one honest line
+  instead of narrating null statistics. Charts and suggestions skip
+  identifier columns. The uploaded file itself is never modified.
+- **Classroom demo** (ผลการเรียนห้อง ม.3/1): 40 students, deterministic,
+  with synthetic checksum-valid citizen ids so the guard demos itself;
+  pre/post scores tuned so the paired t-test is genuinely significant,
+  งาน3 clearly hardest, q1-q5 at Cronbach's α ≈ 0.79.
+- **School prompt suggestions** (paired t-test, hardest assignment, students
+  needing help, questionnaire reliability) trigger on classroom-shaped
+  columns; ColumnStats shows a PDPA banner and per-column 🔒 chips.
+
 ## [21.11] — 2026-08-23 "Backend hunt II"
 A second backend sweep — auth/security deep-dive, a routes second pass, and a
 regression audit of the v21.10 diff — with adversarial verification of every
@@ -43,29 +66,6 @@ passing.
   the other comment routes; timeliness date detection missed camelCase/Thai
   names → now trusts the parser's `semantic:"date"`; multi-upload orphaned the
   first stored object if the first file failed to parse → parse before store.
-
-## [21.18] — 2026-08-24 "School Edition v1"
-First vertical: Thai schools (teachers' วิจัยในชั้นเรียน / classroom research).
-The general edition is frozen and shippable from tag `general-stable-v21.17`.
-- **PDPA guard** (`services/sensitive.js`, 28 tests): detects บัตรประชาชน
-  columns by the real mod-11 checksum (a lying header cannot hide one),
-  plus student ids, names, birthdates, phones. Applied at the ONE place a
-  file becomes data (parseFileStreaming), so the UI, saved stats_json,
-  chat/agent context, exports and previews all receive the same protected
-  view: citizen ids/phones x'd, identifier aggregates nulled (including the
-  derived IQR — the IQR of an id column is itself a 13-digit number),
-  birthdate ranges reduced to years. The AI boundary applies a STRICT pass
-  on top: no identifier of any kind — not even a student id — leaves for
-  the model, and the prompt summary names masked columns in one honest line
-  instead of narrating null statistics. Charts and suggestions skip
-  identifier columns. The uploaded file itself is never modified.
-- **Classroom demo** (ผลการเรียนห้อง ม.3/1): 40 students, deterministic,
-  with synthetic checksum-valid citizen ids so the guard demos itself;
-  pre/post scores tuned so the paired t-test is genuinely significant,
-  งาน3 clearly hardest, q1-q5 at Cronbach's α ≈ 0.79.
-- **School prompt suggestions** (paired t-test, hardest assignment, students
-  needing help, questionnaire reliability) trigger on classroom-shaped
-  columns; ColumnStats shows a PDPA banner and per-column 🔒 chips.
 
 ## [21.10] — 2026-08-19 "Bug hunt"
 71 bugs found by a six-area sweep with adversarial verification of every
