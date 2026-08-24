@@ -47,6 +47,16 @@ const SAMPLES = {
     desc: "ผู้เข้าชมรายวัน คอนเวอร์ชัน bounce rate — เต็มไปด้วย correlation",
     badge: "time series",
   },
+  /* School Edition v1: ข้อมูลวิจัยในชั้นเรียนแบบที่ครูเจอจริง — คะแนนก่อน/หลัง
+     เรียน งาน 3 ชิ้น และแบบสอบถาม q1-q5 (สร้างสังเคราะห์ทั้งชุด ดูสูตรใน
+     sample-data/generate_classroom.mjs; เลขบัตรประชาชนเป็นเลขปลอม checksum ถูก
+     เพื่อให้ระบบ masking กลางมีของให้จับ) */
+  "classroom": {
+    file: "classroom.csv", emoji: "🏫",
+    title: "ผลการเรียนห้อง ม.3/1",
+    desc: "วิจัยในชั้นเรียน — คะแนนก่อน-หลังเรียน งาน 3 ชิ้น และแบบสอบถาม q1-q5 พร้อมช่องว่างให้ลองจัดการ",
+    badge: "school",
+  },
 };
 
 const memo = new Map();

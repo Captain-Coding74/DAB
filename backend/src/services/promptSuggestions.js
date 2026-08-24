@@ -7,6 +7,10 @@
 
 export function generatePromptSuggestions(colAnalysis, qualityScore) {
   const suggestions = [];
+  /* School edition: a column flagged sensitive (citizen id, phone) has had
+     its aggregates nulled by the PDPA guard — charting it would plot x'd
+     identifiers or nothing. Identifiers are not measurements; drop them. */
+  colAnalysis = colAnalysis.filter(c => !c.sensitive);
   const numeric = colAnalysis.filter(c => c.type === "numeric");
   const text    = colAnalysis.filter(c => c.type === "text");
   const cols    = colAnalysis.map(c => c.col.toLowerCase());
@@ -107,6 +111,49 @@ export function generatePromptSuggestions(colAnalysis, qualityScore) {
     });
   }
 
+  // ── School / classroom research (วิจัยในชั้นเรียน) ────
+  // Column-name signals a teacher's gradebook gives off: คะแนน+ก่อน/หลัง,
+  // งาน1..งานN, นักเรียน/ห้อง/เลขประจำตัว, and Likert items q1..qN. Each
+  // signal unlocks the question a classroom-research report actually needs.
+  const hasPrePost = cols.some(c => c.includes("คะแนน") && c.includes("ก่อน")) &&
+                     cols.some(c => c.includes("คะแนน") && c.includes("หลัง"));
+  const hasAssignments = cols.filter(c => /งาน\s*\d/.test(c)).length >= 2;
+  const hasStudents = cols.some(c => c.match(/นักเรียน|ห้อง|เลขประจำตัว|student|pupil/));
+  const likertItems = cols.filter(c => /^q\d+$/.test(c.trim()));
+
+  if (hasPrePost) {
+    suggestions.push({
+      category: "school",
+      icon: "🎓",
+      prompt: "คะแนนก่อนเรียนกับหลังเรียนต่างกันอย่างมีนัยสำคัญหรือไม่ (paired t-test) และนักเรียนพัฒนาขึ้นเฉลี่ยกี่คะแนน",
+      relevance: 96,
+    });
+  }
+  if (hasAssignments) {
+    suggestions.push({
+      category: "school",
+      icon: "📝",
+      prompt: "งานชิ้นไหนนักเรียนทำได้แย่ที่สุด และคะแนนแต่ละงานกระจายแค่ไหน (mean, SD)",
+      relevance: 94,
+    });
+  }
+  if (hasStudents && numeric.length >= 1) {
+    suggestions.push({
+      category: "school",
+      icon: "🤝",
+      prompt: "นักเรียนคนไหนคะแนนต่ำกว่าค่าเฉลี่ยของห้องมาก ควรได้รับการช่วยเหลือเป็นพิเศษ",
+      relevance: 93,
+    });
+  }
+  if (likertItems.length >= 3) {
+    suggestions.push({
+      category: "school",
+      icon: "📋",
+      prompt: `แบบสอบถาม ${likertItems[0]}-${likertItems[likertItems.length - 1]} เชื่อถือได้แค่ไหน (Cronbach's alpha) และควรตัดข้อไหนออก`,
+      relevance: 92,
+    });
+  }
+
   // ── Quality issues ────────────────────────────────────
   if (qualityScore && qualityScore.score < 80) {
     suggestions.push({
@@ -144,6 +191,8 @@ export function generatePromptSuggestions(colAnalysis, qualityScore) {
  * Auto chart config — picks the best chart type and axes for the data
  */
 export function autoChartConfig(colAnalysis) {
+  // Same PDPA rule as the suggestions above: never chart an identifier.
+  colAnalysis = colAnalysis.filter(c => !c.sensitive);
   const numeric = colAnalysis.filter(c => c.type === "numeric");
   const text    = colAnalysis.filter(c => c.type === "text");
   const cols    = colAnalysis.map(c => c.col.toLowerCase());

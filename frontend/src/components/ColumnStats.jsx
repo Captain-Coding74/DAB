@@ -15,12 +15,20 @@ export function ColumnStatsPanel({ colAnalysis = [] }) {
   return (
     <Card>
       <Eyebrow className="mb-3">สถิติรายคอลัมน์</Eyebrow>
+      {/* School edition: the parse guard masked identifier columns (PDPA —
+          students are minors). Say so, or masked IDs read as corrupt data. */}
+      {colAnalysis.some(c => c.sensitive) && (
+        <div className="mb-3 px-3 py-2 rounded-lg text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+          🔒 พบข้อมูลส่วนบุคคล — ปิดบังอัตโนมัติตาม PDPA (ไฟล์ต้นฉบับของคุณไม่ถูกแก้ไข) · Personal data detected — masked automatically
+        </div>
+      )}
       <div className="space-y-3 max-h-[500px] overflow-y-auto scrollbar-hide">
         {colAnalysis.map((c, i) => (
           <div key={i} className="p-2.5 bg-gray-50 dark:bg-gray-950 rounded-lg">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate flex-1">{c.col}</span>
               <Badge variant={c.type==="numeric"?"blue":"yellow"}>{c.type}</Badge>
+              {c.sensitive && <Badge variant="red">🔒 PDPA</Badge>}
               {c.missing > 0 && <Badge variant="red">{c.missingPct}% missing</Badge>}
             </div>
             {c.type === "numeric" ? (

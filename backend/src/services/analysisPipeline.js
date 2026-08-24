@@ -18,6 +18,7 @@ import { enrichChartsWithData, alignHeaders } from "./chartSeries.js";
 import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.js";
 import { computeQualityScore } from "./qualityScore.js";
 import { generateInsights }    from "./insights.js";
+import { classifySensitiveColumns, maskRows } from "./sensitive.js";
 
 /**
  * Everything derivable from a parsed file, in one call.
@@ -80,7 +81,16 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
   const quality     = computeQualityScore(colAnalysis, totalRows, dupeCount);
   const suggestions = generatePromptSuggestions(colAnalysis, quality);
   const insights    = generateInsights({ colAnalysis, totalRows, dupeCount, corr, forecasts });
-  const summaryStr  = buildSummaryString(colAnalysis, missing, dupes, corr, forecasts);
+  /* Identifier columns carry no statistics worth narrating — their masked
+     entries rendered as "Min:null StdDev:undefined" noise in the AI prompt.
+     Summarise the real columns; name the masked ones in one line so the
+     model knows they exist and knows not to ask for them. */
+  const openCols   = colAnalysis.filter((c) => !c.sensitive);
+  const maskedCols = colAnalysis.filter((c) => c.sensitive);
+  const summaryStr = buildSummaryString(openCols, missing, dupes, corr, forecasts) +
+    (maskedCols.length
+      ? "\n[masked ตาม PDPA] " + maskedCols.map((c) => `${c.col} (${c.sensitive})`).join(", ")
+      : "");
   return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr };
 }
 
@@ -97,6 +107,14 @@ export function buildAnalysisPrompt({ question, totalRows, headers, fileType, bu
      text and burn the AI budget on every call. Capped here rather than in the
      routes so every caller is covered. */
   const q = String(question ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION) || "สรุปภาพรวมข้อมูลทั้งหมด";
+  /* School edition: the AI never needs ANY identifier. The parse guard has
+     already x'd citizen IDs and phones; the strict pass here additionally
+     blanks names, birthdates and student ids before the sample leaves for
+     the model. Detection re-runs on the sample rows because this function is
+     called with plain arrays — header patterns still catch identifier
+     columns whose values are already masked. */
+  const sensitive = classifySensitiveColumns(headers, sampleRows);
+  const safeRows  = sensitive.length ? maskRows(headers, sampleRows, sensitive, { strict: true }) : sampleRows;
   const { quality, summaryStr, insights } = bundle;
   const findings = insights?.length
     ? `\nผลตรวจเชิงสถิติที่ยืนยันแล้ว (อ้างอิงได้เลย):\n` +
@@ -111,7 +129,7 @@ export function buildAnalysisPrompt({ question, totalRows, headers, fileType, bu
          would be inventing a sequence that does not exist. Say what it is. */
       `${summaryStr}\n${findings}\n` +
       `ตัวอย่างข้อมูล ${sampleRows.length} แถว (สุ่มมาจาก ${totalRows.toLocaleString()} แถว — ไม่ใช่แถวแรกและไม่เรียงตามลำดับ ห้ามใช้สรุปแนวโน้มหรือลำดับเวลา):\n` +
-      `${headers.join(",")}\n${sampleRows.map(r => r.join(",")).join("\n")}\n\n` +
+      `${headers.join(",")}\n${safeRows.map(r => r.join(",")).join("\n")}\n\n` +
     /* ADR-0001 says the statistics are deterministic and the model only
          interprets them. The prompt handed over verified numbers but never said
          the model must not compute its own, so it could quietly produce an
@@ -130,6 +148,7 @@ export function analysisResponse({ aiAnalysis, totalRows, headers, durationMs, p
   return {
     success: true, analysis: aiAnalysis, rows: totalRows, columns: headers.length, durationMs,
     colAnalysis: parsed.colAnalysis, sampleRows: parsed.sampleRows,
+    sensitiveColumns: parsed.sensitive || [],
     ...bundle, summaryStr: undefined, savedId,
   };
 }

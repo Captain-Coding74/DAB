@@ -29,6 +29,7 @@ import ExcelJS   from "exceljs";
 import { Readable } from "stream";
 import { serviceLogger } from "../logger.js";
 import { OnlineStat, FreqCounter, mulberry32, ReservoirSampler, HeadRows } from "./streamStats.js";
+import { guardParsed } from "./sensitive.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
          decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
@@ -436,5 +437,8 @@ export async function parseFileStreaming(buffer, originalName) {
 
   log.info({ file: originalName, rows: result.totalRows, ms, mode,
              norm: result.normalization }, "File parsed");
-  return { ...result, parseMs: ms };
+  // School edition (v21.18): PDPA guard at the one place every file becomes
+  // data — citizen IDs/phones masked, ID-column aggregates nulled, and a
+  // `sensitive` list attached for the UI banner and the AI's strict pass.
+  return guardParsed({ ...result, parseMs: ms });
 }
