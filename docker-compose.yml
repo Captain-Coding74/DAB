@@ -21,8 +21,9 @@ services:
       S3_BUCKET: ${S3_BUCKET:-dab}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-dab}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-dabsecret123}
-    volumes:
-    - ./frontend/dist:/app/public:ro
+    # No dist bind-mount: the image builds the frontend and ships it at
+    # /app/frontend/dist. The old mount pointed at /app/public, which app.js
+    # never read, so the container served no UI.
     depends_on:
       postgres:
         condition: service_healthy

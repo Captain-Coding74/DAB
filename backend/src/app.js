@@ -133,8 +133,12 @@ export function createApp() {
     app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerDoc, { customSiteTitle: "DAB API", customCss: ".swagger-ui .topbar { background:#0B1220 }" }));
   } catch {}
 
-  // Serve React build in production
-  const distPath = path.join(__dirname, "../../frontend/dist");
+  /* Serve the React build in production.
+     PUBLIC_DIR lets a container put the build somewhere other than the repo
+     layout — docker-compose mounted it at /app/public while this resolved to
+     /app/frontend/dist, so the image served no UI at all and /api was the only
+     thing answering. Default keeps the source-tree path for `npm run dev`. */
+  const distPath = process.env.PUBLIC_DIR || path.join(__dirname, "../../frontend/dist");
   app.use(express.static(distPath));
 
   const upload = multer({
@@ -189,15 +193,27 @@ export function createApp() {
     res.json({ status:"ok", version: PKG_VERSION, db: getBackend(), cache: cache.getBackend(), maxUploadMb: MAX_UPLOAD_MB, ts: new Date().toISOString() });
   });
 
+  /* res.sendFile reports a missing file through its CALLBACK, not by throwing,
+     so these try/catch blocks never ran: a container without the build served
+     an unhandled ENOENT instead of the intended message. Handle the callback. */
+  /** sendFile reports a missing file through its CALLBACK and throws
+   *  synchronously on a bad path — the old try/catch caught only the second,
+   *  so a container without the build answered an unhandled ENOENT (a 500)
+   *  instead of the intended message. Cover both. */
+  const sendOrFallback = (res, file, fallback) => {
+    try {
+      res.sendFile(path.join(distPath, file), (err) => {
+        if (err && !res.headersSent) fallback();
+      });
+    } catch { if (!res.headersSent) fallback(); }
+  };
+
   // Public landing page (v20.4.1) — a real file in dist, EN-default bilingual
-  app.get("/welcome", (_, res) => {
-    try { res.sendFile(path.join(distPath, "landing.html")); } catch { res.redirect("/"); }
-  });
+  app.get("/welcome", (_, res) => sendOrFallback(res, "landing.html", () => res.redirect("/")));
 
   // Serve React for all non-API routes (SPA fallback)
-  app.get(/^(?!\/api).*/, (_, res) => {
-    try { res.sendFile(path.join(distPath, "index.html")); } catch { res.status(200).send("Frontend not built. Run: npm run build -w frontend"); }
-  });
+  app.get(/^(?!\/api).*/, (_, res) => sendOrFallback(res, "index.html",
+    () => res.status(200).send("Frontend not built. Run: npm run build -w frontend")));
 
   app.use(errorHandler);
 

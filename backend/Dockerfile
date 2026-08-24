@@ -13,6 +13,22 @@ COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/
 RUN npm ci --omit=dev -w backend
 
+# ── Frontend build stage ──────────────────────────────────
+# The image used to ship the backend ONLY, and docker-compose bind-mounted
+# ./frontend/dist to /app/public while app.js read /app/frontend/dist — so a
+# container served no UI whatsoever and /api was the only thing answering.
+# A container host (Azure, Fly, Cloud Run) has no local dist to mount at all,
+# which pushed the frontend onto separate static hosting where /api/* then hit
+# storage instead of this server. The image now builds and carries the UI, so
+# one container serves both. Dev dependencies are needed here (vite).
+FROM node:22-alpine AS webbuilder
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY frontend/package.json ./frontend/
+RUN npm ci -w frontend
+COPY frontend ./frontend
+RUN npm run build -w frontend
+
 # ── Runtime stage ─────────────────────────────────────────
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -24,6 +40,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder /app/node_modules ./node_modules
 COPY package.json ./
 COPY backend ./backend
+# The built UI, at the path app.js resolves to (/app/frontend/dist).
+COPY --from=webbuilder /app/frontend/dist ./frontend/dist
 
 RUN mkdir -p /app/backend/data && chown -R appuser:appgroup /app
 
