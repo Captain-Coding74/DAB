@@ -16,12 +16,22 @@ const log = serviceLogger("export");
  * PDFKit's built-in fonts (Helvetica*) are WinAnsi AFM fonts with NO Thai
  * glyphs — every Thai string (the AI analysis body, Thai column names, a Thai
  * filename, the th-TH date) came out as blank boxes, in a Thai-first product.
- * We embed IBM Plex Sans Thai, which is already a frontend dependency. It ships
- * pre-subsetted: the "thai" file has only Thai glyphs, the "latin" file only
- * Latin/digits/punctuation, and PDFKit cannot fall back within one font — so
- * text is split into Thai vs non-Thai runs (see writeMixed) and each run drawn
- * with the matching subset. If the files can't be loaded we fall back to
- * Helvetica so export still works for Latin content rather than crashing. */
+ * We embed IBM Plex Sans Thai, already a frontend dependency, for Thai runs and
+ * keep Helvetica for everything else (see writeMixed): a single PDFKit font
+ * cannot cover both scripts, so text is split by script and each run is drawn
+ * with a font that actually has the glyphs.
+ *
+ * ONLY the "thai" subset is loaded, deliberately. fontsource ships this family
+ * pre-subsetted and every subset carries the SAME internal PostScript name
+ * ("IBMPlexSansThai-Regular"). PDFKit dedupes fonts by that name
+ * (`_fontFamilies[font.name]` in its font mixin), so registering the latin
+ * subset alongside the thai one silently handed back the LATIN font for Thai
+ * runs — every Thai glyph became .notdef, i.e. exactly the tofu boxes this was
+ * meant to fix, while ToUnicode still recorded the intended codepoint and made
+ * the output look correct to a byte-level check. Helvetica's name cannot
+ * collide, so pairing it with the thai subset keeps the two faces distinct.
+ * If the font files cannot be read, Thai falls back to Helvetica (unreadable,
+ * but the export still succeeds for Latin content rather than crashing). */
 const _require = createRequire(import.meta.url);
 const FONTS = (() => {
   try {
@@ -39,6 +49,54 @@ const FONTS = (() => {
   }
 })();
 
+/**
+ * Register the four faces this report draws with: body/bold (Latin) and
+ * bodyTH/boldTH (Thai).
+ *
+ * All four fontsource subsets share one PostScript name, and PDFKit caches
+ * opened fonts by that name (`_fontFamilies[font.name]`), so registering the
+ * latin subset after the thai one silently returns the LATIN font for Thai
+ * text — every Thai glyph becomes .notdef. Opening the Thai faces first and
+ * releasing the shared name key gives each subset its own font object, which
+ * keeps both scripts on the same family: identical ascenders (1116), so mixed
+ * Thai/Latin runs share a baseline instead of sitting ~4pt apart.
+ *
+ * That relies on a PDFKit internal, so it is VERIFIED rather than assumed: if
+ * the faces come back deduped, fall back to Helvetica for Latin — Thai still
+ * renders (only the baseline alignment is lost), never tofu.
+ */
+function setupFonts(doc) {
+  const helvetica = () => {
+    doc.registerFont("body", "Helvetica");
+    doc.registerFont("bold", "Helvetica-Bold");
+  };
+  if (!FONTS) {
+    helvetica();
+    doc.registerFont("bodyTH", "Helvetica");
+    doc.registerFont("boldTH", "Helvetica-Bold");
+    return;
+  }
+  doc.registerFont("bodyTH", FONTS.bodyTH);
+  doc.registerFont("boldTH", FONTS.boldTH);
+  doc.font("bodyTH"); const thRegular = doc._font;
+  doc.font("boldTH"); const thBold    = doc._font;
+  if (doc._fontFamilies) {
+    delete doc._fontFamilies[thRegular?.name];
+    delete doc._fontFamilies[thBold?.name];
+  }
+  doc.registerFont("body", FONTS.body);
+  doc.registerFont("bold", FONTS.bold);
+  doc.font("body"); const latRegular = doc._font;
+  doc.font("bold"); const latBold    = doc._font;
+
+  if (latRegular === thRegular || latBold === thBold) {
+    // PDFKit deduped anyway — keep Thai, put Latin back on a name that cannot clash.
+    if (doc._fontFamilies) { delete doc._fontFamilies.body; delete doc._fontFamilies.bold; }
+    helvetica();
+    log.warn("PDF font dedup workaround ineffective — Latin falls back to Helvetica");
+  }
+}
+
 // ── PDF Export ────────────────────────────────────────────
 export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, missing, dupes, corr, forecasts, aiAnalysis, prompt }) {
   return new Promise((resolve, reject) => {
@@ -48,17 +106,7 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     doc.on("end",   () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // Register the four subset faces (or alias to Helvetica if unavailable).
-    // "body"/"bold" carry Latin; "bodyTH"/"boldTH" carry Thai.
-    if (FONTS) {
-      doc.registerFont("body",   FONTS.body);
-      doc.registerFont("bold",   FONTS.bold);
-      doc.registerFont("bodyTH", FONTS.bodyTH);
-      doc.registerFont("boldTH", FONTS.boldTH);
-    } else {
-      doc.registerFont("body", "Helvetica");     doc.registerFont("bold", "Helvetica-Bold");
-      doc.registerFont("bodyTH", "Helvetica");   doc.registerFont("boldTH", "Helvetica-Bold");
-    }
+    setupFonts(doc);
 
     const isThai = (ch) => ch >= "฀" && ch <= "๿";
     /* Split a string into maximal Thai / non-Thai runs and draw each with the
@@ -99,12 +147,23 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     doc.fillColor(DGRAY);
     doc.y = 130;
 
+    /* Band first, title INSIDE it, then advance past the band.
+       The title used to be drawn at `doc.y - 16` — 16pt ABOVE the band it
+       belongs to — so every heading floated over whatever preceded it (the
+       "Prompt:" row collided with "Column Statistics") while its grey band sat
+       orphaned below, wrapping the following line instead. Nothing advanced
+       doc.y past the band either, so the overlap compounded down the page. */
+    const BAND_H = 20;
     function sectionTitle(title) {
-      doc.moveDown(0.5)
-         .rect(50, doc.y, pageW, 20).fill(LGRAY).fillColor(GREEN)
-         .fontSize(11);
-      writeMixed(title, { bold: true, x: 56, y: doc.y - 16 });
-      doc.fillColor(DGRAY).moveDown(0.5);
+      doc.moveDown(0.5);
+      if (doc.y + BAND_H > doc.page.height - 60) doc.addPage();
+      const bandY = doc.y;
+      doc.rect(50, bandY, pageW, BAND_H).fill(LGRAY);
+      doc.fillColor(GREEN).fontSize(11);
+      writeMixed(title, { bold: true, x: 56, y: bandY + 5 });
+      doc.fillColor(DGRAY);
+      doc.y = bandY + BAND_H;
+      doc.moveDown(0.5);
     }
 
     function row2col(label, value) {
