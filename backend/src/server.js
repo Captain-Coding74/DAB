@@ -5,7 +5,7 @@
  * migrate, warm the cache, start the scheduler, listen — and shut all of that
  * down cleanly again.
  */
-import dotenv from "dotenv";
+import "./loadEnv.js";   // MUST be first: imports below read process.env at load time
 import { createApp } from "./app.js";
 import { initPool, closePool } from "./db/pool.js";
 import { migrate }             from "./db/migrate.js";
@@ -16,7 +16,6 @@ import { logger, serviceLogger } from "./logger.js";
 /** Plain, un-decorated output: this is guidance for a human, not a log record. */
 const say = (...lines) => lines.forEach(l => process.stderr.write(l + "\n"));
 
-dotenv.config();
 const svcLog = serviceLogger("server");
 const app    = createApp();
 const PORT   = Number(process.env.PORT) || 3000;

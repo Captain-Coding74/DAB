@@ -15,10 +15,10 @@
  * + Shares + Teams + Scheduler + Security hardening (helmet, global rate limits)
  */
 
+import "./loadEnv.js";   // MUST be first: imports below read process.env at load time
 import express        from "express";
 import helmet         from "helmet";
 import multer         from "multer";
-import dotenv         from "dotenv";
 import bcrypt         from "bcryptjs";
 import swaggerUi      from "swagger-ui-express";
 import YAML           from "yamljs";
@@ -69,8 +69,6 @@ import { generatePDF, generateExcel } from "./export.js";
 import * as R from "./db/repository.js";
 import datasetRoutes from "./routes/datasets.js";
 import collabRoutes   from "./routes/collaboration.js";
-
-dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const svcLog    = serviceLogger("server");
