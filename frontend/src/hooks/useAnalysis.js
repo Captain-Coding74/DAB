@@ -13,6 +13,34 @@ import { startSpan } from "../lib/perf";
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
 
 /**
+ * A download is only saved if the bytes really are the file we asked for.
+ *
+ * The server sets the right Content-Type, but nothing between it and the
+ * browser is obliged to: a proxy, CDN or static host that answers /api/* with
+ * its own page — an SPA index.html, a login redirect, an XML error such as
+ * Azure's `<Error><Code>BlobNotFound</Code>` — can return 200 with a body that
+ * is not a spreadsheet. That body used to be written straight to disk as
+ * report.xlsx, and the user only found out when Excel refused to open it, with
+ * nothing on screen suggesting the export had failed. xlsx is a ZIP container
+ * (PK\x03\x04) and PDF starts with %PDF, so the first four bytes settle it —
+ * the same magic-byte check routes/datasets.js already applies to uploads.
+ */
+const MAGIC = {
+  pdf:   { bytes: [0x25, 0x50, 0x44, 0x46], label: "PDF" },            // %PDF
+  excel: { bytes: [0x50, 0x4b, 0x03, 0x04], label: "Excel (xlsx)" },   // PK\x03\x04
+};
+async function assertRealFile(blob, format) {
+  const spec = MAGIC[format];
+  if (!spec) return;
+  const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  if (head.length === 4 && spec.bytes.every((b, i) => head[i] === b)) return;
+  throw new Error(
+    `เซิร์ฟเวอร์ไม่ได้ส่งไฟล์ ${spec.label} กลับมา — ไฟล์จึงเปิดไม่ได้ ` +
+    `(ตรวจสอบว่า /api ถูกส่งต่อไปยัง backend จริง)`
+  );
+}
+
+/**
  * A message worth showing a user.
  *
  * These handlers printed err.message straight into a toast. For a server error
@@ -108,6 +136,7 @@ export function useAnalysis() {
       const res  = await apiFetch(`/api/export/${format}`, { method: "POST", headers: {}, body: fd });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "export failed");
       const blob = await res.blob();
+      await assertRealFile(blob, format);   // never save an error page as report.xlsx
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
       a.href = url; a.download = `report.${format === "pdf" ? "pdf" : "xlsx"}`; a.click();
