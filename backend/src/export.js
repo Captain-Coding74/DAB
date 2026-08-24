@@ -4,6 +4,40 @@
 
 import PDFDocument from "pdfkit";
 import ExcelJS     from "exceljs";
+import { createRequire } from "module";
+import path from "path";
+import fs from "fs";
+import { serviceLogger } from "./logger.js";
+
+const log = serviceLogger("export");
+
+/* Thai glyphs in the PDF.
+ * ---------------------------------------------------------------------------
+ * PDFKit's built-in fonts (Helvetica*) are WinAnsi AFM fonts with NO Thai
+ * glyphs — every Thai string (the AI analysis body, Thai column names, a Thai
+ * filename, the th-TH date) came out as blank boxes, in a Thai-first product.
+ * We embed IBM Plex Sans Thai, which is already a frontend dependency. It ships
+ * pre-subsetted: the "thai" file has only Thai glyphs, the "latin" file only
+ * Latin/digits/punctuation, and PDFKit cannot fall back within one font — so
+ * text is split into Thai vs non-Thai runs (see writeMixed) and each run drawn
+ * with the matching subset. If the files can't be loaded we fall back to
+ * Helvetica so export still works for Latin content rather than crashing. */
+const _require = createRequire(import.meta.url);
+const FONTS = (() => {
+  try {
+    const dir = path.join(path.dirname(_require.resolve("@fontsource/ibm-plex-sans-thai/package.json")), "files");
+    const read = (n) => fs.readFileSync(path.join(dir, n));
+    return {
+      body:   read("ibm-plex-sans-thai-latin-400-normal.woff"),
+      bold:   read("ibm-plex-sans-thai-latin-700-normal.woff"),
+      bodyTH: read("ibm-plex-sans-thai-thai-400-normal.woff"),
+      boldTH: read("ibm-plex-sans-thai-thai-700-normal.woff"),
+    };
+  } catch (err) {
+    log.warn({ err: err.message }, "Thai PDF font not found — PDF export falls back to Helvetica (Thai will not render)");
+    return null;
+  }
+})();
 
 // ── PDF Export ────────────────────────────────────────────
 export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, missing, dupes, corr, forecasts, aiAnalysis, prompt }) {
@@ -14,6 +48,42 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     doc.on("end",   () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
+    // Register the four subset faces (or alias to Helvetica if unavailable).
+    // "body"/"bold" carry Latin; "bodyTH"/"boldTH" carry Thai.
+    if (FONTS) {
+      doc.registerFont("body",   FONTS.body);
+      doc.registerFont("bold",   FONTS.bold);
+      doc.registerFont("bodyTH", FONTS.bodyTH);
+      doc.registerFont("boldTH", FONTS.boldTH);
+    } else {
+      doc.registerFont("body", "Helvetica");     doc.registerFont("bold", "Helvetica-Bold");
+      doc.registerFont("bodyTH", "Helvetica");   doc.registerFont("boldTH", "Helvetica-Bold");
+    }
+
+    const isThai = (ch) => ch >= "฀" && ch <= "๿";
+    /* Split a string into maximal Thai / non-Thai runs and draw each with the
+       matching subset via continued:true, since a single PDFKit font can't
+       cover both scripts. Position (x,y) applies to the first run; the caller's
+       own `continued` flag closes the last run. */
+    function writeMixed(text, { bold = false, x, y, ...opts } = {}) {
+      const s = String(text ?? "");
+      const runs = [];
+      for (const ch of s) {
+        const th = isThai(ch);
+        const last = runs[runs.length - 1];
+        if (last && last.th === th) last.text += ch;
+        else runs.push({ text: ch, th });
+      }
+      if (!runs.length) runs.push({ text: "", th: false });
+      runs.forEach((r, i) => {
+        const isLast = i === runs.length - 1;
+        doc.font(r.th ? (bold ? "boldTH" : "bodyTH") : (bold ? "bold" : "body"));
+        const o = { ...opts, continued: isLast ? (opts.continued || false) : true };
+        if (i === 0 && x !== undefined) doc.text(r.text, x, y, o);
+        else doc.text(r.text, o);
+      });
+    }
+
     const GREEN  = "#0d6e56";
     const LGRAY  = "#f3f4f6";
     const DGRAY  = "#374151";
@@ -22,24 +92,26 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
 
     // ── Header banner
     doc.rect(50, 50, pageW, 60).fill(GREEN);
-    doc.fillColor("#fff").fontSize(18).font("Helvetica-Bold")
-       .text("Data Analysis Report", 65, 65);
-    doc.fontSize(10).font("Helvetica")
-       .text(`${fileName}  ·  ${totalRows.toLocaleString()} rows  ·  ${date}`, 65, 88);
+    doc.fillColor("#fff").fontSize(18);
+    writeMixed("Data Analysis Report", { bold: true, x: 65, y: 65 });
+    doc.fontSize(10);
+    writeMixed(`${fileName}  ·  ${totalRows.toLocaleString()} rows  ·  ${date}`, { x: 65, y: 88 });
     doc.fillColor(DGRAY);
     doc.y = 130;
 
     function sectionTitle(title) {
       doc.moveDown(0.5)
          .rect(50, doc.y, pageW, 20).fill(LGRAY).fillColor(GREEN)
-         .fontSize(11).font("Helvetica-Bold")
-         .text(title, 56, doc.y - 16).fillColor(DGRAY)
-         .moveDown(0.5);
+         .fontSize(11);
+      writeMixed(title, { bold: true, x: 56, y: doc.y - 16 });
+      doc.fillColor(DGRAY).moveDown(0.5);
     }
 
     function row2col(label, value) {
-      doc.fontSize(9).font("Helvetica").fillColor("#6b7280").text(label, 56, doc.y, { continued: true, width: 140 })
-         .fillColor(DGRAY).font("Helvetica-Bold").text(String(value)).font("Helvetica");
+      doc.fontSize(9).fillColor("#6b7280");
+      writeMixed(label, { x: 56, y: doc.y, continued: true, width: 140 });
+      doc.fillColor(DGRAY);
+      writeMixed(String(value), { bold: true });
     }
 
     // ── File info
@@ -53,17 +125,18 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     sectionTitle("Column Statistics");
     colAnalysis.forEach(c => {
       if (doc.y > 680) doc.addPage();
-      doc.fontSize(10).font("Helvetica-Bold").fillColor(GREEN).text(`▸ ${c.col}`, 56).fillColor(DGRAY);
+      doc.fontSize(10).fillColor(GREEN);
+      writeMixed(`> ${c.col}`, { bold: true, x: 56 });   // ">" not "▸": the subset has no U+25B8 (nor did Helvetica)
+      doc.fillColor(DGRAY);
       if (c.type === "numeric") {
-        doc.fontSize(8.5).font("Helvetica")
+        doc.fontSize(8.5).font("body")
            .text(`Type: numeric  |  Count: ${c.count?.toLocaleString()}  |  Missing: ${c.missing} (${c.missingPct}%)`, 66)
            .text(`Min: ${c.min}   Max: ${c.max}   Avg: ${c.avg?.toFixed(2)}   Median: ${c.median}   StdDev: ${c.stdDev?.toFixed(2)}`, 66)
            .text(`Q1: ${c.q1}   Q3: ${c.q3}   IQR: ${c.iqr}   Outliers: ${c.outlierCount}`, 66);
       } else {
         const top = c.top?.slice(0,5).map(t=>`${t.value}(${t.pct}%)`).join(", ");
-        doc.fontSize(8.5).font("Helvetica")
-           .text(`Type: text  |  Unique: ${c.unique}  |  Missing: ${c.missing} (${c.missingPct}%)`, 66)
-           .text(`Top: ${top}`, 66);
+        doc.fontSize(8.5).font("body").text(`Type: text  |  Unique: ${c.unique}  |  Missing: ${c.missing} (${c.missingPct}%)`, 66);
+        writeMixed(`Top: ${top}`, { x: 66 });   // categorical values may be Thai
       }
       doc.moveDown(0.3);
     });
@@ -71,20 +144,22 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     // ── Missing values
     if (missing.length > 0) {
       sectionTitle("Missing Values");
+      doc.fontSize(9);
       missing.forEach(m => {
-        doc.fontSize(9).text(`${m.col}: ${m.missing} rows missing (${m.pct}%)`, 56);
+        writeMixed(`${m.col}: ${m.missing} rows missing (${m.pct}%)`, { x: 56 });
       });
     }
 
     // ── Duplicates
     sectionTitle("Duplicate Rows");
-    doc.fontSize(9).text(`Found ${dupes.count} duplicate rows`, 56);
+    doc.fontSize(9).font("body").text(`Found ${dupes.count} duplicate rows`, 56);
 
     // ── Correlation
     if (corr && corr.strong.length > 0) {
-      sectionTitle("Strong Correlations (|r| ≥ 0.7)");
+      sectionTitle("Strong Correlations (|r| >= 0.7)");   // ">=": the subset has no U+2265
+      doc.fontSize(9);
       corr.strong.forEach(s => {
-        doc.fontSize(9).text(`${s.col1}  ↔  ${s.col2}:  r = ${s.r}`, 56);
+        writeMixed(`${s.col1}  <->  ${s.col2}:  r = ${s.r}`, { x: 56 });   // "<->": no U+2194 glyph
       });
     }
 
@@ -93,8 +168,9 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
       sectionTitle("Regression & Forecast");
       forecasts.forEach(f => {
         if (doc.y > 680) doc.addPage();
-        doc.fontSize(10).font("Helvetica-Bold").fillColor(GREEN).text(`▸ ${f.col}`, 56).fillColor(DGRAY);
-        doc.fontSize(8.5).font("Helvetica")
+        doc.fontSize(10).fillColor(GREEN);
+        writeMixed(`> ${f.col}`, { bold: true, x: 56 });
+        doc.fillColor(DGRAY).fontSize(8.5).font("body")
            .text(`Slope: ${f.slope}   Intercept: ${f.intercept}   R²: ${f.r2}`, 66);
         f.forecast.forEach(p => doc.text(`  +${p.step} steps: predicted = ${p.predicted}`, 66));
         doc.moveDown(0.3);
@@ -104,20 +180,24 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     // ── Sample data
     sectionTitle("Data Preview (5 rows)");
     doc.addPage();
-    doc.fontSize(8).font("Helvetica-Bold").text(headers.join("  |  "), 50).moveDown(0.2);
+    doc.fontSize(8);
+    writeMixed(headers.join("  |  "), { bold: true, x: 50 });
+    doc.moveDown(0.2);
     rows.slice(0, 5).forEach(r => {
-      doc.font("Helvetica").text(r.join("  |  "), 50).moveDown(0.1);
+      writeMixed(r.join("  |  "), { x: 50 });
+      doc.moveDown(0.1);
     });
 
     // ── AI analysis
     sectionTitle("AI Analysis");
-    doc.fontSize(9).font("Helvetica").text(aiAnalysis || "—", 56, doc.y, { width: pageW - 12, lineGap: 3 });
+    doc.fontSize(9);
+    writeMixed(aiAnalysis || "—", { x: 56, y: doc.y, width: pageW - 12, lineGap: 3 });
 
     // ── Footer
     const range = doc.bufferedPageRange();
     for (let i = 0; i < range.count; i++) {
       doc.switchToPage(range.start + i);
-      doc.fontSize(8).fillColor("#9ca3af")
+      doc.fontSize(8).fillColor("#9ca3af").font("body")
          .text(`Page ${i+1} of ${range.count}  ·  Powered by Data Analysis Bot`, 50, doc.page.height - 40, { align: "center", width: pageW });
     }
 

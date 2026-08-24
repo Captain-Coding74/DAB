@@ -64,11 +64,17 @@ export function runTool(name, input, statsJson = {}) {
  */
 export async function runAgent({ client, statsJson, analysisText, question, maxSteps = 5, model = "claude-sonnet-4-6" }) {
   const steps = [];
+  // Cap the question the same way buildAnalysisPrompt does (MAX 500 chars): it
+  // is attacker-controlled free text (express.json accepts 1 MB) and this
+  // initial message is RE-SENT on every tool round plus the salvage call — up
+  // to 7 model invocations — so an unbounded question both buries the real
+  // statistics and bills ~7× its size against a single reserved budget unit.
+  const q = String(question ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
   const messages = [
     { role: "user", content:
       `คุณคือนักวิเคราะห์ข้อมูลที่ตรวจสอบได้ คุณเคยวิเคราะห์ชุดข้อมูลนี้ไว้ว่า:\n${(analysisText || "").slice(0, 1200)}\n\n` +
       `ตอบคำถามต่อไปนี้โดย "ใช้ tools ตรวจสถิติจริงก่อนตอบ" อย่าเดาตัวเลข ถ้าตัวเลขสำคัญให้เรียก tool ยืนยันเสมอ ` +
-      `ตอบภาษาไทย กระชับ อ้างอิงค่าที่ตรวจแล้ว\n\nคำถาม: ${question}` },
+      `ตอบภาษาไทย กระชับ อ้างอิงค่าที่ตรวจแล้ว\n\nคำถาม: ${q}` },
   ];
 
   for (let round = 0; round <= maxSteps; round++) {
