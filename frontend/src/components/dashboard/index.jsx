@@ -16,6 +16,7 @@ import { ChatPanel } from "../chat";
 import { AgentPanel } from "./AgentPanel";
 import { AnalysisTab, InsightsTab, QualityTab, ForecastTab } from "./tabs";
 import { ColumnStatsPanel } from "../ColumnStats";
+import { ClassReportCard } from "./ClassReport";
 
 /* Mirrors MAX_UPLOAD_MB in backend/src/config.js. One constant here so the
    UI cannot advertise a limit the server would reject; /api/health also
@@ -242,9 +243,12 @@ export default function Dashboard() {
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}
                 {activeTab === "quality"     && <QualityTab a={a}/>}
                 {activeTab === "correlation" && <Suspense fallback={<ChartFallback/>}><CorrelationTab a={a}/></Suspense>}
-                {activeTab === "สถิติ"        && (a.datasetId
-                  ? <Suspense fallback={<ChartFallback/>}><InferencePanel datasetId={a.datasetId}/></Suspense>
-                  : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">บันทึกชุดข้อมูลก่อน จึงจะทดสอบทางสถิติได้ — การทดสอบต้องใช้ข้อมูลทุกแถว ไม่ใช่แค่ตัวอย่าง</p></Card>)}
+                {activeTab === "สถิติ"        && (<>
+                  {a.classReport && <ClassReportCard report={a.classReport}/>}
+                  {a.datasetId
+                    ? <Suspense fallback={<ChartFallback/>}><InferencePanel datasetId={a.datasetId}/></Suspense>
+                    : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">การทดสอบสมมติฐาน (t-test, ANOVA, Cronbach) ต้องใช้ข้อมูลทุกแถว — เข้าสู่ระบบแล้ววิเคราะห์ไฟล์อีกครั้ง ระบบจะบันทึกชุดข้อมูลให้อัตโนมัติ</p></Card>}
+                </>)}
                 {activeTab === "forecast"    && <ForecastTab a={a}/>}
                 {activeTab === "deep dive"   && (a.savedId
                   ? <AgentPanel analysisId={a.savedId}/>

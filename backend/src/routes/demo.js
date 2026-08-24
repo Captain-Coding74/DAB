@@ -67,10 +67,10 @@ async function analyzeSample(id) {
   const { file, ...meta } = SAMPLES[id];
   const t0     = performance.now();
   const buffer = await readFile(path.join(DATA_DIR, file));
-  const { headers, colAnalysis, totalRows, dupeCount, sampleRows, normalization } =
+  const { headers, colAnalysis, totalRows, dupeCount, sampleRows, normalization, sensitive } =
     await parseFileStreaming(buffer, file);
 
-  const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, buffer, fileName: file };
+  const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, sensitive, buffer, fileName: file };
   const bundle = computeStatsBundle(parsed);
   const durationMs = Math.round(performance.now() - t0);
 

@@ -18,13 +18,14 @@ import { enrichChartsWithData, alignHeaders } from "./chartSeries.js";
 import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.js";
 import { computeQualityScore } from "./qualityScore.js";
 import { generateInsights }    from "./insights.js";
+import { buildClassReport } from "./classReport.js";
 import { classifySensitiveColumns, maskRows } from "./sensitive.js";
 
 /**
  * Everything derivable from a parsed file, in one call.
  * Input: the output of parseFileStreaming().
  */
-export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null, buffer = null, fileName = "" }) {
+export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null, buffer = null, fileName = "", sensitive = [] }) {
   const missing     = colAnalysis.filter(c => c.missing > 0)
     .map(c => ({ col: c.col, missing: c.missing, total: totalRows, pct: c.missingPct }));
   const dupes       = { count: dupeCount };
@@ -45,6 +46,7 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
      EVERY row (parsed once below, shared with the chart series) and an empty
      result stays empty: the tab's empty state is the honest answer. */
   let forecasts     = fromAnalysis;
+  let classReport   = null;
   const chartRecs   = recommendCharts(colAnalysis);
   let autoCharts    = autoChartConfig(colAnalysis);
   /* v21.9 (roadmap item 1): charts draw the DATA, not the sample. CSV only —
@@ -54,6 +56,10 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
     const full = alignHeaders(parseAllRows(buffer, fileName), colAnalysis.map((c) => c.col));
     if (full.rows?.length) {
       autoCharts = enrichChartsWithData(autoCharts, full.headers, full.rows);
+      /* School edition: the teacher's deterministic ranking view (ใครได้
+         มากสุด/น้อยสุด/เกียรติบัตร) — computed from EVERY row, UI-bound only:
+         it is not in summaryStr, not in the prompt, not in saved stats_json. */
+      classReport = buildClassReport({ headers: full.headers, rows: full.rows, colAnalysis, sensitive });
       /* The fallback only sees columns the PARSER classified numeric, with
          cells pre-coerced by the parser's own number rules. autoForecast's
          raw parseFloat read "2026-01-14" as 2026, so an ISO date column whose
@@ -91,7 +97,7 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
     (maskedCols.length
       ? "\n[masked ตาม PDPA] " + maskedCols.map((c) => `${c.col} (${c.sensitive})`).join(", ")
       : "");
-  return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr };
+  return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr, classReport };
 }
 
 /**

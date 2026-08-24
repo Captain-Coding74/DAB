@@ -3,6 +3,26 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.19] — 2026-08-24 "ทำเนียบห้องเรียน"
+The สถิติ tab, reported unreachable — and it truly was: a.datasetId was
+read in exactly one place and set in zero, and the UI never called
+POST /api/datasets, so the entire inference panel (t-test, ANOVA, Cronbach)
+was dead code from the user's side.
+- **Reachable now:** a signed-in analyze stores the file as a dataset
+  automatically (non-fatal on failure) and lights the tab up; the anonymous
+  gate message explains what signing in unlocks.
+- **Class report** (`services/classReport.js`, deterministic, ADR-0001): the
+  ranking a teacher actually asks for first — สูงสุด/มัธยฐาน/ต่ำสุด, competition
+  ranking over every row, and เกียรติบัตร: a real เกรด column decides at
+  4.00; without one, ≥ 80% of estimated full marks (observed max rounded up
+  to a gradebook ceiling — labelled as an estimate). UI-bound only: not in
+  the prompt, not in summaryStr, not in saved stats_json; identity limited
+  to student id + one name column, citizen ids never selected. Renders in
+  the สถิติ tab above the hypothesis tests; missing scores flagged, not
+  hidden. Routes now thread `sensitive` through to the bundle (it was
+  dropped in the hand-built parsed objects, which also left
+  sensitiveColumns empty in responses).
+
 ## [21.18] — 2026-08-24 "School Edition v1"
 First vertical: Thai schools (teachers' วิจัยในชั้นเรียน / classroom research).
 The general edition is frozen and shippable from tag `general-stable-v21.17`.

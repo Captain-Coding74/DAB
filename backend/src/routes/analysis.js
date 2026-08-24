@@ -44,9 +44,9 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       // v21.1: bytes come from object storage; getVersionBytes falls back to
       // the legacy file_content column for rows written before the migration.
       const buffer    = await getVersionBytes(ds.version);
-      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise } = await parseFileStreaming(buffer, ds.version.file_name);
+      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, sensitive } = await parseFileStreaming(buffer, ds.version.file_name);
 
-      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, buffer, fileName: ds.version.file_name };
+      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, sensitive, buffer, fileName: ds.version.file_name };
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
 
@@ -89,10 +89,10 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const workspaceId = req.body.workspaceId || null;
       const datasetId   = req.body.datasetId   || null;
 
-      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, normalization } =
+      const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, normalization, sensitive } =
         await parseFileStreaming(req.file.buffer, req.file.originalname);
 
-      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, buffer: req.file.buffer, fileName: req.file.originalname };
+      const parsed = { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, sensitive, buffer: req.file.buffer, fileName: req.file.originalname };
       const bundle = computeStatsBundle(parsed);
       const { autoCharts, quality, corr, forecasts } = bundle;
 

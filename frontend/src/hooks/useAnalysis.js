@@ -96,7 +96,23 @@ export function useAnalysis() {
       if (!res.ok) throw new Error(data.error);
       const perceivedMs = endSpan();
       if (runId !== runRef.current) return;   // superseded — a newer file/run owns the state now
-      setCurrentAnalysis({ ...data, fileName: file.name, perceivedMs });
+/* School edition: the สถิติ tab's hypothesis tests need a STORED
+         dataset (they run on every row server-side), but nothing in the UI
+         ever created one — a.datasetId was read in exactly one place and set
+         in zero, so the whole inference panel was unreachable. For a
+         signed-in user, store the same file as a dataset and light the tab
+         up; failure is non-fatal (the tab just stays gated). */
+      let datasetId = data.datasetId ?? null;
+      if (!datasetId && useAppStore.getState().accessToken) {
+        try {
+          const dsFd = new FormData();
+          dsFd.append("file", file, file.name);
+          const dsRes = await apiFetch("/api/datasets", { method: "POST", headers: {}, body: dsFd });
+          if (dsRes.ok) datasetId = (await dsRes.json()).id ?? null;
+        } catch { /* สถิติ tab stays gated — not worth failing the analysis */ }
+      }
+      if (runId !== runRef.current) return;   // re-check: the store call awaited
+      setCurrentAnalysis({ ...data, datasetId, fileName: file.name, perceivedMs });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
