@@ -29,6 +29,9 @@ function mulberry32(seed) {
   };
 }
 const rand = mulberry32(20260824);            // seed = date of School Edition v1
+/* สตรีมแยกสำหรับช่องติ๊กส่งงาน (v21.21) — แยก instance เพื่อไม่ขยับค่าที่ seed เดิม
+   สุ่มไว้แล้ว — คะแนน/วันเกิด/เลขบัตรทุกค่าคงเดิม byte-identical */
+const checkRand = mulberry32(0xC0FFEE);
 const randInt = (lo, hi) => lo + Math.floor(rand() * (hi - lo + 1));
 
 // Box-Muller — standard normal from two uniforms
@@ -87,7 +90,8 @@ const BLANKS = {
 };
 
 const HEADERS = ["เลขประจำตัว","บัตรประชาชน","ชื่อ-สกุล","ชื่อเล่น","วันเกิด",
-  "คะแนนก่อนเรียน","คะแนนหลังเรียน","งาน1","งาน2","งาน3","q1","q2","q3","q4","q5"];
+  "คะแนนก่อนเรียน","คะแนนหลังเรียน","งาน1","งาน2","งาน3",
+  "ส่งใบงาน4","ส่งการบ้าน5","q1","q2","q3","q4","q5"];
 
 const rows = [];
 for (let i = 0; i < N; i++) {
@@ -104,6 +108,9 @@ for (let i = 0; i < N; i++) {
     "งาน1": clampRound(8   + 1.2 * randNorm(), 4, 10),           // เต็ม 10
     "งาน2": clampRound(7.8 + 1.3 * randNorm(), 3, 10),
     "งาน3": clampRound(5   + 1.5 * randNorm(), 1, 9),            // ชิ้นที่ยากที่สุด
+    /* ช่องติ๊กส่งงาน: กระดาษจริงใช้ ✓ / เว้นว่าง, Google Sheets ส่งออกเป็น TRUE/FALSE */
+    "ส่งใบงาน4":   checkRand() < 0.85 ? "✓" : "",
+    "ส่งการบ้าน5": checkRand() < 0.78 ? "TRUE" : "FALSE",
   };
   // q1..q5 — ทัศนคติร่วมฐานเดียวกัน + noise เล็กน้อย → items intercorrelated
   const base = 3.7 + 0.65 * randNorm();

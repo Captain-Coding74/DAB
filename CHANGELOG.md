@@ -3,6 +3,18 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.21] — 2026-08-24 "ช่องติ๊กส่งงาน"
+- Class report understands CHECKBOX assignments, not just scored ones: a
+  column of ✓/blank, ส่ง/ไม่ส่ง, TRUE/FALSE or 1/0 (Sheets/Excel checkbox
+  exports) is detected by its values, pulled out of the score set (a 1/0
+  column would otherwise rank the class on a "score" out of 1), and feeds a
+  checklist: per-งาน submit rates, per-student งานค้าง, and the list a
+  teacher actually wants — ยังไม่ส่งงาน, worst offender first. A pure
+  checkbox sheet still reports, ranked by fewest missing; blank = not
+  submitted, as in every real tick sheet. Demo gains ส่งใบงาน4 (✓/blank)
+  and ส่งการบ้าน5 (TRUE/FALSE) on an independent RNG stream — every
+  existing score byte-identical.
+
 ## [21.20] — 2026-08-24 "ชื่อ-สกุล"
 - Class report shows the REAL name (ชื่อ-สกุล) alongside the nickname: every
   detected name column rides along (capped at 3), the demo file gains a
