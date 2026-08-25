@@ -26,7 +26,7 @@ import { OPERATIONS } from "./dataFixes.js";
 import { serviceLogger } from "../logger.js";
 
 const log = serviceLogger("fix-suggest");
-const MODEL = "claude-sonnet-4-6";
+import { AI_MODEL as MODEL } from "../config.js";
 
 /**
  * Deterministic suggestions from the column statistics.

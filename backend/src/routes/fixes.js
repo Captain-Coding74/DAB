@@ -19,7 +19,7 @@
 import { requireAuth } from "../auth.js";
 import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
 import { serviceLogger } from "../logger.js";
-import { parseAllRows } from "../services/fullRows.js";
+import { parseAllRowsAny } from "../services/fullRows.js";
 import { applyFix, OPERATIONS } from "../services/dataFixes.js";
 import { suggestFixes } from "../services/fixSuggest.js";
 import { aiEditRows, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
@@ -129,8 +129,9 @@ export function mountFixRoutes(app, { ai } = {}) {
         rows: result.rows,
         headers: ctx.headers,
         sensitiveColumns: detectSensitiveColumns(ctx.headers),
-        warningTh: "ข้อมูลดิบถูกส่งไปยัง AI เพื่อแก้ไข — ตรวจสอบรายการเปลี่ยนแปลงก่อนยืนยัน",
-        warningEn: "Raw cell values were sent to the AI. Review every change before confirming.",
+        protectedColumns: result.protectedColumns || [],
+        warningTh: "ค่าดิบ (ยกเว้นคอลัมน์ข้อมูลส่วนบุคคล ซึ่งไม่ถูกส่ง) ถูกส่งไปยัง AI — ตรวจสอบรายการเปลี่ยนแปลงก่อนยืนยัน",
+        warningEn: "Raw values were sent to the AI — except identifier columns, which never leave the server. Review every change before confirming.",
         maxRows: MAX_AI_EDIT_ROWS,
       });
     } catch (err) { next(err); }
@@ -144,9 +145,22 @@ export function mountFixRoutes(app, { ai } = {}) {
 
       // Re-validate: the client could post back anything, and the shape rules
       // exist to protect the dataset, not just the model's output.
-      const { validateEdit, diffRows } = await import("../services/aiEdit.js");
+      const { validateEdit, diffRows, assertProtectedUnchanged } = await import("../services/aiEdit.js");
       const shape = validateEdit(ctx.rows, rows);
       if (!shape.ok) return res.status(400).json(shape);
+
+      /* PDPA backstop, server-side: the preview never lets the model touch
+         identifier columns, but /apply accepts rows from the CLIENT — a
+         tampered request could rewrite a citizen id or name directly. Reject
+         any edit that changes a protected cell, naming the exact cells. */
+      const guard = assertProtectedUnchanged(ctx.headers, ctx.rows, rows);
+      if (!guard.ok) {
+        return res.status(400).json({
+          error: "แก้ไขคอลัมน์ข้อมูลส่วนบุคคลไม่ได้ (PDPA)",
+          errorEn: "identifier columns cannot be edited (PDPA)",
+          violations: guard.violations,
+        });
+      }
 
       const changes = diffRows(ctx.rows, rows, ctx.headers);
       if (changes.length === 0) {
@@ -159,16 +173,19 @@ export function mountFixRoutes(app, { ai } = {}) {
       const { computeQualityScore } = await import("../services/qualityScore.js");
 
       const csv = Buffer.from(toCsv(ctx.headers, rows), "utf-8");
-      const parsed = await parseFileStreaming(csv, ctx.version.file_name);
+      // The new version holds CSV bytes — its name and type must say so even
+      // when the source version was an .xlsx (see csvFileName below).
+      const newName = csvFileName(ctx.version.file_name);
+      const parsed = await parseFileStreaming(csv, newName);
       const quality = computeQualityScore(parsed.colAnalysis, parsed.totalRows, parsed.dupeCount);
       const stored = await storage.put(
-        storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: ctx.version.file_name }), csv);
+        storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: newName }), csv);
 
       const note = `AI edit: ${String(instruction || "").slice(0, 80)} — ${changes.length} cell(s) changed`;
       const version = await DR.addDatasetVersion({
-        datasetId: req.params.id, fileName: ctx.version.file_name,
+        datasetId: req.params.id, fileName: newName,
         storageKey: stored.key, storageSha256: stored.sha256,
-        fileType: ctx.version.file_type,
+        fileType: "csv",
         totalRows: parsed.totalRows, totalCols: parsed.headers.length,
         colAnalysis: parsed.colAnalysis, qualityScore: quality?.score ?? null,
         changeNote: note, uploadedBy: req.user.userId, sizeBytes: csv.length,
@@ -199,19 +216,22 @@ export function mountFixRoutes(app, { ai } = {}) {
       const { computeQualityScore } = await import("../services/qualityScore.js");
 
       const csv = Buffer.from(toCsv(ctx.headers, result.rows), "utf-8");
-      const parsed = await parseFileStreaming(csv, ctx.version.file_name);
+      // The new version holds CSV bytes — its name and type must say so even
+      // when the source version was an .xlsx (see csvFileName below).
+      const newName = csvFileName(ctx.version.file_name);
+      const parsed = await parseFileStreaming(csv, newName);
       const quality = computeQualityScore(parsed.colAnalysis, parsed.totalRows, parsed.dupeCount);
 
       const stored = await storage.put(
-        storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: ctx.version.file_name }),
+        storage.buildKey({ datasetId: req.params.id, versionNum: Date.now(), fileName: newName }),
         csv
       );
 
       const version = await DR.addDatasetVersion({
         datasetId: req.params.id,
-        fileName: ctx.version.file_name,
+        fileName: newName,
         storageKey: stored.key, storageSha256: stored.sha256,
-        fileType: ctx.version.file_type,
+        fileType: "csv",
         totalRows: parsed.totalRows, totalCols: parsed.headers.length,
         colAnalysis: parsed.colAnalysis,
         qualityScore: quality?.score ?? null,
@@ -264,15 +284,29 @@ async function load(req, res, needsWrite = false) {
   // cannot exhaust memory. Correct for statistics, catastrophic for fixes: a
   // "remove outliers" that only saw a sample would silently rewrite the file
   // based on rows the user never chose. Fixes read every row.
-  const { headers, rows } = parseAllRows(buffer, ds.version.file_name);
+  const { headers, rows } = await parseAllRowsAny(buffer, ds.version.file_name);
   if (!rows) {
+    // Only genuinely unsupported input lands here now — legacy .xls (OLE
+    // container) or an unknown extension. CSV and .xlsx both parse.
     res.status(415).json({
-      error: "แก้ไขอัตโนมัติรองรับเฉพาะไฟล์ CSV",
-      errorEn: "automatic fixes currently support CSV only — export the sheet as CSV first",
+      error: "ไฟล์ชนิดนี้ยังไม่รองรับการแก้ไขอัตโนมัติ — เปิดใน Excel แล้วบันทึกเป็น .xlsx หรือ CSV ก่อน",
+      errorEn: "this file type is not supported for automatic fixes — legacy .xls should be re-saved as .xlsx or CSV first",
     });
     return null;
   }
   return { rows, headers, version: ds.version };
 }
+
+/**
+ * Both apply paths re-serialise the (possibly fixed) rows with toCsv() and
+ * store the result as a NEW version — the stored bytes are ALWAYS CSV, no
+ * matter what the source version was. Keeping the original file_name meant a
+ * fixed .xlsx stored CSV bytes under an .xlsx name, and every later parse of
+ * that version (preview, re-analysis, the next fix) would hand CSV text to
+ * the xlsx reader and explode. The stored name's extension must therefore be
+ * forced to .csv, and file_type recorded as "csv" to match the bytes.
+ */
+const csvFileName = (name) =>
+  /\.(xlsx|xls)$/i.test(name || "") ? String(name).replace(/\.(xlsx|xls)$/i, ".csv") : (name || "fixed.csv");
 
 

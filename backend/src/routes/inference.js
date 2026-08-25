@@ -15,7 +15,7 @@
  */
 import { requireAuth } from "../auth.js";
 import { serviceLogger } from "../logger.js";
-import { parseAllRows } from "../services/fullRows.js";
+import { parseAllRowsAny } from "../services/fullRows.js";
 import {
   independentTTest, pairedTTest, oneWayAnova, chiSquareTest,
   pearsonCorrelation, linearRegression, cronbachAlpha,
@@ -101,11 +101,13 @@ export function mountInferenceRoutes(app) {
          "each group needs at least 2 values" on a 600-respondent survey — and
          where it did not refuse, it would have produced a p-value from five
          rows that a student might put in a thesis. */
-      const { headers, rows: allRows } = parseAllRows(buffer, ds.version.file_name);
+      const { headers, rows: allRows } = await parseAllRowsAny(buffer, ds.version.file_name);
       if (!allRows) {
+        // CSV and .xlsx both parse now — only legacy .xls (OLE container)
+        // or an unknown file type still lands here.
         return res.status(415).json({
-          error: "การทดสอบทางสถิติรองรับเฉพาะไฟล์ CSV — กรุณาบันทึกเป็น CSV ก่อน",
-          errorEn: "statistical tests currently support CSV only — export the sheet as CSV first",
+          error: "ไฟล์ชนิดนี้ยังไม่รองรับการทดสอบทางสถิติ — เปิดใน Excel แล้วบันทึกเป็น .xlsx หรือ CSV ก่อน",
+          errorEn: "this file type is not supported for statistical tests — legacy .xls should be re-saved as .xlsx or CSV first",
         });
       }
       const sampleRows = allRows;

@@ -8,6 +8,7 @@ import { analyzeLimiter } from "../middleware/rateLimiter.js";
 import { runAgent } from "../services/agent.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
 import { cache } from "../services/cache.js";
+import { AI_MODEL } from "../config.js";
 
 /* The global daily AI budget (services/aiBudget.js) was enforced only on
    /api/analyze. Every other model entry point — chat, streaming chat, the
@@ -52,7 +53,7 @@ export function mountChatRoutes(app, { ai }) {
         { role: "user", content: message }
       ];
 
-      const reply = await ai.messages.create({ model: "claude-sonnet-4-6", max_tokens: 800, messages });
+      const reply = await ai.messages.create({ model: AI_MODEL, max_tokens: 800, messages });
       const replyText = reply.content[0].text;
 
       await R.saveChatMessage({ analysisId: req.params.id, userId: req.user.userId, role: "user", content: message });
@@ -110,7 +111,7 @@ export function mountChatRoutes(app, { ai }) {
         "X-Accel-Buffering": "no",
       });
 
-      const stream = ai.messages.stream({ model: "claude-sonnet-4-6", max_tokens: 800, messages });
+      const stream = ai.messages.stream({ model: AI_MODEL, max_tokens: 800, messages });
       stream.on("text", (t) => res.write(`data: ${JSON.stringify({ t })}\n\n`));
 
       const final = await stream.finalMessage();

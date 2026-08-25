@@ -11,6 +11,8 @@
  * raw file contents, so the agent is cheap, fast, and side-effect free.
  */
 
+import { AI_MODEL } from "../config.js";
+
 export const AGENT_TOOLS = [
   {
     name: "list_columns",
@@ -62,7 +64,7 @@ export function runTool(name, input, statsJson = {}) {
  * @param {number} [deps.maxSteps] Tool-round cap (default 5)
  * @returns {Promise<{reply: string, steps: Array<{tool: string, input: object}>}>}
  */
-export async function runAgent({ client, statsJson, analysisText, question, maxSteps = 5, model = "claude-sonnet-4-6" }) {
+export async function runAgent({ client, statsJson, analysisText, question, maxSteps = 5, model = AI_MODEL }) {
   const steps = [];
   // Cap the question the same way buildAnalysisPrompt does (MAX 500 chars): it
   // is attacker-controlled free text (express.json accepts 1 MB) and this

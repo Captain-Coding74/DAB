@@ -39,3 +39,11 @@ export const TRUST_PROXY = (() => {
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 ? n : 1;
 })();
+
+/**
+ * The Claude model every AI call uses. One name, env-overridable — it was
+ * hardcoded in six files, so changing models meant a grep-and-hope sweep.
+ * Default is claude-opus-5 (current recommended model); set AI_MODEL to pick
+ * another, e.g. AI_MODEL=claude-sonnet-4-6 for lower cost per token.
+ */
+export const AI_MODEL = process.env.AI_MODEL || "claude-opus-5";

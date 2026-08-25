@@ -3,6 +3,30 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.22] — 2026-08-25 "AI แก้ไขไฟล์ Excel"
+"Teacher uploads messy Excel → AI fixes it → confirm → ranked class report"
+now works end to end. Three pieces, all previously missing:
+- **.xlsx full rows** (parseAllRowsAny): fixes, hypothesis tests and the
+  class report now run on Excel uploads (cell flattening mirrors the
+  streaming parser: dates, cached formula results, rich text). Fixed
+  versions re-serialise as CSV and are now STORED as .csv — the old code
+  would have stored CSV bytes under an .xlsx name, corrupting every later
+  parse of that version. Class report for xlsx comes from headRows with an
+  exact-parity guard (>500 rows → null, same as CSV).
+- **PDPA-strict AI edit**: identifier columns (บัตรประชาชน, ชื่อ, วันเกิด,
+  เลขประจำตัว, เบอร์) are absent from what the model sees — values AND
+  headers — and spliced back byte-identical; instructions naming a
+  protected column are refused without calling the model; /ai-edit/apply
+  gets a server-side backstop rejecting any tampered identifier cell with
+  the exact violations listed. 24 unit tests incl. a capturing fake client
+  proving nothing sensitive is in the prompt.
+- **แก้ไขข้อมูล UI** (FixPanel in the quality tab): the fixes engine had
+  ZERO frontend callers — suggested fixes now flow suggest → preview →
+  confirm, and free-text AI edit shows a cell-level diff before apply.
+  Nothing auto-applies.
+- AI model centralised to config.js AI_MODEL (default claude-opus-5,
+  env-overridable) — was hardcoded in six files.
+
 ## [21.21] — 2026-08-24 "ช่องติ๊กส่งงาน"
 - Class report understands CHECKBOX assignments, not just scored ones: a
   column of ✓/blank, ส่ง/ไม่ส่ง, TRUE/FALSE or 1/0 (Sheets/Excel checkbox

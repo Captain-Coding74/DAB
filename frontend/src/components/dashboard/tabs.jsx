@@ -7,6 +7,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Download, Share2, FileText, Upload } from "lucide-react";
 import { Card, Badge, Button, QualityRing, GradeStamp, Eyebrow } from "../ui";
+import { FixPanel } from "./FixPanel";
 
 /* Findings as auditor's marginalia: mark · red rule · entry */
 const SEVERITY = {
@@ -121,8 +122,14 @@ export function InsightsTab({ a }) {
 }
 
 export function QualityTab({ a }) {
-  if (!a.quality) return null;
+  /* v21.22: the quality tab is where problems are first SEEN, so it is also
+     where they get FIXED — FixPanel (suggest → preview → apply + free-text AI
+     edit) renders below the score card. The panel gates itself on a stored
+     dataset (a.datasetId), same as the สถิติ tab, so the quality card no
+     longer short-circuits the whole tab when quality is absent. */
+  if (!a.quality) return <FixPanel datasetId={a.datasetId}/>;
   return (
+    <>
     <Card title="ผลตรวจคุณภาพ · Quality">
       <div className="flex items-center gap-4 mb-5">
         <QualityRing score={a.quality.score} size={80}/>
@@ -154,6 +161,8 @@ export function QualityTab({ a }) {
         </div>
       )}
     </Card>
+    <FixPanel datasetId={a.datasetId}/>
+    </>
   );
 }
 

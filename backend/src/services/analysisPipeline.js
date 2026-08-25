@@ -25,7 +25,7 @@ import { classifySensitiveColumns, maskRows } from "./sensitive.js";
  * Everything derivable from a parsed file, in one call.
  * Input: the output of parseFileStreaming().
  */
-export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null, buffer = null, fileName = "", sensitive = [] }) {
+export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise = null, buffer = null, fileName = "", sensitive = [], headRows = [] }) {
   const missing     = colAnalysis.filter(c => c.missing > 0)
     .map(c => ({ col: c.col, missing: c.missing, total: totalRows, pct: c.missingPct }));
   const dupes       = { count: dupeCount };
@@ -50,8 +50,10 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
   const chartRecs   = recommendCharts(colAnalysis);
   let autoCharts    = autoChartConfig(colAnalysis);
   /* v21.9 (roadmap item 1): charts draw the DATA, not the sample. CSV only —
-     parseAllRows declines xlsx by design — and old saved analyses simply
-     lack `data`, so the frontend keeps its sample fallback for both. */
+     parseAllRows declines xlsx by design (this function is sync and has sync
+     callers, so it cannot await the async xlsx reader) — and old saved
+     analyses simply lack `data`, so the frontend keeps its sample fallback
+     for both. */
   if (buffer) {
     const full = alignHeaders(parseAllRows(buffer, fileName), colAnalysis.map((c) => c.col));
     if (full.rows?.length) {
@@ -79,6 +81,18 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
           forecasts = autoForecast(keep.map((i) => full.headers[i]), coerced);
         }
       }
+    } else if (headRows.length && totalRows <= headRows.length) {
+      /* xlsx uploads: parseAllRows returned nothing (CSV-only, see above) but
+         the streaming parser handed us headRows — the FIRST 500 rows in file
+         order. Charts keep their CSV-only behaviour, and forecasts already
+         come from the parser's full-column trend sums. The class report,
+         though, caps a class at 500 rows anyway (a "class", not a warehouse),
+         so for any classroom-sized sheet headRows IS every row — a teacher
+         uploading the gradebook as .xlsx gets the same report as CSV. The
+         totalRows guard keeps the parity exact: past 500 rows headRows is a
+         truncation, and ranking a truncated class would be a wrong answer,
+         not a partial one — CSV returns null there, so xlsx must too. */
+      classReport = buildClassReport({ headers, rows: headRows, colAnalysis, sensitive });
     }
   }
   /* Quality BEFORE suggestions: generatePromptSuggestions gates its
