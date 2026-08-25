@@ -141,3 +141,38 @@ describe("checklist — ช่องติ๊กส่งงาน", () => {
     assert.ok(rate.submitted > 25 && rate.submitted < 40, "plausible submit rate");
   });
 });
+
+describe("hunt regressions (v21.23)", () => {
+  const S = [{ col: "เลขประจำตัว", kind: "student-id", confidence: "high" }];
+  const base = (extraH = [], extraC = []) => ({
+    headers: ["เลขประจำตัว", "คะแนน", ...extraH],
+    colAnalysis: [
+      { col: "เลขประจำตัว", type: "numeric", max: 4 },
+      { col: "คะแนน", type: "numeric", max: 28 },
+      ...extraC,
+    ],
+    sensitive: S,
+  });
+
+  test("a remarks column of only '-' is NOT a checkbox assignment", () => {
+    const r = buildClassReport({ ...base(["หมายเหตุ"], [{ col: "หมายเหตุ", type: "text" }]),
+      rows: [["1", "20", "-"], ["2", "15", "-"], ["3", "10", "-"], ["4", "25", "-"]] });
+    assert.equal(r.checklist, null);
+  });
+
+  test("blank เกรด cell falls back to the percent rule instead of denying honours", () => {
+    const cfg = base(["เกรด"], [{ col: "เกรด", type: "numeric", max: 4 }]);
+    const r = buildClassReport({ ...cfg,
+      rows: [["1", "28", ""], ["2", "15", "3.5"], ["3", "10", "2.0"], ["4", "25", "4.00"]] });
+    const blankKid = r.students.find((s) => s.id === "1");   // 28/30 = 93% but no grade
+    assert.equal(blankKid.honor, true, "93% with a BLANK grade cell earns the certificate");
+    assert.equal(r.students.find((s) => s.id === "4").honor, true);
+    assert.equal(r.students.find((s) => s.id === "2").honor, false);
+  });
+
+  test("even-sized class median averages the two middle totals", () => {
+    const r = buildClassReport({ ...base(),
+      rows: [["1", "28"], ["2", "20"], ["3", "10"], ["4", "6"]] });
+    assert.equal(r.median, 15);   // (20 + 10) / 2 — not the lower-middle 10
+  });
+});

@@ -91,16 +91,22 @@ function looksLikeStudentId(s) {
 }
 
 /* Sampling is capped so classification stays O(1) per column on a 25 MB
-   upload — 50 rows is plenty to establish a majority. */
+   upload — 50 NON-EMPTY values is plenty to establish a majority. The cap
+   must count VALUES, not rows: slicing the first 50 rows meant a citizen-ID
+   column that is blank early and filled later (students enrolled mid-year)
+   sampled nothing but blanks, classified as unprotected, and its raw IDs
+   were sent to the model while the UI promised they never leave the server.
+   Scanning all rows but stopping at 50 collected values keeps the bound. */
 const SAMPLE_ROWS = 50;
 
 function sampleValues(rows, index) {
   const out = [];
-  for (const row of rows.slice(0, SAMPLE_ROWS)) {
+  for (const row of rows) {
     const v = row?.[index];
     if (v == null) continue;
     const s = String(v).trim();
     if (s !== "") out.push(s);
+    if (out.length >= SAMPLE_ROWS) break;
   }
   return out;
 }
@@ -306,6 +312,11 @@ export function guardParsed(parsed) {
       for (const k of ["min", "max", "avg", "median", "q1", "q3", "iqr", "stdDev", "sum"]) {
         if (k in out) out[k] = null;
       }
+      /* The trend sums too: autoForecastFromAnalysis fits a line to c.trend,
+         so leaving it meant the AI prompt carried the slope, intercept and
+         "forecast" of the citizen-ID column — identifier data by another
+         name, and a nonsense forecast besides. */
+      if ("trend" in out) out.trend = null;
     }
     if (d.kind === "dob" && out.dateRange) {
       out.dateRange = {

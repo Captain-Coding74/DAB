@@ -95,3 +95,13 @@ describe("parseAllRowsAny — delegation and unsupported types", () => {
     assert.equal(r.rows, null);
   });
 });
+
+describe("ragged CSV alignment (v21.23)", () => {
+  test("short rows are padded to header width, same as xlsx and streaming", () => {
+    const csv = Buffer.from("a,b,c\n1,2,3\n4,5\n7,8,9\n", "utf-8");
+    const { headers, rows } = parseAllRows(csv, "t.csv");
+    assert.equal(headers.length, 3);
+    assert.deepEqual(rows.map((r) => r.length), [3, 3, 3]);
+    assert.deepEqual(rows[1], ["4", "5", ""]);
+  });
+});

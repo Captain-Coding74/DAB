@@ -47,7 +47,7 @@ const TABS = ["analysis", "insights", "charts", "quality", "correlation", "ส�
 
 export default function Dashboard() {
   const accessToken = useAppStore(s => s.accessToken);
-  const { file, loading, exporting, analysis: a, selectFile, analyze, runDemo, exportReport, shareReport } = useAnalysis();
+  const { file, loading, exporting, analysis: a, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport } = useAnalysis();
 
   // v20.1: first-10-seconds demo — sample catalogue for the empty state.
   const [samples, setSamples] = useState(null);
@@ -241,7 +241,7 @@ export default function Dashboard() {
                 {activeTab === "analysis"    && <AnalysisTab a={a} canShare={!!accessToken} exporting={exporting} onShare={shareReport} onExport={(fmt) => exportReport(fmt, question)}/>}
                 {activeTab === "insights"    && <InsightsTab a={a}/>}
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}
-                {activeTab === "quality"     && <QualityTab a={a}/>}
+                {activeTab === "quality"     && <QualityTab a={a} onApplied={() => analyzeStored(a.datasetId, question)}/>}
                 {activeTab === "correlation" && <Suspense fallback={<ChartFallback/>}><CorrelationTab a={a}/></Suspense>}
                 {activeTab === "สถิติ"        && (<>
                   {a.classReport && <ClassReportCard report={a.classReport}/>}

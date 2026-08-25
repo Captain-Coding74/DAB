@@ -244,7 +244,12 @@ export async function aiEditRows(ai, { headers, rows, instruction }) {
 
   try {
     const msg = await ai.messages.create({
-      model: AI_MODEL, max_tokens: 8000,
+      /* The reply must re-emit the ENTIRE table. 8000 tokens cannot carry the
+         advertised 300-row maximum, so near-cap edits came back truncated and
+         always failed shape validation. Scale the ceiling to the payload we
+         send (chars/3 ~ tokens, x1.4 headroom), clamped to [8000, 32000]. */
+      model: AI_MODEL,
+      max_tokens: Math.min(32000, Math.max(8000, Math.ceil((JSON.stringify(subRows).length / 3) * 1.4) + 1500)),
       messages: [{ role: "user", content: buildPrompt(subHeaders, subRows, instruction) }],
     });
     const text = msg?.content?.[0]?.text ?? "";

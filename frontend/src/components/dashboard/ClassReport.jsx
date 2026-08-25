@@ -59,7 +59,7 @@ export function ClassReportCard({ report }) {
               <tr key={s.id}
                 className={`border-t border-gray-100 dark:border-gray-800 ${
                   s.rank === 1 ? "bg-amber-50/60 dark:bg-amber-900/10" :
-                  s.total === r.min ? "bg-red-50/50 dark:bg-red-900/10" :
+                  r.min != null && s.total === r.min ? "bg-red-50/50 dark:bg-red-900/10" :
                   s.rank === medianRank ? "bg-gray-50 dark:bg-gray-950" : ""}`}>
                 <td className="num py-1 pr-2 text-gray-500 dark:text-gray-400">{s.rank}</td>
                 <td className="num py-1 pr-2">{s.id}</td>

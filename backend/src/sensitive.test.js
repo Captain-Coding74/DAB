@@ -288,3 +288,23 @@ describe("maskColAnalysis — the average citizen ID is nonsense", () => {
     assert.equal(colAnalysis[1].top[0].value, "สมชาย", "original top value intact");
   });
 });
+
+describe("sparse identifier columns (v21.23)", () => {
+  test("citizen IDs that start after row 50 are still detected", () => {
+    // valid mod-11 id generator (same math as the module under test)
+    const mkId = (seed) => {
+      const d = [1 + (seed % 8)];
+      for (let i = 1; i < 12; i++) d.push((seed * (i + 7)) % 10);
+      const sum = d.reduce((s, digit, i) => s + digit * (13 - i), 0);
+      d.push((11 - (sum % 11)) % 10);
+      return d.join("");
+    };
+    const headers = ["เลขอ้างอิง", "คะแนน"];   // lying header: no PII pattern
+    const rows = [];
+    for (let i = 0; i < 55; i++) rows.push(["", String(i)]);          // blank early
+    for (let i = 0; i < 45; i++) rows.push([mkId(i + 3), String(i)]); // ids late
+    const det = classifySensitiveColumns(headers, rows);
+    assert.ok(det.some((d) => d.col === "เลขอ้างอิง" && d.kind === "citizen-id"),
+      "sparse citizen-id column must be detected (the old first-50-ROWS window sampled only blanks)");
+  });
+});

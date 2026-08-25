@@ -121,13 +121,13 @@ export function InsightsTab({ a }) {
   );
 }
 
-export function QualityTab({ a }) {
+export function QualityTab({ a, onApplied }) {
   /* v21.22: the quality tab is where problems are first SEEN, so it is also
      where they get FIXED — FixPanel (suggest → preview → apply + free-text AI
      edit) renders below the score card. The panel gates itself on a stored
      dataset (a.datasetId), same as the สถิติ tab, so the quality card no
      longer short-circuits the whole tab when quality is absent. */
-  if (!a.quality) return <FixPanel datasetId={a.datasetId}/>;
+  if (!a.quality) return <FixPanel datasetId={a.datasetId} onApplied={onApplied}/>;
   return (
     <>
     <Card title="ผลตรวจคุณภาพ · Quality">
@@ -161,7 +161,7 @@ export function QualityTab({ a }) {
         </div>
       )}
     </Card>
-    <FixPanel datasetId={a.datasetId}/>
+    <FixPanel datasetId={a.datasetId} onApplied={onApplied}/>
     </>
   );
 }

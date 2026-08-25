@@ -70,7 +70,7 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
          parser design exists to prevent. */
       if (!forecasts.length) {
         const numericCols = new Set(colAnalysis
-          .filter((c) => c.type === "numeric" && c.semantic !== "date")
+          .filter((c) => c.type === "numeric" && c.semantic !== "date" && !c.sensitive)
           .map((c) => c.col));
         const keep = full.headers.map((h, i) => (numericCols.has(h) ? i : -1)).filter((i) => i >= 0);
         if (keep.length) {

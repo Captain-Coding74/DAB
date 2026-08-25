@@ -24,6 +24,18 @@ import { applyFix, OPERATIONS } from "../services/dataFixes.js";
 import { suggestFixes } from "../services/fixSuggest.js";
 import { aiEditRows, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
+import { classifySensitiveColumns, maskRows } from "../services/sensitive.js";
+
+/* The parse used here (parseAllRowsAny) is RAW — the parse-boundary guard
+   does not run on it, because fixes need the true bytes to rewrite. That
+   makes THIS file responsible for the same masking every other surface gets:
+   any rows serialised into a response pass through maskForClient first
+   (non-strict: citizen ids and phones x'd; scores, names and student ids
+   stay readable for the teacher, same tier as the dataset preview). */
+function maskForClient(headers, allRows, rowsToSend) {
+  const det = classifySensitiveColumns(headers, allRows);
+  return det.length ? maskRows(headers, rowsToSend, det) : rowsToSend;
+}
 
 const log = serviceLogger("fixes");
 
@@ -59,7 +71,11 @@ export function mountFixRoutes(app, { ai } = {}) {
       const { getVersionBytes } = await import("../db/datasetRepository.js");
       const parsed = await parseFileStreaming(await getVersionBytes(ctx.version), ctx.version.file_name);
 
-      const { suggestions, source } = await suggestFixes(ai, {
+      /* suggest calls the model too — same daily budget as every other AI
+         entry point. Exhausted → the deterministic rule fallback still works,
+         so degrade instead of failing. */
+      const budget = await tryConsumeAI();
+      const { suggestions, source } = await suggestFixes(budget.allowed ? ai : null, {
         headers: parsed.headers,
         colAnalysis: parsed.colAnalysis,
         totalRows: parsed.totalRows,
@@ -88,7 +104,7 @@ export function mountFixRoutes(app, { ai } = {}) {
         rowsBefore: result.rowsBefore, rowsAfter: result.rowsAfter,
         removed: result.removed, changed: result.changed,
         log: result.log, logTh: result.logTh,
-        sample: result.rows.slice(0, 10),
+        sample: maskForClient(ctx.headers, ctx.rows, result.rows.slice(0, 10)),
         headers: ctx.headers,
         applied: false,
       });
@@ -126,7 +142,7 @@ export function mountFixRoutes(app, { ai } = {}) {
         instruction: result.instruction,
         changes: result.changes,
         changeCount: result.changes.length,
-        rows: result.rows,
+        rows: maskForClient(ctx.headers, ctx.rows, result.rows),
         headers: ctx.headers,
         sensitiveColumns: detectSensitiveColumns(ctx.headers),
         protectedColumns: result.protectedColumns || [],
@@ -148,6 +164,18 @@ export function mountFixRoutes(app, { ai } = {}) {
       const { validateEdit, diffRows, assertProtectedUnchanged } = await import("../services/aiEdit.js");
       const shape = validateEdit(ctx.rows, rows);
       if (!shape.ok) return res.status(400).json(shape);
+
+      /* Protected columns are never editable BY DEFINITION, and the preview
+         echoes them back MASKED — so before validating content, overwrite
+         them with the server's own original values. An honest client's masked
+         echo is repaired; a tampered client's rewrite is erased. */
+      const detections = classifySensitiveColumns(ctx.headers, ctx.rows);
+      if (detections.length) {
+        const idx = detections.map((d) => ctx.headers.indexOf(d.col)).filter((i) => i >= 0);
+        for (let r = 0; r < rows.length; r++) {
+          for (const i of idx) rows[r][i] = ctx.rows[r][i];
+        }
+      }
 
       /* PDPA backstop, server-side: the preview never lets the model touch
          identifier columns, but /apply accepts rows from the CLIENT — a

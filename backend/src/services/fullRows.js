@@ -39,7 +39,15 @@ function parseAllRows(buffer, fileName) {
 
   const hIdx    = detectHeaderRow(records.slice(0, 10));
   const headers = finalizeHeaders(records[hIdx]);
+  /* Align every row to the header width. Excel drops trailing empty fields
+     on export, so short rows are NORMAL — and un-aligned they made the AI
+     edit permanently un-appliable: the preview's merged rows came back full
+     width, apply re-parsed the ragged original, and validateEdit rejected
+     the width mismatch the user never caused. Same semantics as the xlsx
+     path below and streaming.js's header walk: absent trailing cells are
+     empty strings. */
   const rows    = records.slice(hIdx + 1)
+    .map((r) => (r.length === headers.length ? r : headers.map((_, i) => r[i] ?? "")))
     .filter((r) => !r.every((v) => v === "")); // ",,," lines are not data (parity with streaming)
   return { headers, rows };
 }

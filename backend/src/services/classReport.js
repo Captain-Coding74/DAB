@@ -29,6 +29,11 @@ const LIKERT_RE = /^q\d+$/i;
    and ✗ mean NOT submitted in a Thai gradebook. */
 const CHECK_TRUE  = new Set(["✓", "✔", "☑", "/", "ส่ง", "ส่งแล้ว", "true", "1", "y", "yes"]);
 const CHECK_FALSE = new Set(["✗", "✘", "☐", "x", "×", "-", "ไม่ส่ง", "ยังไม่ส่ง", "ขาด", "false", "0", "n", "no"]);
+/* Marks that also appear as plain placeholders in non-checkbox columns.
+   Deliberately NOT "0"/"1": a pure Sheets checkbox column exports as only
+   those, and treating them as ambiguous would send it back to being ranked
+   as a "score" out of 1 — the exact v21.21 bug. */
+const CHECK_AMBIGUOUS = new Set(["-", "x", "×", "_"]);
 
 /** Returns the report, or null when the data is not classroom-shaped. */
 export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] }) {
@@ -62,14 +67,18 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
     .map((h, i) => ({ h, i }))
     .filter(({ h }) => !sensitiveCols.has(h) && h !== gradeCol?.col && !LIKERT_RE.test(h));
   const checkIdx = candidateIdx.filter(({ i }) => {
-    let marks = 0;
+    let marks = 0, unambiguous = 0;
     for (const r of rows) {
       const v = String(r[i] ?? "").trim().toLowerCase();
       if (v === "") continue;
       if (!CHECK_TRUE.has(v) && !CHECK_FALSE.has(v)) return false;
       marks++;
+      if (!CHECK_AMBIGUOUS.has(v)) unambiguous++;
     }
-    return marks > 0;
+    /* A remarks column filled with "-" (or all "x") is a placeholder, not a
+       tick sheet — require at least one mark that can ONLY mean a submission
+       state (✓, ส่ง, TRUE, ไม่ส่ง, ...) before calling it a checkbox. */
+    return marks > 0 && unambiguous > 0;
   });
   const checkColNames = new Set(checkIdx.map(({ h }) => h));
 
@@ -111,7 +120,12 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
     /* เกียรติบัตร: a real เกรด column decides directly (4.00); without one,
        ≥80% of the estimated full marks — the Thai grade-4 boundary. A
        checkbox-only sheet awards none: submission is duty, not merit. */
-    s.honor = gradeCol ? (s.grade ?? 0) >= 3.995 : (scoreCols.length ? s.percent >= 80 : false);
+    /* A blank cell in the เกรด column is missing data, not a zero — fall
+       back to the percent rule for that student instead of denying honours
+       to someone whose scores plainly qualify. */
+    s.honor = gradeCol
+      ? (s.grade != null ? s.grade >= 3.995 : (scoreCols.length ? s.percent >= 80 : false))
+      : (scoreCols.length ? s.percent >= 80 : false);
   });
 
   /* ใครยังไม่ส่งงาน — the actionable list, worst offender first. */
@@ -129,7 +143,12 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
   } : null;
 
   const totals = students.map((s) => s.total);
-  const median = scoreCols.length ? totals[Math.floor(totals.length / 2)] : null;
+  // Real median: even-sized classes average the two middle values — the old
+  // single-index pick reported the lower-middle student for every even class.
+  const mid = totals.length / 2;
+  const median = !scoreCols.length ? null
+    : totals.length % 2 ? totals[Math.floor(mid)]
+    : Math.round(((totals[mid - 1] + totals[mid]) / 2) * 100) / 100;
   return {
     idCol: idDet.col, nameCols: nameIdxs.map((i) => headers[i]),
     scoreCols: scoreCols.map((c) => c.col),

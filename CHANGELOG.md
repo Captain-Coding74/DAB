@@ -3,6 +3,32 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.23] — 2026-08-26 "Hunt III"
+A third adversarial hunt over the school-edition stack: 3 finders, every
+candidate verified by a skeptic — 19 confirmed (16 unique), 0 refuted, all
+fixed. The serious ones:
+- **PDPA sampling window**: detection sampled the first 50 ROWS, so a
+  citizen-ID column blank early and filled late classified as unprotected
+  and its raw IDs went to the model. Now the first 50 NON-EMPTY values.
+- **PDPA egress**: fixes /preview and /ai-edit returned raw rows (masked on
+  every other surface) — now masked at the response boundary, with /apply
+  restoring protected columns server-side so the masked echo round-trips;
+  inference refuses identifier columns as test variables (group labels
+  echoed raw values); identifier trend sums nulled so forecasts cannot
+  carry the citizen-ID column's slope into the prompt.
+- **Ragged CSV dead-end**: short rows (Excel drops trailing blanks) made
+  every AI edit preview-then-fail; rows now align to header width.
+- **Fixes were invisible**: re-analyzing re-uploaded the ORIGINAL browser
+  file — applied fixes never showed. FixPanel now re-analyzes the STORED
+  dataset (its fixed current version) after apply.
+- Also: FixPanel's 🔒 line now uses the authoritative protected list (it
+  overclaimed AND underclaimed); ai-edit max_tokens scales with the table
+  (8000 truncated near-cap edits); suggest draws from the AI budget with
+  rule-based degrade; demo threads pairwise again (5-row correlations were
+  back); class report: proper even-class median, "-"-only columns are not
+  checkboxes, blank เกรด falls back to the percent rule; checkbox-only
+  sheets no longer paint every row red. +5 regression tests.
+
 ## [21.22] — 2026-08-25 "AI แก้ไขไฟล์ Excel"
 "Teacher uploads messy Excel → AI fixes it → confirm → ranked class report"
 now works end to end. Three pieces, all previously missing:

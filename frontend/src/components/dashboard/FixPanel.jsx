@@ -54,7 +54,7 @@ function CellVal({ v }) {
     : <>{String(v)}</>;
 }
 
-export function FixPanel({ datasetId }) {
+export function FixPanel({ datasetId, onApplied }) {
   const toast = useAppStore((s) => s.toast);
 
   // ── ข้อเสนอการแก้ไข (suggest → preview → apply) ─────────
@@ -107,6 +107,7 @@ export function FixPanel({ datasetId }) {
     try {
       await postJSON(`/api/fixes/${datasetId}/apply`, { op: s.op, params: s.params });
       patchPv(i, { applying: false, applied: true });
+      onApplied?.();   // re-analyze the stored dataset — the fixed version, not the original upload
       toast(APPLIED_TOAST, "success", { duration: 6000 });
     } catch (e) {
       patchPv(i, { applying: false });
@@ -133,13 +134,17 @@ export function FixPanel({ datasetId }) {
       setAi(null);
       setInst("");
       toast(`บันทึก ${d.changeCount} ช่องเป็นเวอร์ชันใหม่แล้ว ✓ กด "วิเคราะห์ไฟล์" อีกครั้งเพื่อเห็นผล`, "success", { duration: 6000 });
+      onApplied?.();   // show the fixed version immediately
     } catch (e) { toast(e.message || "ยืนยันการแก้ไขไม่สำเร็จ", "error"); }
     finally { setAiApplying(false); }
   }
 
-  /* /ai-edit succeeds with sensitiveColumns (header strings); its PDPA
-     refusals carry protectedColumns ({col, kind}). Fold both to names. */
-  const lockedCols = (ai?.sensitiveColumns || ai?.protectedColumns || [])
+  /* Only protectedColumns is authoritative — it is what aiEditRows actually
+     withheld from the model (value-aware detection). sensitiveColumns is a
+     loose header-hint list: showing it as "not sent to AI" overclaimed for
+     columns like รหัสวิชา whose values WERE sent, and because an array is
+     always truthy it also hid value-detected columns absent from the hints. */
+  const lockedCols = (ai?.protectedColumns || [])
     .map((c) => (typeof c === "string" ? c : c?.col)).filter(Boolean);
 
   return (

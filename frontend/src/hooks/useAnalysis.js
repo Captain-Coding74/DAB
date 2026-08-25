@@ -141,6 +141,27 @@ export function useAnalysis() {
     finally { inFlightRef.current = false; setLoading(false); }
   }, [toast, setCurrentAnalysis]);
 
+  /* Re-analyze the STORED dataset (its CURRENT version — i.e. the fix that
+     was just applied). Clicking "วิเคราะห์ไฟล์" re-uploads the browser's
+     original File object, so an applied fix was never visible: the analysis
+     always showed the pre-fix bytes. This runs the no-upload server path. */
+  const analyzeStored = useCallback(async (datasetId, question) => {
+    if (!datasetId || inFlightRef.current) return;
+    inFlightRef.current = true;
+    const runId = ++runRef.current;
+    setLoading(true);
+    const endSpan = startSpan("analyze");
+    try {
+      const data = await postJSON(`/api/datasets/${datasetId}/analyze`, { question: question || "" });
+      const perceivedMs = endSpan();
+      if (runId !== runRef.current) return;
+      setCurrentAnalysis({ ...data, datasetId, fileName: currentAnalysis?.fileName, perceivedMs });
+      toast("วิเคราะห์เวอร์ชันล่าสุดแล้ว ✓");
+      return data;
+    } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
+    finally { inFlightRef.current = false; setLoading(false); }
+  }, [toast, setCurrentAnalysis, currentAnalysis]);
+
   const exportReport = useCallback(async (format, question) => {
     if (!file) return;
     setExporting(format);
@@ -171,5 +192,5 @@ export function useAnalysis() {
     } catch (err) { toast(friendlyError(err), "error"); }
   }, [currentAnalysis, file, toast]);
 
-  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, runDemo, exportReport, shareReport };
+  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport };
 }

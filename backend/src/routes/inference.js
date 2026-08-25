@@ -14,6 +14,7 @@
  * already role-checked.
  */
 import { requireAuth } from "../auth.js";
+import { classifySensitiveColumns } from "../services/sensitive.js";
 import { serviceLogger } from "../logger.js";
 import { parseAllRowsAny } from "../services/fullRows.js";
 import {
@@ -113,6 +114,22 @@ export function mountInferenceRoutes(app) {
       const sampleRows = allRows;
 
       const { test, valueColumn, groupColumn, xColumn, yColumn, beforeColumn, afterColumn, itemColumns } = req.body || {};
+
+      /* Identifier columns are not variables. Running a test ON one leaks its
+         raw distinct values into the response (chi-square row/col labels and
+         t-test/ANOVA groupNames carry every group value verbatim) — the one
+         surface that would have echoed unmasked citizen ids — and the result
+         is statistically meaningless besides. Refuse by name. */
+      const protectedCols = new Set(classifySensitiveColumns(headers, allRows).map((d) => d.col));
+      const requestedCols = [valueColumn, groupColumn, xColumn, yColumn, beforeColumn, afterColumn,
+        ...(Array.isArray(itemColumns) ? itemColumns : [])].filter(Boolean);
+      const clash = requestedCols.find((c) => protectedCols.has(c));
+      if (clash) {
+        return res.status(400).json({
+          error: `"${clash}" เป็นคอลัมน์ข้อมูลส่วนบุคคล — ใช้ทดสอบทางสถิติไม่ได้`,
+          errorEn: `"${clash}" is an identifier column and cannot be used in a statistical test`,
+        });
+      }
       let result;
 
       switch (test) {
