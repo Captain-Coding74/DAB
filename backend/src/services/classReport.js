@@ -29,11 +29,14 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
   if (!headers?.length || !rows?.length) return null;
   if (rows.length < 3 || rows.length > 500) return null;   // a "class", not a warehouse
 
-  const idDet   = sensitive.find((d) => d.kind === "student-id");
-  const nameDet = sensitive.find((d) => d.kind === "name");
+  const idDet    = sensitive.find((d) => d.kind === "student-id");
+  /* Every name column rides along (ชื่อ-สกุล for the official record,
+     ชื่อเล่น for the classroom) — capped at 3 so a strange file cannot bloat
+     every row. Teacher-facing by policy; none of this reaches the AI. */
+  const nameDets = sensitive.filter((d) => d.kind === "name").slice(0, 3);
   if (!idDet) return null;                                  // no student identity → not a class list
-  const idIdx   = headers.indexOf(idDet.col);
-  const nameIdx = nameDet ? headers.indexOf(nameDet.col) : -1;
+  const idIdx    = headers.indexOf(idDet.col);
+  const nameIdxs = nameDets.map((d) => headers.indexOf(d.col)).filter((i) => i >= 0);
   if (idIdx < 0) return null;
 
   const sensitiveCols = new Set(sensitive.map((d) => d.col));
@@ -56,7 +59,7 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
     const grade = gradeIdx >= 0 ? parseFlexibleNumber(r[gradeIdx]) : null;
     return {
       id: String(r[idIdx] ?? ""),
-      name: nameIdx >= 0 ? String(r[nameIdx] ?? "") : "",
+      names: nameIdxs.map((i) => String(r[i] ?? "")),
       scores, missing, grade,
       total: Math.round(total * 100) / 100,
       percent: Math.round((total / fullMarks) * 1000) / 10,
@@ -78,7 +81,7 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
   const totals = students.map((s) => s.total);
   const median = totals[Math.floor(totals.length / 2)];   // already sorted desc
   return {
-    idCol: idDet.col, nameCol: nameDet?.col ?? null,
+    idCol: idDet.col, nameCols: nameIdxs.map((i) => headers[i]),
     scoreCols: scoreCols.map((c) => c.col),
     gradeCol: gradeCol?.col ?? null,
     fullMarks, fullMarksEstimated: true,

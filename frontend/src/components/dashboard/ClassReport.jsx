@@ -47,7 +47,7 @@ export function ClassReportCard({ report }) {
             <tr className="text-left text-[10px] uppercase tracking-eyebrow text-gray-400 dark:text-gray-500 sticky top-0 bg-white dark:bg-gray-900">
               <th className="py-1.5 pr-2">#</th>
               <th className="py-1.5 pr-2">{r.idCol}</th>
-              {r.nameCol && <th className="py-1.5 pr-2">{r.nameCol}</th>}
+              {r.nameCols?.map((c) => <th key={c} className="py-1.5 pr-2">{c}</th>)}
               <th className="py-1.5 pr-2 text-right">รวม</th>
               <th className="py-1.5 pr-2 text-right">%</th>
               <th className="py-1.5"></th>
@@ -62,7 +62,7 @@ export function ClassReportCard({ report }) {
                   s.rank === medianRank ? "bg-gray-50 dark:bg-gray-950" : ""}`}>
                 <td className="num py-1 pr-2 text-gray-500 dark:text-gray-400">{s.rank}</td>
                 <td className="num py-1 pr-2">{s.id}</td>
-                {r.nameCol && <td className="py-1 pr-2">{s.name}</td>}
+                {r.nameCols?.map((c, ni) => <td key={c} className="py-1 pr-2">{s.names?.[ni]}</td>)}
                 <td className="num py-1 pr-2 text-right font-medium">{num(s.total)}{s.missing > 0 && <span className="text-amber-500" title={`ขาดคะแนน ${s.missing} ช่อง`}>*</span>}</td>
                 <td className="num py-1 pr-2 text-right text-gray-500 dark:text-gray-400">{s.percent}</td>
                 <td className="py-1 text-right">{s.honor && <span title="ได้รับเกียรติบัตร">🏆</span>}</td>

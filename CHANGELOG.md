@@ -3,6 +3,13 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.20] — 2026-08-24 "ชื่อ-สกุล"
+- Class report shows the REAL name (ชื่อ-สกุล) alongside the nickname: every
+  detected name column rides along (capped at 3), the demo file gains a
+  deterministic ชื่อ-สกุล column (same seed — every score identical), and the
+  strict AI boundary re-verified: no full name, surname fragment, or 13-digit
+  run reaches the prompt.
+
 ## [21.19] — 2026-08-24 "ทำเนียบห้องเรียน"
 The สถิติ tab, reported unreachable — and it truly was: a.datasetId was
 read in exactly one place and set in zero, and the UI never called
