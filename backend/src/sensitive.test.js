@@ -308,3 +308,19 @@ describe("sparse identifier columns (v21.23)", () => {
       "sparse citizen-id column must be detected (the old first-50-ROWS window sampled only blanks)");
   });
 });
+
+describe("roll-number detection (v21.24)", () => {
+  const seq = (n) => Array.from({ length: n }, (_, i) => [String(i + 1), String(20 - i)]);
+  test("ลำดับ with a 1..N sequence classifies as student-id", () => {
+    const det = classifySensitiveColumns(["ลำดับ", "คะแนน"], seq(8));
+    assert.ok(det.some((d) => d.col === "ลำดับ" && d.kind === "student-id" && d.confidence === "high"));
+  });
+  test("เลขที่ works; เลขที่บ้าน does not (anchored header)", () => {
+    assert.ok(classifySensitiveColumns(["เลขที่"], seq(5).map((r) => [r[0]])).length === 1);
+    assert.equal(classifySensitiveColumns(["เลขที่บ้าน"], [["12"], ["7"], ["309"]]).length, 0);
+  });
+  test("a column NAMED ลำดับ holding scores stays unflagged", () => {
+    const det = classifySensitiveColumns(["ลำดับ"], [["25"], ["18"], ["22"], ["9"]]);
+    assert.equal(det.length, 0);   // not a 1..N sequence — values disagree with the header
+  });
+});

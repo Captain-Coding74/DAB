@@ -36,17 +36,25 @@ const CHECK_FALSE = new Set(["✗", "✘", "☐", "x", "×", "-", "ไม่ส�
 const CHECK_AMBIGUOUS = new Set(["-", "x", "×", "_"]);
 
 /** Returns the report, or null when the data is not classroom-shaped. */
-export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] }) {
+export function buildClassReport({ headers, rows, colAnalysis, sensitive = [], fileName = "" }) {
   if (!headers?.length || !rows?.length) return null;
   if (rows.length < 3 || rows.length > 500) return null;   // a "class", not a warehouse
 
-  const idDet    = sensitive.find((d) => d.kind === "student-id");
+  /* Two id-like columns can coexist: ลำดับ/เลขที่ (roll number) and
+     เลขประจำตัว (formal id). Prefer the formal id as THE identity, keep the
+     roll number as its own display column — teachers call students by
+     เลขที่ but the record is keyed by เลขประจำตัว. */
+  const idDets   = sensitive.filter((d) => d.kind === "student-id");
+  const ROLLISH  = /^(ลำดับ(ที่)?|เลขที่|ที่|no.?|#)$/i;
+  const idDet    = idDets.find((d) => !ROLLISH.test(String(d.col).trim())) ?? idDets[0];
+  const rollDet  = idDets.find((d) => d !== idDet && ROLLISH.test(String(d.col).trim())) ?? null;
   /* Every name column rides along (ชื่อ-สกุล for the official record,
      ชื่อเล่น for the classroom) — capped at 3 so a strange file cannot bloat
      every row. Teacher-facing by policy; none of this reaches the AI. */
   const nameDets = sensitive.filter((d) => d.kind === "name").slice(0, 3);
   if (!idDet) return null;                                  // no student identity → not a class list
   const idIdx    = headers.indexOf(idDet.col);
+  const rollIdx  = rollDet ? headers.indexOf(rollDet.col) : -1;
   const nameIdxs = nameDets.map((d) => headers.indexOf(d.col)).filter((i) => i >= 0);
   if (idIdx < 0) return null;
 
@@ -98,6 +106,7 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
     const checks = checkIdx.map(({ i }) => CHECK_TRUE.has(String(r[i] ?? "").trim().toLowerCase()));
     return {
       id: String(r[idIdx] ?? ""),
+      roll: rollIdx >= 0 ? String(r[rollIdx] ?? "") : null,
       names: nameIdxs.map((i) => String(r[i] ?? "")),
       scores, missing, grade, checks,
       missingWork: checks.filter((v) => !v).length,
@@ -150,7 +159,12 @@ export function buildClassReport({ headers, rows, colAnalysis, sensitive = [] })
     : totals.length % 2 ? totals[Math.floor(mid)]
     : Math.round(((totals[mid - 1] + totals[mid]) / 2) * 100) / 100;
   return {
-    idCol: idDet.col, nameCols: nameIdxs.map((i) => headers[i]),
+    idCol: idDet.col,
+    rollCol: rollDet?.col ?? null,
+    /* ชั้น/ห้อง from the file name ("ห้อง 5-13.xlsx" → "ห้อง 5-13") — teachers
+       name files per room, so show it as the report's class label. */
+    className: String(fileName || "").replace(/.(csv|xlsx|xls|tsv|txt)$/i, "").trim() || null,
+    nameCols: nameIdxs.map((i) => headers[i]),
     scoreCols: scoreCols.map((c) => c.col),
     gradeCol: gradeCol?.col ?? null,
     fullMarks: scoreCols.length ? fullMarks : null, fullMarksEstimated: true,

@@ -176,3 +176,48 @@ describe("hunt regressions (v21.23)", () => {
     assert.equal(r.median, 15);   // (20 + 10) / 2 — not the lower-middle 10
   });
 });
+
+describe("ลำดับ-keyed gradebooks (v21.24)", () => {
+  const rows6 = [
+    ["1", "26501", "เอ", "25"], ["2", "26502", "บี", "20"], ["3", "26503", "ซี", "18"],
+    ["4", "26504", "ดี", "28"], ["5", "26505", "อี", "10"], ["6", "26506", "เอฟ", "22"],
+  ];
+  const cols = [
+    { col: "ลำดับ", type: "numeric", max: 6 },
+    { col: "เลขประจำตัว", type: "numeric", max: 26506 },
+    { col: "ชื่อเล่น", type: "text" },
+    { col: "คะแนน", type: "numeric", max: 28 },
+  ];
+  const sens = [
+    { col: "ลำดับ", kind: "student-id", confidence: "high" },
+    { col: "เลขประจำตัว", kind: "student-id", confidence: "high" },
+    { col: "ชื่อเล่น", kind: "name", confidence: "high" },
+  ];
+
+  test("roll-only file (no formal id) still gets a report, roll excluded from totals", () => {
+    const r = buildClassReport({
+      headers: ["ลำดับ", "ชื่อเล่น", "คะแนน"],
+      rows: rows6.map((x) => [x[0], x[2], x[3]]),
+      colAnalysis: [cols[0], cols[2], cols[3]],
+      sensitive: [sens[0], sens[2]],
+      fileName: "ห้อง 5-13.xlsx",
+    });
+    assert.ok(r);
+    assert.equal(r.idCol, "ลำดับ");
+    assert.equal(r.className, "ห้อง 5-13");
+    assert.deepEqual(r.scoreCols, ["คะแนน"]);       // ลำดับ never a score
+    assert.equal(r.fullMarks, 30);
+    assert.equal(r.students[0].id, "4");             // 28 points → rank 1
+  });
+
+  test("with BOTH columns the formal id wins and the roll number rides along", () => {
+    const r = buildClassReport({
+      headers: ["ลำดับ", "เลขประจำตัว", "ชื่อเล่น", "คะแนน"],
+      rows: rows6, colAnalysis: cols, sensitive: sens,
+    });
+    assert.equal(r.idCol, "เลขประจำตัว");
+    assert.equal(r.rollCol, "ลำดับ");
+    assert.equal(r.students[0].id, "26504");
+    assert.equal(r.students[0].roll, "4");
+  });
+});

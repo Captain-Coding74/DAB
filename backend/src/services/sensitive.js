@@ -65,6 +65,21 @@ const HEADER_PATTERNS = [
 
 // ── Value-shape corroborators ─────────────────────────────
 
+/* Roll-call headers, anchored — bare "ที่" only as the WHOLE header, so
+   "เลขที่บ้าน" (house number) or "วันที่" can never match. */
+const ROLL_HEADER_RE = /^(ลำดับ(ที่)?|เลขที่|ที่|no\.?|#)$/i;
+
+/** A 1..N-ish sequence: small integers, starts at ≤3, mostly +1 steps. */
+function looksLikeRollSequence(values) {
+  if (values.length < 3) return false;
+  const nums = values.map((v) => Number(v));
+  if (!nums.every((n) => Number.isInteger(n) && n >= 1 && n <= 999)) return false;
+  if (nums[0] > 3) return false;
+  let steps = 0;
+  for (let i = 1; i < nums.length; i++) if (nums[i] === nums[i - 1] + 1) steps++;
+  return steps >= (nums.length - 1) * 0.7;
+}
+
 /** Thai mobile/landline: leading 0 then 8-9 more digits, dashes/spaces ok. */
 function looksLikeThaiPhone(s) {
   if (!/^[\d\s-]+$/.test(s)) return false;
@@ -140,6 +155,20 @@ export function classifySensitiveColumns(headers = [], rows = []) {
        citizen IDs in columns named for something else. */
     if (majority(values, isThaiCitizenId)) {
       found.push({ index, col, kind: "citizen-id", confidence: "high" });
+      return;
+    }
+
+    /* ลำดับ / เลขที่ — the roll-call number. Real Thai gradebooks are keyed
+       by it (often with NO formal student id at all), so missing it meant
+       the whole class report never appeared for the most common file shape,
+       and worse: a 1..N column is numeric, so it was SUMMED into every
+       student's score total. Classified as student-id so all the identity
+       semantics follow: out of the score set, readable for the teacher,
+       strict-masked from the AI, aggregates and trend nulled. Header AND
+       values must agree — a column merely NAMED ลำดับ holding scores stays
+       a score column. */
+    if (ROLL_HEADER_RE.test(col.trim()) && looksLikeRollSequence(values)) {
+      found.push({ index, col, kind: "student-id", confidence: "high" });
       return;
     }
 

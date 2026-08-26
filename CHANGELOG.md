@@ -3,6 +3,19 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.24] — 2026-08-26 "ลำดับ"
+Real Thai gradebooks are keyed by ลำดับ/เลขที่ (roll number), often with no
+formal student id — and that shape got NO class report at all, while the
+1..N column, being numeric, would have been SUMMED into every student's
+score total. Now: a ลำดับ/เลขที่/ที่/No. header whose values form a 1..N
+sequence classifies as student identity (header AND values must agree — a
+score column merely named ลำดับ stays a score), inheriting every identity
+rule: out of the score set, readable for the teacher, strict-masked from
+the AI, aggregates/trend nulled. When both ลำดับ and เลขประจำตัว exist the
+formal id keys the report and เลขที่ rides along as its own column. The
+report is now labelled with the class from the file name (ห้อง 5-13.xlsx →
+ทำเนียบห้องเรียน · ห้อง 5-13). +5 regression tests.
+
 ## [21.23] — 2026-08-26 "Hunt III"
 A third adversarial hunt over the school-edition stack: 3 finders, every
 candidate verified by a skeptic — 19 confirmed (16 unique), 0 refuted, all

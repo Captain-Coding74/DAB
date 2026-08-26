@@ -61,7 +61,7 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
       /* School edition: the teacher's deterministic ranking view (ใครได้
          มากสุด/น้อยสุด/เกียรติบัตร) — computed from EVERY row, UI-bound only:
          it is not in summaryStr, not in the prompt, not in saved stats_json. */
-      classReport = buildClassReport({ headers: full.headers, rows: full.rows, colAnalysis, sensitive });
+      classReport = buildClassReport({ headers: full.headers, rows: full.rows, colAnalysis, sensitive, fileName });
       /* The fallback only sees columns the PARSER classified numeric, with
          cells pre-coerced by the parser's own number rules. autoForecast's
          raw parseFloat read "2026-01-14" as 2026, so an ISO date column whose
@@ -92,7 +92,7 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
          totalRows guard keeps the parity exact: past 500 rows headRows is a
          truncation, and ranking a truncated class would be a wrong answer,
          not a partial one — CSV returns null there, so xlsx must too. */
-      classReport = buildClassReport({ headers, rows: headRows, colAnalysis, sensitive });
+      classReport = buildClassReport({ headers, rows: headRows, colAnalysis, sensitive, fileName });
     }
   }
   /* Quality BEFORE suggestions: generatePromptSuggestions gates its

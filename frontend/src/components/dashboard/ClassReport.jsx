@@ -19,7 +19,7 @@ export function ClassReportCard({ report }) {
   return (
     <Card>
       <div className="flex items-center justify-between mb-1">
-        <Eyebrow>ทำเนียบห้องเรียน · CLASS REPORT</Eyebrow>
+        <Eyebrow>ทำเนียบห้องเรียน{r.className ? ` · ${r.className}` : ""} · CLASS REPORT</Eyebrow>
         <Badge variant="green">คำนวณจากทุกแถว · ไม่ใช้ AI</Badge>
       </div>
       <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">
@@ -46,6 +46,7 @@ export function ClassReportCard({ report }) {
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-eyebrow text-gray-400 dark:text-gray-500 sticky top-0 bg-white dark:bg-gray-900">
               <th className="py-1.5 pr-2">#</th>
+              {r.rollCol && <th className="py-1.5 pr-2">{r.rollCol}</th>}
               <th className="py-1.5 pr-2">{r.idCol}</th>
               {r.nameCols?.map((c) => <th key={c} className="py-1.5 pr-2">{c}</th>)}
               <th className="py-1.5 pr-2 text-right">รวม</th>
@@ -62,6 +63,7 @@ export function ClassReportCard({ report }) {
                   r.min != null && s.total === r.min ? "bg-red-50/50 dark:bg-red-900/10" :
                   s.rank === medianRank ? "bg-gray-50 dark:bg-gray-950" : ""}`}>
                 <td className="num py-1 pr-2 text-gray-500 dark:text-gray-400">{s.rank}</td>
+                {r.rollCol && <td className="num py-1 pr-2">{s.roll}</td>}
                 <td className="num py-1 pr-2">{s.id}</td>
                 {r.nameCols?.map((c, ni) => <td key={c} className="py-1 pr-2">{s.names?.[ni]}</td>)}
                 <td className="num py-1 pr-2 text-right font-medium">{num(s.total)}{s.missing > 0 && <span className="text-amber-500" title={`ขาดคะแนน ${s.missing} ช่อง`}>*</span>}</td>
