@@ -59,7 +59,7 @@ import { mountDemoRoutes }      from "./routes/demo.js";
 import { mountTelemetryRoutes } from "./routes/telemetry.js";
 import { startScheduler }        from "./services/scheduler.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
-import { requestMetrics, metricsHandler, errorHandler } from "./middleware/monitoring.js";
+import { requestMetrics, metricsHandler, requireMetricsAccess, errorHandler } from "./middleware/monitoring.js";
 import { apiLimiter, analyzeLimiter, authLimiter, speedLimiter } from "./middleware/rateLimiter.js";
 import { signAccess, signRefresh, verifyRefresh, hashToken,
          refreshExpiresAt, requireAuth, optionalAuth } from "./auth.js";
@@ -185,7 +185,8 @@ export function createApp() {
   mountTelemetryRoutes(app);
 
   // ── System ────────────────────────────────────────────────
-  app.get("/api/metrics", metricsHandler);
+  // v21.26: open outside production; operator or METRICS_TOKEN in production.
+  app.get("/api/metrics", requireMetricsAccess, metricsHandler);
   app.get("/api/health",  async (_,res) => {
     const { getBackend } = await import("./db/pool.js");
     res.json({ status:"ok", version: PKG_VERSION, db: getBackend(), cache: cache.getBackend(), maxUploadMb: MAX_UPLOAD_MB, ts: new Date().toISOString() });

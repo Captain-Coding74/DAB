@@ -3,6 +3,37 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.26] — 2026-09-26 "Inflate"
+The rest of the security audit that produced 21.25. Four fixes:
+- **XLSX decompression bomb** (was: anonymous DoS). MAX_UPLOAD_MB bounds
+  compressed bytes; a workbook is a ZIP and ExcelJS inflates all of it into
+  memory before parsing. A crafted sharedStrings.xml deflates 1000:1, so 25
+  MB in meant gigabytes out — from `/api/analyze`, no login needed. New
+  `services/zipGuard.js` runs before both ExcelJS entry points (streaming and
+  full-row parse) and MEASURES inflation through a streaming inflater that
+  counts and discards output, so a central directory that lies about its
+  sizes gains nothing; past MAX_XLSX_INFLATED_MB (default 10× the upload
+  limit — a real workbook inflates ~8×) the upload is refused with 413.
+  ZIP64 honoured. +10 unit tests with hand-rolled archives (src/testZip.js),
+  +2 integration tests (32 MB bomb in 40 KB → 413 on datasets and analyze).
+- **`/api/metrics` was public** — every route with error rate and latency,
+  process memory, DB backend. Now open outside production (the perf harness
+  and test suites read it) and, in production, needs a signed-in operator
+  (TELEMETRY_ADMINS, the allowlist now shared via `services/operators.js`)
+  or a scraper's `METRICS_TOKEN` bearer; neither set → closed. +9 tests.
+- **docker-compose trusted X-Forwarded-For with no proxy in front**: the
+  file publishes port 3000 straight from Node, but the app's back-compat
+  default is `trust proxy` 1 hop, so any client could forge its IP and walk
+  past the login brute-force limiter. Compose now sets `TRUST_PROXY=0`;
+  `.env.example` documents when to use 1.
+- **Moderate advisories**: express 4.22.3 / body-parser 1.20.8 / qs 6.16.0
+  (array-limit bypass, DoS), csv-parse 5 → 7.0.3 (prototype pollution via
+  the columns path — the parser DAB is built on; 403 unit tests pass
+  unchanged), node-cron 3 → 4.6.0 (drops the vulnerable uuid; the
+  scheduler's `cron.schedule(expr, fn, { timezone })` is unchanged in 4).
+  Left alone, deliberately: react-router (fix is the 6 → 7 major of the
+  frontend router — its own change), and uuid under exceljs (ADR-0008).
+
 ## [21.25] — 2026-09-26 "MZ"
 Security, from a source audit of the upload paths. The CSV magic-byte gate
 was a blacklist (ZIP, OLE, ELF) and nobody had listed the Windows "MZ"

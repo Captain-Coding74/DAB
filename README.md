@@ -69,7 +69,7 @@ docker compose up -d
 | **Streaming Parser** | O(1) memory, any file size |
 | **Pino Logging** | JSON prod, pretty dev, request IDs |
 | **OpenAPI/Swagger** | `/api/docs` interactive |
-| **Monitoring** | `/api/metrics` — p50/p95/p99 |
+| **Monitoring** | `/api/metrics` — p50/p95/p99. Open in dev; in production needs `METRICS_TOKEN` (scraper bearer) or a `TELEMETRY_ADMINS` user |
 | **Docker + CI/CD** | unit → integration → build → deploy |
 | **99 checks** | 35 unit + 35 integration + 29 live smoketest, all green |
 

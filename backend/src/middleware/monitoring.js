@@ -11,11 +11,22 @@
  *
  * No external service needed — works standalone.
  * In production, scrape /api/metrics with Prometheus/Grafana.
+ *
+ * ACCESS (v21.26): the endpoint was open to the world. It lists every route
+ * with its error rate and latency, the process's memory, and which database
+ * backend is in use — a reconnaissance page for anyone probing the deploy.
+ * Outside production it stays open (the perf harness, E2E and integration
+ * suites all read it, and a laptop is not a target). In production it needs
+ * either a signed-in operator (TELEMETRY_ADMINS, same allowlist as the
+ * telemetry summary) or the scraper's bearer token (METRICS_TOKEN). Neither
+ * configured → closed. See requireMetricsAccess below.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { cache }     from "../services/cache.js";
 import { getBackend } from "../db/pool.js";
 import { logger }    from "../logger.js";
+import { isOperator } from "../services/operators.js";
 
 // ── In-memory metrics store ───────────────────────────────
 const metrics = {
@@ -62,6 +73,35 @@ export function requestMetrics(req, res, next) {
   });
 
   next();
+}
+
+// ── /api/metrics access ───────────────────────────────────
+/**
+ * Pure decision, so it can be unit-tested with a fake env and request.
+ * Returns { allowed, via } where via names the rule that admitted the call.
+ */
+export function metricsAccess(req, env = process.env) {
+  if (env.NODE_ENV !== "production") return { allowed: true, via: "non-production" };
+  if (isOperator(req, env))          return { allowed: true, via: "operator" };
+
+  const token = String(env.METRICS_TOKEN || "");
+  if (token) {
+    const h = String(req?.headers?.authorization || "");
+    const presented = h.startsWith("Bearer ") ? h.slice(7) : "";
+    const a = Buffer.from(presented), b = Buffer.from(token);
+    // Length check first: timingSafeEqual throws on unequal lengths, and a
+    // length mismatch is a definite reject anyway.
+    if (a.length === b.length && timingSafeEqual(a, b)) return { allowed: true, via: "token" };
+  }
+  return { allowed: false };
+}
+
+export function requireMetricsAccess(req, res, next) {
+  if (metricsAccess(req).allowed) return next();
+  res.status(403).json({
+    error:   "ต้องเป็นผู้ดูแลระบบ",
+    errorEn: "metrics is restricted to operators (set METRICS_TOKEN for a scraper, or TELEMETRY_ADMINS for a signed-in user)",
+  });
 }
 
 // ── /api/metrics handler ──────────────────────────────────

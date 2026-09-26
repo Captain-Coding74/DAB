@@ -30,6 +30,7 @@ import { Readable } from "stream";
 import { serviceLogger } from "../logger.js";
 import { OnlineStat, FreqCounter, mulberry32, ReservoirSampler, HeadRows } from "./streamStats.js";
 import { guardParsed } from "./sensitive.js";
+import { assertInflatable } from "./zipGuard.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
          decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
@@ -330,6 +331,10 @@ function cellToString(value) {
 }
 
 async function streamXLSX(buffer) {
+  // Decompression-bomb guard BEFORE ExcelJS inflates anything: the upload
+  // limit bounds compressed bytes only, and a crafted workbook inflates
+  // 1000:1. Measures actual inflation; throws 413 past MAX_XLSX_INFLATED_MB.
+  await assertInflatable(buffer);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   const ws = wb.worksheets[0];

@@ -134,6 +134,24 @@ describe("Dataset routes (real router)", () => {
     assert.equal(res.body.totalRows, 2);
   });
 
+  /* v21.26: an .xlsx is a ZIP. The upload limit bounds compressed bytes, and
+     a crafted workbook inflates 1000:1 — 32 MB of spaces fits in ~40 KB. The
+     integration script sets MAX_XLSX_INFLATED_MB=16 so this stays cheap. */
+  test("refuses an .xlsx decompression bomb with 413 before parsing", async () => {
+    const { buildXlsxBomb } = await import("./testZip.js");
+    const bomb = buildXlsxBomb(32 * 1024 * 1024);
+    assert.ok(bomb.length < 100_000, "the bomb is tiny on the wire");
+    const res = await auth(agent.post("/api/datasets")).attach("file", bomb, "quarterly.xlsx");
+    assert.equal(res.status, 413, JSON.stringify(res.body));
+    assert.match(res.body.error, /16 MB/);
+  });
+
+  test("the anonymous /api/analyze route refuses the same bomb", async () => {
+    const { buildXlsxBomb } = await import("./testZip.js");
+    const res = await agent.post("/api/analyze").attach("file", buildXlsxBomb(32 * 1024 * 1024), "quarterly.xlsx");
+    assert.equal(res.status, 413, JSON.stringify(res.body));
+  });
+
   test("v21: accepts a genuine CSV whose bytes are plain text", async () => {
     const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(CSV), "real.csv");
     assert.equal(res.status, 201, JSON.stringify(res.body));

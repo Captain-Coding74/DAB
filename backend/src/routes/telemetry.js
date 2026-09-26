@@ -6,6 +6,7 @@
  */
 import { requireAuth } from "../auth.js";
 import { getTelemetrySummary } from "../db/repository.js";
+import { isOperator } from "../services/operators.js";
 
 export function mountTelemetryRoutes(app) {
 /**
@@ -21,17 +22,11 @@ export function mountTelemetryRoutes(app) {
  *
  * No admin role exists in DAB and nothing in the frontend calls this, so the
  * guard is an operator allowlist rather than an invented role system. With
- * TELEMETRY_ADMINS unset the endpoint is closed to everyone.
+ * TELEMETRY_ADMINS unset the endpoint is closed to everyone. The allowlist
+ * itself lives in services/operators.js, shared with /api/metrics.
  */
-function isTelemetryAdmin(req) {
-  const allow = String(process.env.TELEMETRY_ADMINS || "")
-    .split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-  if (!allow.length) return false;
-  return allow.includes(String(req.user?.username || "").toLowerCase());
-}
-
   app.get("/api/telemetry/summary", requireAuth, async (req, res, next) => {
-    if (!isTelemetryAdmin(req)) {
+    if (!isOperator(req)) {
       return res.status(403).json({
         error: "ต้องเป็นผู้ดูแลระบบ",
         errorEn: "telemetry is restricted to operators (set TELEMETRY_ADMINS)",
