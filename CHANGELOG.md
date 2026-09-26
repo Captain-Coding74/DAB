@@ -21,6 +21,13 @@ which only had the spoofable extension filter and are reachable
 anonymously. +18 unit tests, +6 integration tests (renamed .exe rejected on
 single, multi and version uploads and on the anonymous routes; TIS-620 and
 UTF-16 CSVs still accepted).
+Also from the same audit: `multer` 2.2.0 → 2.4.0, closing four HIGH
+advisories in the multipart parser itself (DoS via crafted field names and
+oversized array indexes, a file-descriptor leak on aborted uploads, and a
+size-limit bypass through an async fileFilter race) — reachable anonymously
+via `/api/analyze`. Transitive `browserslist` bumped to 4.29.1 for the
+build pipeline's two HIGHs. The CI audit gate had never actually run on
+these: the quality-budget step ahead of it had been red since v21.24.
 
 ## [21.24] — 2026-08-26 "ลำดับ"
 Real Thai gradebooks are keyed by ลำดับ/เลขที่ (roll number), often with no
