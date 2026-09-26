@@ -3,6 +3,18 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.27] — 2026-09-26 "Router"
+react-router-dom 6.30 → 7.18, the last moderate advisory from the audit
+(open redirect via backslash in `<Link>`/`useNavigate`, GHSA-wrjc-x8rr-h8h6,
+and a constructor injection in SSR hydration DAB does not use). The app
+touches seven router symbols — BrowserRouter, Routes, Route, Link, NavLink,
+useNavigate, useParams — all unchanged in 7, and it never opted into the v6
+`future` flags, so there was nothing to migrate. Verified: 32 frontend unit
+tests, the 17-test Playwright browser suite (real navigation in Chromium)
+and the phone-viewport geometry checks all pass; bundle budgets hold (React
+vendor chunk +5.4 kB gzip, initial payload 97 ≤ 101 kB). `npm audit` on
+production deps is now down to `uuid` under exceljs alone (ADR-0008).
+
 ## [21.26] — 2026-09-26 "Inflate"
 The rest of the security audit that produced 21.25. Four fixes:
 - **XLSX decompression bomb** (was: anonymous DoS). MAX_UPLOAD_MB bounds
