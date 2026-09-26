@@ -6,6 +6,7 @@
 import crypto from "crypto";
 import * as R from "../db/repository.js";
 import { requireAuth, optionalAuth } from "../auth.js";
+import { requireFileMagic } from "../services/fileMagic.js";
 import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
 import { parseFileStreaming } from "../services/streaming.js";
 import { cache, cacheKey }     from "../services/cache.js";
@@ -79,7 +80,9 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
   });
 
   // ── Analyze (legacy: direct upload, no storage) ──────────────
-  app.post("/api/analyze", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
+  // requireFileMagic: the extension filter on `upload` is spoofable, and this
+  // route is reachable anonymously — the same byte-level gate as /api/datasets.
+  app.post("/api/analyze", analyzeLimiter(), speedLimiter(), upload.single("file"), requireFileMagic, optionalAuth, async (req, res, next) => {
     const t0  = performance.now();
     const log = requestLogger(req);
     try {

@@ -8,8 +8,13 @@ import { computeStatsBundle } from "../services/analysisPipeline.js";
 import { generatePDF, generateExcel } from "../export.js";
 import { analyzeLimiter, speedLimiter } from "../middleware/rateLimiter.js";
 import { optionalAuth } from "../auth.js";
+import { requireFileMagic } from "../services/fileMagic.js";
 
 export function mountExportRoutes(app, { upload }) {
+  // requireFileMagic on both routes: they accept anonymous uploads through the
+  // same spoofable extension filter as /api/analyze, so they get the same
+  // byte-level gate. The file is never stored here, but a renamed binary
+  // should be refused at the door rather than handed to the parser.
   // v9: exports now share the analyze limiter — PDF generation is CPU-heavy
   // and previously had no limits at all (easy DoS vector).
   /* optionalAuth so the rate limiter can key by USER, exactly as
@@ -18,7 +23,7 @@ export function mountExportRoutes(app, { upload }) {
      they were anonymous — while everyone behind one office NAT shares a
      single bucket. Export stays open to anonymous callers by design (the
      demo needs it); this is about correct accounting, not locking it. */
-  app.post("/api/export/pdf", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
+  app.post("/api/export/pdf", analyzeLimiter(), speedLimiter(), upload.single("file"), requireFileMagic, optionalAuth, async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,
@@ -40,7 +45,7 @@ export function mountExportRoutes(app, { upload }) {
      they were anonymous — while everyone behind one office NAT shares a
      single bucket. Export stays open to anonymous callers by design (the
      demo needs it); this is about correct accounting, not locking it. */
-  app.post("/api/export/excel", analyzeLimiter(), speedLimiter(), upload.single("file"), optionalAuth, async (req, res, next) => {
+  app.post("/api/export/excel", analyzeLimiter(), speedLimiter(), upload.single("file"), requireFileMagic, optionalAuth, async (req, res, next) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       /* The findings were hardcoded empty here: missing [], dupes 0, corr null,

@@ -3,6 +3,25 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.25] — 2026-09-26 "MZ"
+Security, from a source audit of the upload paths. The CSV magic-byte gate
+was a blacklist (ZIP, OLE, ELF) and nobody had listed the Windows "MZ"
+signature, so `malware.exe` renamed to `report.csv` passed the check and
+landed in object storage. Nothing ever executed or re-served it, so the
+exposure was low — but it was one "download original" feature away from
+DAB handing a real executable to collaborators under a friendly name.
+Now: one shared gate (`services/fileMagic.js`) with a positive rule — known
+binary signatures (ZIP, OLE, ELF, **PE/MZ**) are refused outright, and
+beyond that a `.csv` must READ as text (no NULs outside BOM'd UTF-16, no
+control-byte density text never has). "Text" still means everything the
+decoder accepts: UTF-8, UTF-16 with BOM, and TIS-620, whose Thai letters
+are high bytes. The gate is Express middleware mounted right after multer
+on every upload route — including `/api/analyze` and `/api/export/*`,
+which only had the spoofable extension filter and are reachable
+anonymously. +18 unit tests, +6 integration tests (renamed .exe rejected on
+single, multi and version uploads and on the anonymous routes; TIS-620 and
+UTF-16 CSVs still accepted).
+
 ## [21.24] — 2026-08-26 "ลำดับ"
 Real Thai gradebooks are keyed by ลำดับ/เลขที่ (roll number), often with no
 formal student id — and that shape got NO class report at all, while the

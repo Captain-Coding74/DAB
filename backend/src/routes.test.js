@@ -80,6 +80,60 @@ describe("Dataset routes (real router)", () => {
     assert.ok(preview.body.headers.includes("สินค้า"), "Thai headers survived the round-trip");
   });
 
+  /* A Windows executable starts with "MZ" — a signature the old CSV gate never
+     listed, so malware.exe renamed to report.csv walked into object storage.
+     Realistic header (DOS stub + NUL padding), not just the two letters. */
+  const PE = Buffer.concat([
+    Buffer.from("MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF\x00\x00", "latin1"),
+    Buffer.alloc(48, 0),
+    Buffer.from("This program cannot be run in DOS mode.\r\n$", "latin1"),
+  ]);
+
+  test("rejects a Windows .exe renamed to .csv on dataset upload", async () => {
+    const res = await auth(agent.post("/api/datasets")).attach("file", PE, "report.csv");
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /does not match/i);
+  });
+
+  test("rejects a Windows .exe renamed to .csv inside a multi-upload, naming the file", async () => {
+    const res = await auth(agent.post("/api/datasets/multi"))
+      .attach("files", Buffer.from(CSV), "jan.csv")
+      .attach("files", PE, "feb.csv");
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /^feb\.csv: .*does not match/i);
+  });
+
+  test("rejects a Windows .exe renamed to .csv as a new version", async () => {
+    const res = await auth(agent.post(`/api/datasets/${datasetId}/versions`)).attach("file", PE, "v2.csv");
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /does not match/i);
+  });
+
+  test("the anonymous /api/analyze and /api/export routes apply the same gate", async () => {
+    // These routes only had multer's extension filter — the byte check lived
+    // in datasets.js alone, so a renamed binary reached the parser here.
+    for (const path of ["/api/analyze", "/api/export/pdf", "/api/export/excel"]) {
+      const res = await agent.post(path).attach("file", PE, "report.csv");
+      assert.equal(res.status, 400, `${path}: ${JSON.stringify(res.body)}`);
+      assert.match(res.body.error, /does not match/i, path);
+    }
+  });
+
+  test("a TIS-620 (Thai single-byte) CSV is still accepted — high bytes are not binary", async () => {
+    // "วันที่,ยอด\n1,2\n" in windows-874: Thai letters are single bytes 0xA1–0xFB.
+    const tis = Buffer.from([0xC7, 0xD1, 0xB9, 0xB7, 0xD5, 0xE8, 0x2C, 0xC2, 0xCD, 0xB4, 0x0A, 0x31, 0x2C, 0x32, 0x0A]);
+    const res = await auth(agent.post("/api/datasets")).attach("file", tis, "shop-tis620.csv");
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.ok(res.body.colAnalysis.some(c => c.col === "วันที่"), "TIS-620 header decoded");
+  });
+
+  test("a UTF-16 CSV with BOM (Excel 'Unicode Text') is still accepted — its NULs are padding", async () => {
+    const utf16 = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from("a,b\n1,2\n3,4\n", "utf16le")]);
+    const res = await auth(agent.post("/api/datasets")).attach("file", utf16, "excel-unicode.csv");
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.totalRows, 2);
+  });
+
   test("v21: accepts a genuine CSV whose bytes are plain text", async () => {
     const res = await auth(agent.post("/api/datasets")).attach("file", Buffer.from(CSV), "real.csv");
     assert.equal(res.status, 201, JSON.stringify(res.body));
