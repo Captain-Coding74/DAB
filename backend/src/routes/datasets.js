@@ -8,6 +8,7 @@ import { MAX_UPLOAD_BYTES } from "../config.js";
 import { recordUpload } from "../services/telemetry.js";
 import multer  from "multer";
 import { requireAuth } from "../auth.js";
+import { requireFileMagic } from "../services/fileMagic.js";
 import { parseFileStreaming } from "../services/streaming.js";
 import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
@@ -23,21 +24,11 @@ const router = express.Router();
 const csvExcelOnly = (_, file, cb) =>
   /\.(csv|xlsx|xls)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("CSV/Excel only"));
 
-/* v21 SECURITY: the filename check above is spoofable. This second gate reads
-   the buffer's leading bytes after upload: xlsx is a ZIP (PK\x03\x04), xls is
-   the OLE compound-file magic (D0 CF 11 E0). CSV is plain text, so anything
-   not matching a known binary magic is allowed through as text and left to the
-   parser. Rejects a renamed executable before it reaches streaming. */
-function verifyFileMagic(buf, name) {
-  if (!buf || buf.length < 8) return true;
-  const isXlsxName = /\.xlsx$/i.test(name), isXlsName = /\.xls$/i.test(name);
-  const zip = buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04;
-  const ole = buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0;
-  if (isXlsxName) return zip;              // .xlsx must be a real ZIP container
-  if (isXlsName)  return zip || ole;       // .xls: legacy OLE, or xlsx mislabelled
-  // .csv / .tsv: reject only if it carries a known binary magic
-  return !(zip || ole || (buf[0] === 0x7F && buf[1] === 0x45 && buf[2] === 0x4C && buf[3] === 0x46)); // ELF
-}
+/* v21 SECURITY: the filename check above is spoofable, so a second gate reads
+   the buffer's leading bytes after upload. It lives in services/fileMagic.js
+   now, shared with /api/analyze and /api/export — this file's private copy
+   was a blacklist that never listed the Windows "MZ" signature, so an .exe
+   renamed to .csv walked straight into storage. */
 
 const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
 const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
@@ -89,11 +80,9 @@ router.get("/", requireAuth, async (req, res, next) => {
 });
 
 // ── Upload new dataset ───────────────────────────────────────
-router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
+router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    if (!verifyFileMagic(req.file.buffer, req.file.originalname))
-      return res.status(400).json({ error: "File content does not match its extension" });
     const { name, description, folderId, workspaceId } = req.body;
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
@@ -130,22 +119,18 @@ router.post("/", requireAuth, upload.single("file"), async (req, res, next) => {
 // ── Upload multiple files as ONE combined dataset ─────────────
 // Each file becomes a "version" of the dataset, concatenated under one name.
 // Useful for e.g. monthly exports that should live as a single tracked dataset.
-router.post("/multi", requireAuth, uploadMulti.array("files", 10), async (req, res, next) => {
+router.post("/multi", requireAuth, uploadMulti.array("files", 10), requireFileMagic, async (req, res, next) => {
   try {
     if (!req.files?.length) return res.status(400).json({ error: "At least one file required" });
 
-    /* v21: same magic-byte gate on every file in a multi-upload — checked
-       BEFORE anything is written to storage, and returning from the HANDLER.
-       The old check lived inside an async IIFE assigned to totalRows: its
+    /* v21: the magic-byte gate (requireFileMagic) runs on every file in a
+       multi-upload BEFORE anything is written to storage. An earlier inline
+       check lived inside an async IIFE assigned to totalRows: its
        `return res.status(400)` only exited the IIFE, so the handler kept
        running after the 400 was flushed (double-send, dataset row created
        with the response object as total_rows), the first file's stored
        object was orphaned, and a single-file upload skipped the gate
-       entirely. */
-    for (const f of req.files) {
-      if (!verifyFileMagic(f.buffer, f.originalname))
-        return res.status(400).json({ error: `${f.originalname}: content does not match extension` });
-    }
+       entirely. As middleware it cannot be skipped or half-applied. */
 
     const { name, description, folderId, workspaceId } = req.body;
 
@@ -306,12 +291,10 @@ router.post("/trash/empty", requireAuth, async (req, res, next) => {
 });
 
 // ── Versioning ───────────────────────────────────────────────
-router.post("/:id/versions", requireAuth, upload.single("file"), async (req, res, next) => {
+router.post("/:id/versions", requireAuth, upload.single("file"), requireFileMagic, async (req, res, next) => {
   try {
     if (!(await requireDatasetRole(req, res, { write: true }))) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    if (!verifyFileMagic(req.file.buffer, req.file.originalname))
-      return res.status(400).json({ error: "File content does not match its extension" });
 
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
