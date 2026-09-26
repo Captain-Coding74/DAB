@@ -26,6 +26,7 @@
  */
 import { parse } from "csv-parse/sync";
 import ExcelJS from "exceljs";
+import { assertInflatable } from "./zipGuard.js";
 import { cleanCell, decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
 
 function parseAllRows(buffer, fileName) {
@@ -88,6 +89,10 @@ const isLegacyXls = (buffer) =>
 /** Read every row of an .xlsx: first worksheet, same header detection as the
     CSV path, rows aligned to the header width, empty rows dropped. */
 async function parseAllRowsXlsx(buffer) {
+  // Same decompression-bomb guard as streaming.js — stored versions are
+  // re-parsed here for fixes and inference, so a bomb that somehow reached
+  // storage must not get a second chance at the process.
+  await assertInflatable(buffer);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   const ws = wb.worksheets[0];

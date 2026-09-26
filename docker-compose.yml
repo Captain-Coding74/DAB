@@ -11,6 +11,13 @@ services:
     - 3000:3000
     environment:
       NODE_ENV: production
+      # This compose file publishes port 3000 straight from Node — no reverse
+      # proxy in front — so X-Forwarded-For arrives from the client itself and
+      # must NOT be trusted: with the app's back-compat default (1 hop) any
+      # caller could forge the header, spoof req.ip, and walk past the
+      # IP-keyed login brute-force limiter. 0 = trust nothing. If you put
+      # nginx/Caddy/Traefik in front, set TRUST_PROXY=1 in .env.
+      TRUST_PROXY: ${TRUST_PROXY:-0}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}

@@ -22,6 +22,21 @@ export const MAX_UPLOAD_MB = Math.max(1, Number(process.env.MAX_UPLOAD_MB) || 25
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 /**
+ * How far an uploaded .xlsx may INFLATE, in megabytes.
+ *
+ * MAX_UPLOAD_MB bounds the compressed bytes; an .xlsx is a ZIP, and ExcelJS
+ * inflates every part into memory before parsing. A crafted workbook deflates
+ * at 1000:1 or better, so 25 MB in could mean 25 GB out — from an anonymous
+ * /api/analyze call. A real workbook inflates about 8× (measured: 100k rows ×
+ * 8 columns, 3.7 MB → 29.6 MB), so 10× the upload limit admits every honest
+ * file at the size cap and refuses a bomb. Enforced by services/zipGuard.js,
+ * which MEASURES inflation rather than trusting the archive's own headers.
+ */
+export const MAX_XLSX_INFLATED_MB = Math.max(1, Number(process.env.MAX_XLSX_INFLATED_MB) || MAX_UPLOAD_MB * 10);
+
+export const MAX_XLSX_INFLATED_BYTES = MAX_XLSX_INFLATED_MB * 1024 * 1024;
+
+/**
  * Express `trust proxy` setting — controls how req.ip is derived and therefore
  * whether X-Forwarded-For can be trusted.
  *
