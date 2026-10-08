@@ -3,6 +3,45 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.28] — 2026-10-08 "Night Audit"
+New hero background for `/welcome`: a 15 s seamless loop, replacing the 8 s
+extruded DATA ANALYSIS clip. An after-hours ledger lies open on both sides of
+the headline and tells the product's story in motion. On the left page, the
+junk banner row is struck through and collapses. `14 ม.ค. 2569` burns
+through a scan line and comes back as extruded `2026-01-14`, its year
+counting down 543 on odometer reels. `฿1,234.50` squeezes to `1234.50`, and
+the paren of `(500)` folds into a minus. On the right page, 96 ledger cells
+settle from a cloud into a grid, flip their red flags to fixed, topple into
+a bar chart and curl into a double-ruled seal that a green B+ stamps into.
+A drum-roll caption runs `01 PARSE → 02 CLEAN → 03 CHART → 04 GRADE`. The
+camera is one unbroken 10° orbit with a dolly-zoom. It is built from the
+page's tokens and its self-hosted IBM Plex faces, plus darkened amber and
+green shades for the extrusion walls and a navy lamp. The gutter behind the
+H1 stays dark by construction. A gate projects every mesh in all 450 frames and fails on
+any intrusion into the measured headline zones. Measured over every frame at
+1024–2560 px, EN and TH, headline contrast stays above 15:1 (white) and 8:1
+(amber).
+- **Assets**: dab-bg.webm 782 KB / dab-bg.mp4 1.27 MB, both 15.000 s
+  (were 260 / 787 KB at 8 s). The frame edge composites to exactly #0B1220.
+- **The poster no longer sits under the video.** At .66 opacity a 34% ghost
+  of the still showed through the moving camera.
+- **Narrow screens.** At 1280–1439 px the video width-fits frame x 60–1860,
+  top-anchored, instead of cover-cropping the outer digits ("026-01-14",
+  "00)"). At 600–1279 px a mask keeps only the calm centre, since cropped
+  tokens read wrong ("B-" for B+, "500" for -500).
+- **Bandwidth.** Each `<source>` now carries
+  `media="(min-width: 1280px) and (prefers-reduced-motion: no-preference)"`.
+  Below 1280 px only the near-still centre glow would show, so phones,
+  tablets and reduced-motion visitors never download the video. They see
+  poster.jpg. Reduced motion gets the new poster-still.jpg, a settled frame
+  with the B+ seal and the video's .66 opacity baked in.
+- **Source**: `tools/hero-bg/`, an offline three.js renderer (headless
+  Chromium, SwiftShader) with a legibility and crop gate, a loop-seam check,
+  encode and preview scripts. It is not an npm workspace, so the build, CI
+  and quality gates are untouched. It reproduces the shipped frames bit for
+  bit on the recorded Chromium build. Verified: 246/246 integration tests and
+  27/27 browser tests (including the /welcome CSP, font and reveal checks).
+
 ## [21.27] — 2026-09-26 "Router"
 react-router-dom 6.30 → 7.18, the last moderate advisory from the audit
 (open redirect via backslash in `<Link>`/`useNavigate`, GHSA-wrjc-x8rr-h8h6,

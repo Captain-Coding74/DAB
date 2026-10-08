@@ -92,18 +92,42 @@
   .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 22px rgba(245,160,11,.3); }
 
 
-  /* ── hero background video (v20.4.2) ── */
+  /* ── hero background video (v21.28 "Night Audit") ──
+     A 15 s seamless loop: an open ledger on both flanks of the headline. The
+     left page parses messy Thai rows into clean figures; the right page's
+     cells settle into a grid, a bar chart and the double-ruled B+ seal.
+     The gutter behind the h1 is kept dark by design, so nothing kinetic
+     ever sits behind the copy.
+     The poster is NOT painted under the video any more: at .66 opacity a
+     34% ghost of the still showed through the moving camera for the whole
+     loop. poster.jpg (frame 0) is the <video poster> while loading, and the
+     whole background below 1280 px: phones and tablets never fetch the video
+     (see the <source media> below), since only the near-still centre glow
+     would show there. Reduced motion gets poster-still.jpg, a settled frame.
+     Source and re-render steps: tools/hero-bg/README.md. */
   .hero-stage { position: relative; overflow: hidden; }
-  .hero-bg { position: absolute; inset: 0; z-index: 0;
-             background: url(poster.jpg) center/cover no-repeat #0B1220; }
-  /* v21: was opacity .5, which left the extruded DATA ANALYSIS type barely
-     readable. The scrim above is transparent at its centre — the brightest
-     part of the video sits directly behind the h1 — so simply raising this
-     traded background legibility for headline legibility. Instead the video
-     comes up and the hero text gets its own local shadow (below), which
-     protects the glyph edges without darkening the whole frame.
-     Tune here: .5 = original, .78 = video dominant. */
+  .hero-bg { position: absolute; inset: 0; z-index: 0; background: #0B1220; }
+  /* v21: was opacity .5. The video comes up and the hero text gets its own
+     local shadow (below), which protects the glyph edges without darkening
+     the whole frame. Tune here: .5 = subtle, .78 = video dominant. */
   .hero-bg video { width: 100%; height: 100%; object-fit: cover; opacity: .66; }
+  /* Narrow laptops: cover would crop the outer digits of the flank figures,
+     so fit frame x 60-1860 to the width (1920/1800 = 106.667%), top-anchored.
+     The frame's bottom rows are ink, so the strip left below it is invisible.
+     Checked against the real EN/TH text boxes for all 450 frames. */
+  @media (min-width: 1280px) and (max-width: 1439px) {
+    .hero-bg video { position: absolute; top: 0; left: 50%; width: 106.667%; height: auto;
+                     aspect-ratio: 16 / 9; transform: translateX(-50%); }
+  }
+  /* Tablets: only the gutter fits, and cropped flank tokens read wrong
+     ("B-" for the B+ seal, "500" for -500), so keep just the calm centre.
+     This masks the poster frame too, which is what tablets show. */
+  @media (min-width: 600px) and (max-width: 1279px) {
+    .hero-bg video {
+      -webkit-mask-image: linear-gradient(90deg, transparent calc(50% - 300px), #000 calc(50% - 200px), #000 calc(50% + 200px), transparent calc(50% + 300px));
+              mask-image: linear-gradient(90deg, transparent calc(50% - 300px), #000 calc(50% - 200px), #000 calc(50% + 200px), transparent calc(50% + 300px));
+    }
+  }
   .hero-bg::after { content: ""; position: absolute; inset: 0;
     background: radial-gradient(ellipse at 50% 35%, transparent 0%, rgba(11,18,32,.55) 68%, rgba(11,18,32,.92) 100%),
                 linear-gradient(to bottom, rgba(11,18,32,.35), transparent 30%, transparent 60%, #0B1220 96%); }
@@ -226,7 +250,14 @@
     .rv { opacity: 1; transform: none; }
     .grade { opacity: 1; transform: rotate(-3deg); }
     .tag { opacity: 1; transform: none; }
-    .hero-bg video { display: none; }   /* static poster only */
+    .hero-bg { background: url(poster-still.jpg) center/cover no-repeat #0B1220; }
+    .hero-bg video { display: none; }   /* static still only; its sources never load */
+  }
+  @media (prefers-reduced-motion: reduce) and (min-width: 1280px) and (max-width: 1439px) {
+    .hero-bg { background-size: 106.667% auto; background-position: 50% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) and (min-width: 600px) and (max-width: 1279px) {
+    .hero-bg { background-image: none; }
   }
 </style>
 </head>
@@ -247,8 +278,8 @@
 <div class="hero-stage">
 <div class="hero-bg" aria-hidden="true">
   <video autoplay muted loop playsinline poster="poster.jpg">
-    <source src="dab-bg.webm" type="video/webm">
-    <source src="dab-bg.mp4" type="video/mp4">
+    <source src="dab-bg.webm" type="video/webm" media="(min-width: 1280px) and (prefers-reduced-motion: no-preference)">
+    <source src="dab-bg.mp4" type="video/mp4" media="(min-width: 1280px) and (prefers-reduced-motion: no-preference)">
   </video>
 </div>
 <header class="hero wrap">

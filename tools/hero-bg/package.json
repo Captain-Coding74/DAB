@@ -1,0 +1,18 @@
+{
+  "name": "@dab/hero-bg",
+  "private": true,
+  "type": "module",
+  "description": "Offline renderer for the /welcome hero background loop (frontend/public/dab-bg.webm|mp4, poster.jpg). Not part of the app build.",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "render": "node render.mjs --out frames",
+    "gate": "node gate.mjs",
+    "seam": "python3 scripts/seam.py frames",
+    "encode": "bash scripts/encode.sh frames out 0",
+    "preview": "node preview.mjs preview 0,1.9,5.6,7.3,9.4,11.7,13.5,14.6"
+  },
+  "dependencies": {
+    "playwright-core": "^1.61.1",
+    "three": "0.186.1"
+  }
+}
