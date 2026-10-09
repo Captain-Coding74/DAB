@@ -1,12 +1,14 @@
-// node render.mjs [--out frames] [--from 0] [--to 450] [--step 1] [--workers 3] [--times 0,5.6,11.65] [--q "modules=intake"]
-// Writes f0000.png .. f0449.png (or tXXX.XXX.png for --times). Every frame is renderAt(frame/30), a pure function of t.
+// node render.mjs [--out frames] [--from 0] [--to <all frames>] [--step 1] [--workers 3] [--times 3.3,10.8,14.3,22.9,26.3] [--q "modules=intake"]
+// Writes f0000.png .. f<N-1>.png, N = PERIOD*30 = 900 (or tXXX.XXX.png for --times). Every frame is renderAt(frame/30), a pure function of t.
 import fs from "node:fs"; import path from "node:path"; import { serve, launch, args, HERE, FONTS } from "./serve.mjs";
 const A = args(process.argv.slice(2));
 const W = +(A.w || 1920), H = +(A.h || 1080), FPS = 30, OUT = path.resolve(A.out || path.join(HERE, "frames"));
 const workers = +(A.workers || 3), EXTRA = A.q ? "&" + A.q : "";
+const { PERIOD } = await import("./lib.js");   // the loop length lives in one place
+const NFRAMES = Math.round(PERIOD * FPS);
 let frames;
 if (A.times) frames = A.times.split(",").map(Number).map(t => ({ t, name: `t${t.toFixed(3).padStart(7, "0")}` }));
-else { frames = []; for (let f = +(A.from || 0); f < +(A.to || 450); f += +(A.step || 1)) frames.push({ t: f / FPS, name: `f${String(f).padStart(4, "0")}` }); }
+else { frames = []; for (let f = +(A.from || 0); f < +(A.to || NFRAMES); f += +(A.step || 1)) frames.push({ t: f / FPS, name: `f${String(f).padStart(4, "0")}` }); }
 fs.mkdirSync(OUT, { recursive: true });
 const { srv, port } = serve(HERE, { "/fonts/": FONTS });
 const browser = await launch();

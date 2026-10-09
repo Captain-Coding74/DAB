@@ -1,39 +1,43 @@
-# Hero background: "Night Audit — The Open Ledger"
+# Hero background: "Night Audit — Line by Line"
 
-Source for the 15-second loop behind the `/welcome` hero
-(`frontend/public/dab-bg.webm`, `dab-bg.mp4`, `poster.jpg`). It is rendered
-offline with three.js in headless Chromium and checked in as video, so the
-landing page ships no WebGL and no extra JavaScript, and the CSP is unchanged.
+Source for the 30-second loop behind the `/welcome` hero
+(`frontend/public/dab-bg.webm`, `dab-bg.mp4`, `poster.jpg`, `poster-still.jpg`).
+It is rendered offline with three.js in headless Chromium and checked in as
+video, so the landing page ships no WebGL and no extra JavaScript, and the CSP
+is unchanged.
 
 This folder is **not** an npm workspace. Nothing here runs in the app build or CI.
 
 ## What it shows
 
-An after-hours ledger lies open on both sides of the headline. The gutter
-behind the H1 stays dark on purpose, so nothing kinetic ever sits behind the copy.
+An after-hours ledger lies open on both sides of the headline. Every
+on-screen word is English. The four steps play one at a time, and a step rail
+under the right page (`01 PARSE · 02 CLEAN · 03 CHART · 04 GRADE`) always
+shows the whole pipeline: the active step is lit, finished steps roll their
+number to a green check, and each segment fills on the event it reports.
 
-| t (s) | Left page — intake | Right page — sculpture |
-|---|---|---|
-| 0 – 3 | The banner row `รายงานยอดขาย ร้านป้าศรี` hits the scan line, flushes red, gets struck through, tagged `SKIPPED — หัวรายงาน`, and collapses into a grey rule. | 96 ledger cells drift as a loose cloud, then settle into a 12 × 8 grid. The header `วันที่ · สินค้า · จำนวน · ยอดขาย` lands with `HEADER ✓`. |
-| 4 – 8 | `14 ม.ค. 2569` burns away at the scan line and is reset as extruded `2569-01-14`. The year reels count down 543 to `2026-01-14` (พ.ศ.→ค.ศ.). | Nine red-flagged cells flip a full turn and come up repaired: red, then amber, then a green glint. The grid topples into a segmented bar chart, with week 9 as the red outlier. |
-| 8 – 12 | `฿1,234.50` is set in 3D, then the ฿ and the comma squeeze out and the digits zip closed to `1234.50`. | The bars curl into a double-ruled seal, the 3D twin of the console's `2px double` grade border. A green **B+** stamps into it. |
-| 12 – 15 | `(500)` is set, then `)` drops out and `(` rotates and flattens into the minus: `-500`. | The seal peels back into the cloud and the flags turn red again: a new messy file has arrived. |
+| t (s) | Step | Left page: the raw file, read line by line | Right page: the answer |
+|---|---|---|---|
+| 0 – 8.6 | 01 PARSE | Four messy rows type in. The reading line crosses `Monthly sales report`, flushes red, strikes it, tags it `SKIPPED — banner row` and files it as a grey rule. | The loose cell cloud settles into a 12 × 8 grid. The header `Date · Item · Qty · Sales` lands with `HEADER ✓`. |
+| 8.6 – 19.6 | 02 CLEAN | One row at a time: `14/01/2569` burns away and is set as 3D `2026-01-14`, its year counting down 543 on odometer reels (`B.E.→C.E.`). `฿1,234.50` squeezes to `1234.50`. `(500)` folds into `-500`. | Each fix is echoed under its own header word, `Date` then `Sales`: three red-flagged cells flip to amber, then glint green. |
+| 19.6 – 23.8 | 03 CHART | A warm glint rakes the clean column, which then dims. | The grid topples into a bar chart, with week 9 as the red outlier, and `Jan · Feb · Mar` type in. |
+| 23.8 – 28.0 | 04 GRADE | The column's margin rules turn green, row by row. | The bars curl into a double-ruled seal and a green **B+** stamps into it. All four steps are checked. |
+| 28.0 – 30 | reset | Rows file away and the line makes a carriage return home. | B+ splits, the seal peels back into the cloud, the rail rewinds to `01 PARSE`. |
 
-A caption under the sculpture drum-rolls `01 PARSE → 02 CLEAN → 03 CHART → 04 GRADE`
-with the Thai words `อ่านไฟล์ / แก้ค่า / วาดกราฟ / ให้เกรด`. Its under-rule follows the
-page's severity colours: red, amber, warn, green.
-
-The camera runs one unbroken closed move: a 10° orbit with a 2:1 vertical bob,
-a 16 ± 1.4 u dolly with a dolly-zoom FOV of about 28–32°, and a gentle roll.
-The two pages turn against it, and the far navy lamp halo and the dust carry
-the parallax (the halo drifts about 370 px across the loop).
+The camera runs one unbroken closed move per loop: a 10° orbit with a 2:1
+vertical bob, a 16 ± 1.4 u dolly with a dolly-zoom FOV of about 28–32°, and a
+gentle roll. It is phased so the far point lands on the banner rejection
+(4 s), the left page is face-on for the year reels (11.5 s), the camera is
+nearest for the bars (19 s), and the right page is face-on for the B+
+(26.5 s). The navy lamp halo and the dust carry the parallax.
 
 ## Rules the loop keeps
 
-- **Seamless.** `renderAt(t)` is a pure function of `t`. Everything is built
-  from `sin/cos(2πt/15)` harmonics, from card phases `u = (t/3.75 + c) mod 4`,
-  or from windows that close before 14.73 s. Frame 449 runs into frame 0 like
-  any other pair of frames (`scripts/seam.py`).
+- **Seamless.** `renderAt(t)` is a pure function of `t`. Every scheduled
+  window lives in `schedule.js` and lies inside [0.25, 29.90] s. The seam
+  holds only periodic motion: harmonics of `2πt/30`, the cloud drift on
+  `2πt/15`, and pulses whose periods divide 30. Frame 899 runs into frame 0
+  like any other pair of frames (`scripts/seam.py`).
 - **Legible.** No mesh may project into the headline zones of the 1920×1080
   frame. The zones were measured from `landing.html` at 1280–2560 px through
   `object-fit: cover`. The grade also darkens and desaturates an ellipse
@@ -44,7 +48,7 @@ the parallax (the halo drifts about 370 px across the loop).
   width-fits exactly that range, top-anchored. `gate.mjs` fails if a token
   leaves it. Its headline zones were measured through cover. The 1280–1439
   width-fit was checked separately against the real EN/TH text boxes for all
-  450 frames.
+  900 frames.
 - **Light where it can't be seen.** Below 1280 px only the near-still centre
   glow would show, so each `<source>` carries a `media` query and phones,
   tablets and reduced-motion visitors never download the video. Below
@@ -74,17 +78,17 @@ for bit. Other builds differ by a few anti-aliased pixels.
 cd tools/hero-bg
 npm ci                                   # three + playwright-core
 export CHROMIUM=/path/to/chromium
-node render.mjs --out frames             # 450 PNGs, ~1.5 s each on software WebGL (3 workers)
+node render.mjs --out frames             # 900 PNGs, ~1.2 s each on software WebGL (3 workers), ~18 min
 node gate.mjs                            # legibility + crop gate, expect "GATE OK" and no CROPPED
 python3 scripts/seam.py frames           # loop seam, expect "SEAM OK"  (pip install numpy pillow)
 FFMPEG=ffmpeg bash scripts/encode.sh frames out 0   # needs libvpx-vp9 + libx264
 cp out/dab-bg.webm out/dab-bg.mp4 out/poster.jpg ../../frontend/public/
 # reduced-motion still: a settled frame with the page's .66-over-ink video opacity baked in (ink #0B1220 × 0.34)
-ffmpeg -i frames/f0375.png -vf "scale=1600:-2,lutrgb=r='0.66*val+3.74':g='0.66*val+6.12':b='0.66*val+10.88'" -q:v 4 ../../frontend/public/poster-still.jpg
-node preview.mjs preview 0,5.6,11.7      # real landing page with the video paused at each t
+ffmpeg -i frames/f0839.png -vf "scale=1600:-2,lutrgb=r='0.66*val+3.74':g='0.66*val+6.12':b='0.66*val+10.88'" -q:v 4 ../../frontend/public/poster-still.jpg
+node preview.mjs preview 3.3,10.8,14.3,17.4,22.9,26.3,27.97   # real landing page, one shot per step
 ```
 
-Quick looks: `node render.mjs --out frames/quick --times 0,5.6,11.65`. Add
+Quick looks: `node render.mjs --out frames/quick --times 0,3.6,10.8,14.3,17.7,21.9,25.9,27.97,29.3`. Add
 `--q "modules=intake"` to render one subsystem, or `--q "well=0"` to switch
 off the headline well.
 
@@ -92,10 +96,11 @@ off the headline well.
 
 | File | What it is |
 |---|---|
+| `schedule.js` | The master schedule: every window of the four steps and the reset, read by every module |
 | `scene.js` | Renderer, camera, post chain (MSAA, half-res bloom, grade), ledger pages, gutter hairlines, lamp, dust, lights, module loader |
-| `modules/intake.js` | Left page: conveyor cards, Thai typing, scan line and burn, extruded figures, odometer, squeeze, paren fold |
+| `modules/intake.js` | Left page: the four raw rows, typing, the reading line and its burn, extruded figures, odometer, squeeze, paren fold, the clean column |
 | `modules/sculpture.js` | Right page: 96 instanced cells through cloud → grid → bars → ring, header, tags, months |
-| `modules/stamp.js` | B+ stamp, shock ring, act caption drum-roll |
+| `modules/stamp.js` | B+ stamp, shock ring, sweep light, and the step rail |
 | `lib.js` | Timing helpers, seeded RNG, brand colours, grade shader (vignette, faint edge chromatic aberration, headline well, ink composite, static dither) |
 | `gate.mjs`, `preview.mjs` | Legibility/crop gate over every frame; real-page screenshots with the video paused at given times |
 | `assets/*.typeface.json` | IBM Plex outlines for extruded type, generated from `frontend/public/fonts` by `scripts/woff2_to_typeface.py` (needs fonttools + brotli) |

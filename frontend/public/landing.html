@@ -93,11 +93,12 @@
 
 
   /* ── hero background video (v21.28 "Night Audit") ──
-     A 15 s seamless loop: an open ledger on both flanks of the headline. The
-     left page parses messy Thai rows into clean figures; the right page's
-     cells settle into a grid, a bar chart and the double-ruled B+ seal.
-     The gutter behind the h1 is kept dark by design, so nothing kinetic
-     ever sits behind the copy.
+     A 30 s seamless loop, all English: an open ledger on both flanks of the
+     headline. The left page reads a messy file line by line and turns it
+     into clean figures; the right page's cells answer as a grid, a bar chart
+     and the double-ruled B+ seal. A step rail tracks 01 PARSE → 02 CLEAN →
+     03 CHART → 04 GRADE, one step at a time. The gutter behind the h1 is
+     kept dark by design, so nothing kinetic ever sits behind the copy.
      The poster is NOT painted under the video any more: at .66 opacity a
      34% ghost of the still showed through the moving camera for the whole
      loop. poster.jpg (frame 0) is the <video poster> while loading, and the
@@ -114,7 +115,7 @@
   /* Narrow laptops: cover would crop the outer digits of the flank figures,
      so fit frame x 60-1860 to the width (1920/1800 = 106.667%), top-anchored.
      The frame's bottom rows are ink, so the strip left below it is invisible.
-     Checked against the real EN/TH text boxes for all 450 frames. */
+     Checked against the real EN/TH text boxes for all 900 frames. */
   @media (min-width: 1280px) and (max-width: 1439px) {
     .hero-bg video { position: absolute; top: 0; left: 50%; width: 106.667%; height: auto;
                      aspect-ratio: 16 / 9; transform: translateX(-50%); }
@@ -130,7 +131,8 @@
   }
   .hero-bg::after { content: ""; position: absolute; inset: 0;
     background: radial-gradient(ellipse at 50% 35%, transparent 0%, rgba(11,18,32,.55) 68%, rgba(11,18,32,.92) 100%),
-                linear-gradient(to bottom, rgba(11,18,32,.35), transparent 30%, transparent 60%, #0B1220 96%); }
+                /* fade into the next section over the last 150 px only: from 60% it dimmed the step rail on the right flank */
+                linear-gradient(to bottom, rgba(11,18,32,.35), transparent 30%, transparent calc(100% - 150px), #0B1220 calc(100% - 24px)); }
   .hero-stage .hero { position: relative; z-index: 1; }
   .hero { padding: 76px 0 70px; text-align: center; }
   h1 { font-size: clamp(30px, 5.2vw, 52px); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }

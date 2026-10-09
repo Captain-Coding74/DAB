@@ -1,4 +1,4 @@
-// [VIEWPORTS=1280x800,390x844] node preview.mjs OUT_DIR 0,5.6,11.65 [--lang en|th] — screenshots the REAL landing page (frontend/public) with the
+// [VIEWPORTS=1280x800,390x844] node preview.mjs OUT_DIR 3.3,10.8,14.3,17.4,22.9,26.3,27.97 [--lang en|th] — screenshots the REAL landing page (frontend/public) with the
 // video paused at each t, at desktop and phone sizes, to judge the headline over the background.
 import fs from "node:fs"; import path from "node:path"; import { serve, launch, HERE } from "./serve.mjs";
 const [OUT, TS] = process.argv.slice(2); const lang = process.argv.includes("--lang") ? process.argv[process.argv.indexOf("--lang") + 1] : "en";

@@ -1,8 +1,10 @@
-// NIGHT AUDIT: The Open Ledger — 15 s loop for the DAB hero. renderAt(t) is a pure function of t.
+// NIGHT AUDIT: Line by Line — 30 s loop for the DAB hero, all English. renderAt(t) is a pure function of t.
+// Every scheduled window lives in schedule.js (SCH); the step rail tracks 01 PARSE → 02 CLEAN → 03 CHART → 04 GRADE.
 // Framework (spec E0, E1, E10-E13, camera, post). Animated subsystems live in modules/*.js:
 //   intake.js (E2-E5), sculpture.js (E6-E7), stamp.js (E8-E9). Contract: export async function build(ctx) -> { update(t) }.
 import * as THREE from "three";
 import * as L from "./lib.js";
+import { SCH } from "./schedule.js";
 import { FontLoader } from "three/addons/loaders/FontLoader.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
@@ -18,11 +20,13 @@ const S = L.smoother, Wn = (t, a, b) => L.smoother((t - a) / (b - a));
 const deg = THREE.MathUtils.degToRad;
 
 /* ── fonts ── */
-const THAI = "ม.ค. วันที่ ให้เกรด ป้าศรี ฿";
+// every canvas face is awaited with the exact strings it draws, so no frame falls back to a system font
+const LAT = "Monthly sales report Date Item Qty Sales Jan Feb Mar ฿";
 await Promise.all([
-  document.fonts.load('500 92px "Plex Thai"', THAI), document.fonts.load('600 96px "Plex Thai"', THAI),
-  document.fonts.load('500 92px "Plex Mono"', "0123(),.-"), document.fonts.load('400 40px "Plex Mono"', "A1"),
-  document.fonts.load('500 40px "Plex Mono"', "HEADER"), document.fonts.load('500 40px "Plex Thai"', THAI),
+  document.fonts.load('500 92px "Plex Thai"', LAT), document.fonts.load('600 96px "Plex Thai"', LAT), document.fonts.load('500 76px "Plex Thai"', LAT),
+  document.fonts.load('600 84px "Plex Thai"', LAT), document.fonts.load('500 56px "Plex Thai"', "฿"),
+  document.fonts.load('500 92px "Plex Mono"', "0123456789(),./-"), document.fonts.load('400 40px "Plex Mono"', "A1 A3 D3 D4"),
+  document.fonts.load('500 56px "Plex Mono"', "SKIPPED banner row B.E. C.E. number acct negative"), document.fonts.load('500 80px "Plex Mono"', "HEADER"),
 ]);
 const loadFont = async (n) => new FontLoader().parse(await (await fetch(`assets/${n}.typeface.json`)).json());
 const fonts = { mono500: await loadFont("plex-mono-500"), latin700: await loadFont("plex-latin-700"), latin600: await loadFont("plex-latin-600") };
@@ -31,6 +35,7 @@ const fonts = { mono500: await loadFont("plex-mono-500"), latin700: await loadFo
 const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });
 renderer.setPixelRatio(1); renderer.setSize(W, H);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.localClippingEnabled = true;   // the year reels are clipped to their row like a real odometer window
 document.body.appendChild(renderer.domElement);
 const gl = renderer.getContext();
 const MAX_SAMPLES = gl.getParameter(gl.MAX_SAMPLES);
@@ -41,7 +46,8 @@ const camera = new THREE.PerspectiveCamera(28.3, W / H, 0.1, 120);
 
 /* ── two open-book groups (spec E0) ── */
 const GL = new THREE.Group(); GL.position.set(-5.45, 0.95, 0); GL.rotation.y = deg(16); scene.add(GL);
-const GR = new THREE.Group(); GR.position.set(4.95, 0.92, 0); GR.rotation.y = deg(-16); scene.add(GR);
+// GR sits +0.24 higher than in the 15 s cut: room for the step rail below the sculpture
+const GR = new THREE.Group(); GR.position.set(4.95, 1.16, 0); GR.rotation.y = deg(-16); scene.add(GR);
 
 /* ── camera (spec "camera") ── */
 const P0 = new THREE.Vector3(0, 0.55, 0);
@@ -49,7 +55,7 @@ const P0 = new THREE.Vector3(0, 0.55, 0);
 const CAM_AZ = 10, CAM_SWAY = 0;
 const _C = new THREE.Vector3(), _L = new THREE.Vector3();
 function cameraAt(t, cam = camera) {
-  const th = TAU * t / PERIOD;
+  const th = TAU * (t - L.CAM_T0) / PERIOD;
   const D = 16.0 + 1.4 * Math.cos(th), a = deg(CAM_AZ) * Math.sin(th), b = deg(3) + deg(2) * Math.sin(2 * th);
   _C.set(D * Math.sin(a) * Math.cos(b), D * Math.sin(b), D * Math.cos(a) * Math.cos(b)).add(P0);
   _L.set(CAM_SWAY * Math.sin(th - 0.25), 0.06 * Math.sin(2 * th - 0.25), 0).add(P0);
@@ -96,7 +102,7 @@ const noiseTex = (() => {
 const hdr = (hexv, k = 1) => new THREE.Color(hexv).multiplyScalar(k);
 
 const ctx = { THREE, L, S, W: Wn, deg, scene, camera, cameraAt, GL, GR, fonts, R, canvasTex, roundRect, setOpacity, graphemes,
-  noiseTex, hdr, C: L.C, PERIOD, TAU, width: W, height: H, SCAN_Y: 0.886 };
+  noiseTex, hdr, C: L.C, PERIOD, TAU, width: W, height: H, SCAN_Y: 0.886, SCH, herm: L.herm };
 window.__ctx = ctx;
 
 /* ── E1 open-book ledger pages ── */
@@ -220,7 +226,7 @@ window.updateAt = (tIn) => {
   cameraAt(t);
   key.position.set(-4 + 1.5 * Math.sin(th), 5, 6 + 1.5 * Math.cos(th));
   lamp.material.opacity = 0.16 * (1 + 0.10 * Math.sin(th));
-  const ha = 0.18 * Wn(t, 6.40, 7.40) * (1 - Wn(t, 13.80, 14.60)); hairMat.opacity = ha; hair.visible = ha >= 0.004;
+  const [h0, h1, h2, h3] = SCH.hair, ha = 0.18 * Wn(t, h0, h1) * (1 - Wn(t, h2, h3)); hairMat.opacity = ha; hair.visible = ha >= 0.004;
   dustMat.uniforms.uTheta.value = th;
   for (const m of modules) m.update(t);
   scene.updateMatrixWorld(true);
@@ -248,10 +254,11 @@ window.boxesAt = (t) => {
       for (let i = 0; i < 8; i++) { v.set(i & 1 ? gb.max.x : gb.min.x, i & 2 ? gb.max.y : gb.min.y, i & 4 ? gb.max.z : gb.min.z).applyMatrix4(im).project(camera);
         const px = (v.x + 1) / 2 * 1920, py = (1 - v.y) / 2 * 1080; x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py); }
         const op = !o.material ? 1 : Array.isArray(o.material) ? Math.max(...o.material.map(m => (m.transparent ? m.opacity : 1))) : (o.material.transparent ? o.material.opacity : 1);
-      out.push({ g: gname, name: path, path, op, x0, y0, x1, y1 });
+      out.push({ g: gname, name: path, path, op, tf: o.userData.textFrac || null, x0, y0, x1, y1 });
     }
   });
   return out;
 };
 window.__info = { MAX_SAMPLES, samples: rt.samples, modules: modules.map(m => m.name) };
+window.__period = PERIOD;   // loop length in seconds: render.mjs / gate.mjs derive the frame count from it
 window.__ready = true;

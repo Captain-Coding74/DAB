@@ -1,6 +1,8 @@
 // Shared helpers for the loop. Everything is a pure function of t in [0, PERIOD).
 import * as THREE from "three";
-export const PERIOD = 15, TAU = Math.PI * 2;
+export const PERIOD = 30, TAU = Math.PI * 2;
+/** camera phase: the orbit's far point lands at t = 4 (banner rejected), right extreme 11.5 (reels), nearest 19 (bars), left extreme 26.5 (B+) */
+export const CAM_T0 = 4;
 export const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 export const lerp = (a, b, k) => a + (b - a) * k;
 export const smooth = (x) => { x = clamp(x); return x * x * (3 - 2 * x); };
@@ -20,6 +22,16 @@ export function env(t, a, b, fi = .6, fo = .6, ease = smoother) {
   t = wrapT(t); const len = wrapT(b - a) || PERIOD; const d = wrapT(t - a);
   if (d > len) return 0;
   return Math.min(ease(d / fi), ease((len - d) / fo));
+}
+/** C¹ cubic Hermite path over keys [[t, y, v], ...]; clamps to the first / last y outside the keys */
+export function herm(t, K) {
+  if (t <= K[0][0]) return K[0][1];
+  for (let i = 0; i < K.length - 1; i++) {
+    const [ta, ya, va] = K[i], [tb, yb, vb] = K[i + 1];
+    if (t <= tb) { const h = tb - ta, s = (t - ta) / h, s2 = s * s, s3 = s2 * s;
+      return (2 * s3 - 3 * s2 + 1) * ya + (s3 - 2 * s2 + s) * h * va + (-2 * s3 + 3 * s2) * yb + (s3 - s2) * h * vb; }
+  }
+  return K[K.length - 1][1];
 }
 export function rng(seed) { // mulberry32
   return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let x = Math.imul(seed ^ seed >>> 15, 1 | seed);
