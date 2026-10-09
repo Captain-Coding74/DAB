@@ -410,6 +410,147 @@ describe("Critical flow: the public landing page", () => {
     assert.equal(hidden, 0, `${hidden} reveal elements still invisible after scrolling the whole page — landing.js did not run`);
   });
 
+  /* The #how walkthrough. Each test gets its own context: the shared page has
+     already fetched the media in the test above, and a media-cache hit fires
+     no request event, so a shared page would see nothing either way. */
+  async function walkPage(options) {
+    const ctx = await browser.newContext(options);
+    const p = await ctx.newPage();
+    p.on("console", m => { if (m.type() === "error") suite.consoleErrors.push({ test: currentTest, text: m.text().slice(0, 200) }); });
+    p.on("pageerror", e => { suite.consoleErrors.push({ test: currentTest, text: `uncaught: ${e.message}`.slice(0, 200) }); });
+    const reqs = [];
+    p.on("request", (r) => { if (/dab-walk[.-]/.test(r.url())) reqs.push(r.url()); });   // video, poster or still
+    await p.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    return { ctx, p, reqs };
+  }
+  // Scroll instantly (the page sets scroll-behavior: smooth) to `top`, or so
+  // that #walk sits `walkGap` px below the viewport; let two frames pass so
+  // IntersectionObserver callbacks have run; return #walk's gap below the fold.
+  const scrollPage = (p, { top = null, walkGap = 0 }) => p.evaluate(async ([top, walkGap]) => {
+    const walkTop = () => document.getElementById("walk").getBoundingClientRect().top;
+    window.scrollTo({ top: top ?? window.scrollY + walkTop() - window.innerHeight - walkGap, behavior: "instant" });
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return Math.round(walkTop() - window.innerHeight);
+  }, [top, walkGap]);
+  const scrollWholePage = async (p) => {
+    const [h, vh] = await p.evaluate(() => [document.documentElement.scrollHeight, window.innerHeight]);
+    for (let y = 0; y <= h; y += vh / 2) { await scrollPage(p, { top: y }); await p.waitForTimeout(60); }
+  };
+  const VIDEO_OR_POSTER = /dab-walk\.(webm|mp4)|dab-walk-poster/;
+
+  btest("the walkthrough video is not fetched until #walk is within 300 px", async () => {
+    // #walk ships with no <source>, no poster and no autoplay; landing.js arms
+    // it 300 px out. A regression here would put ~2 MB on every page load.
+    // It measures #walk itself (the observed element), with a lower bound too:
+    // the 50 px scan lands inside (250, 300] at the step that arms it.
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await p.waitForTimeout(500);
+      assert.deepEqual(reqs, [], `walkthrough fetched at page load: ${reqs.join(", ")}`);
+      let gapAtFirst = null;
+      for (let y = 0; y < 10_000 && gapAtFirst === null; y += 50) {
+        const gap = await scrollPage(p, { top: y });
+        if (gap <= 400) await p.waitForTimeout(150);              // near the margin: give the fetch time to show
+        if (reqs.length) gapAtFirst = gap;
+      }
+      assert.ok(gapAtFirst !== null, "the walkthrough never armed after scrolling to #walk");
+      assert.ok(gapAtFirst <= 300 && gapAtFirst > 240,
+        `walkthrough first fetched with #walk ${gapAtFirst} px below the viewport; expected within (240, 300]`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("below 900 px the walkthrough fetches nothing, even after a full scroll", async () => {
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 899, height: 800 } });
+    try {
+      await scrollWholePage(p);
+      await p.waitForTimeout(200);
+      assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById("walk")).display), "none");
+      assert.deepEqual(reqs, [], `walkthrough media fetched at 899 px: ${reqs.join(", ")}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("reduced motion gets the still, fetched only near #walk, and never the video", async () => {
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+    try {
+      await p.waitForTimeout(300);
+      assert.deepEqual(reqs, [], `fetched at page load under reduced motion: ${reqs.join(", ")}`);
+      await scrollPage(p, { walkGap: 450 });
+      await p.waitForTimeout(150);
+      assert.deepEqual(reqs, [], `fetched with #walk still 450 px below the viewport: ${reqs.join(", ")}`);
+      const still = p.waitForRequest(/dab-walk-still\.jpg/, { timeout: 5_000 });
+      await scrollPage(p, { walkGap: 200 });
+      await still;
+      await scrollWholePage(p);
+      await p.waitForTimeout(200);
+      const shown = await p.evaluate(() => {
+        const w = document.getElementById("walk");
+        return {
+          still: w.classList.contains("walk--still"),
+          bg: getComputedStyle(w.querySelector(".walk-stage")).backgroundImage,
+          video: getComputedStyle(w.querySelector("video")).display,
+          btn: getComputedStyle(document.getElementById("walkBtn")).display,
+        };
+      });
+      assert.ok(shown.still && /dab-walk-still\.jpg/.test(shown.bg), `the still is not shown: ${JSON.stringify(shown)}`);
+      assert.equal(shown.video, "none", "the video element is hidden");
+      assert.equal(shown.btn, "none", "the Pause/Play button is hidden");
+      const media = reqs.filter(u => VIDEO_OR_POSTER.test(u));
+      assert.deepEqual(media, [], `video or poster fetched under reduced motion: ${media.join(", ")}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("the walkthrough and the hero video take turns, never both playing", async () => {
+    // The hero has a source only at >= 1280 px with motion, so 1440x900.
+    const { ctx, p } = await walkPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
+    try {
+      const state = () => p.evaluate(() => {
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        return { walk: !w.paused, walkT: +w.currentTime.toFixed(2), hero: !h.paused, heroT: +h.currentTime.toFixed(2),
+                 heroSrc: !!h.currentSrc, now: [...document.querySelectorAll("#how .step")].map(s => s.classList.contains("now")),
+                 both: window.__bothPlaying };
+      });
+      const until = (fn, arg) => p.waitForFunction(fn, arg, { timeout: 10_000 }).catch(() => {});   // the asserts below explain a timeout
+      await p.evaluate(() => {          // samples every 50 ms for the whole test
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        window.__bothPlaying = 0;
+        setInterval(() => { if (!w.paused && !h.paused) window.__bothPlaying++; }, 50);
+      });
+      await until(() => { const h = document.querySelector(".hero-bg video"); return !h.paused && h.currentTime > 0.2; });
+      let s = await state();
+      assert.ok(s.heroSrc && s.hero, `the hero should be playing at the top first: ${JSON.stringify(s)}`);
+
+      await p.evaluate(() => document.getElementById("walk").scrollIntoView({ block: "center", behavior: "instant" }));
+      await until(() => {
+        const w = document.querySelector("#walk video");
+        return !w.paused && w.currentTime > 1.6 && document.querySelector("#how .step").classList.contains("now");
+      });
+      s = await state();
+      assert.ok(s.walk && s.walkT >= 1.5, `the walkthrough should be playing with #walk centred: ${JSON.stringify(s)}`);
+      assert.ok(!s.hero, `the hero should be paused while the walkthrough plays: ${JSON.stringify(s)}`);
+      assert.deepEqual(s.now, [true, false, false], "step 01 is the lit chapter early in the film");
+
+      await scrollPage(p, { top: 0 });
+      const heroT = s.heroT;
+      await until((t) => {
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        return w.paused && !h.paused && h.currentTime !== t;
+      }, heroT);
+      s = await state();
+      assert.ok(!s.walk, `the walkthrough should pause back at the top: ${JSON.stringify(s)}`);
+      assert.ok(s.hero && s.heroT !== heroT, `the hero should resume back at the top: ${JSON.stringify(s)}`);
+      assert.deepEqual(s.now, [false, false, false], "the chapter rail goes dark when the film pauses");
+      assert.equal(s.both, 0, "the two videos were sampled playing at the same time");
+    } finally {
+      await ctx.close();
+    }
+  });
+
   btest("has a skip link and a main landmark", async () => {
     await page.goto(`${BASE}/welcome`, { waitUntil: "load" });
     assert.equal(await page.locator("main#main").count(), 1, "missing <main id=main>");

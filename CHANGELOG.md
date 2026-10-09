@@ -3,6 +3,41 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.29] — 2026-10-09 "Walkthrough"
+A 23 s looping walkthrough of the real app now opens the "How it works"
+section on `/welcome`. It shows tapping the corner-shop sample, the readout
+powering on, the margin-note findings, the Quality grade (A · 92/100), and
+the recommended bar chart. A guided cursor, framed close-ups and short
+English captions carry it, and the three step cards below light up as live
+chapter markers.
+
+It is built from real screens and real figures only. A truth pass on the
+real clock captures every still and number. A fake-clock pass replays the
+same API response to capture the app's real micro-animations: the count-up,
+the findings rising in, the grade ring drawing, and the bars growing. A gate
+proves every plate pixel is a captured pixel. The app's own UI is mostly Thai
+even in EN mode, and the video shows it as it is. The chrome bar says
+"walkthrough · real screens · sample data · figures unedited".
+- **Assets**: dab-walk.webm 1.33 MB / dab-walk.mp4 1.73 MB (23.000 s,
+  1600×900), plus a poster and a still. Nothing is fetched until the figure
+  is within 300 px of the viewport.
+- **Behaviour**:
+  - Plays when at least 50% visible and pauses below 25%.
+  - The hero video pauses while it plays, so two videos never run at once.
+  - It has a Pause/Play button, reachable by keyboard.
+  - Reduced motion and Save-Data get the still, also lazy. Below 900 px the
+    figure is hidden and nothing is downloaded.
+  - A screen-reader transcript is provided in EN and TH.
+- **Copy fixes** the video would otherwise contradict. "Up to 10MB" now
+  reads the real limit from `/api/health` (25 MB). "~10ms" became "back in
+  milliseconds".
+- **Source**: `tools/walkthrough/` holds the capture, compositor, render,
+  gate, seam, text-sharpness check and encode. The gate also fails if the
+  page's chapter times or transcript figures drift from the capture. It
+  re-encodes byte for byte. `.dockerignore` now excludes `tools/`.
+- **Tests**: four new browser tests cover lazy arming, the narrow-screen and
+  reduced-motion paths, and the hero/walkthrough hand-off.
+
 ## [21.28] — 2026-10-09 "Night Audit"
 New hero background for `/welcome`: a 30 s seamless loop, all English,
 replacing the 8 s extruded DATA ANALYSIS clip. An after-hours ledger lies open

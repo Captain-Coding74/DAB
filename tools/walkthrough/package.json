@@ -1,0 +1,22 @@
+{
+  "name": "@dab/walkthrough",
+  "private": true,
+  "type": "module",
+  "description": "Offline capture + compositor for the 23 s 'How it works' walkthrough on /welcome (frontend/public/dab-walk.webm|mp4, dab-walk-poster.jpg, dab-walk-still.jpg). Real screens of the production bundle. Not part of the app build.",
+  "engines": {
+    "node": ">=22.2.0"
+  },
+  "scripts": {
+    "capture": "node capture.mjs",
+    "render": "node render.mjs --out frames",
+    "quick": "node render.mjs --out frames/quick --times 0,2.6,5.4,6.4,8.5,9.45,12.5,15.4,16.8,20.5,22.3",
+    "gate": "node gate.mjs",
+    "seam": "${PYTHON:-python3} scripts/seam.py frames",
+    "encode": "bash scripts/encode.sh frames out",
+    "textcheck": "${PYTHON:-python3} scripts/textcheck.py frames out/dab-walk.webm out/dab-walk.mp4",
+    "install-media": "cp out/dab-walk.webm out/dab-walk.mp4 out/dab-walk-poster.jpg out/dab-walk-still.jpg ../../frontend/public/"
+  },
+  "dependencies": {
+    "playwright-core": "^1.61.1"
+  }
+}

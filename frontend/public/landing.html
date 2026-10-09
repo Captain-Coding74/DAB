@@ -261,6 +261,41 @@
   @media (prefers-reduced-motion: reduce) and (min-width: 600px) and (max-width: 1279px) {
     .hero-bg { background-image: none; }
   }
+
+  /* ── "How it works" walkthrough ──
+     A 23 s loop of the real app: tap the sample, the readout powers on, the
+     margin notes, grade A, a chart. Every UI pixel is a captured frame; the
+     captions are overlays drawn by tools/walkthrough. It sits in the hero's
+     console chrome; the bar carries the disclosure and the Pause/Play
+     button, so nothing is overlaid on the picture. landing.js arms it (poster
+     + sources) within 300 px of the viewport, plays it at >= 50% visible,
+     pauses it below 25%, and never lets it play while the hero video does.
+     The three step cards below are its chapter rail (.step.now).
+     Hidden below 900 px: the step cards tell the story and nothing loads.
+     Reduced motion and Save-Data get dab-walk-still.jpg (the grade frame)
+     as the .walk--still background. landing.js adds that class only when
+     #walk comes near, so nobody fetches the still at page load and motion
+     visitors never fetch it. Media falls under default-src 'self': no CSP
+     change. */
+  .walk { margin: 0 auto 26px; background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(245,160,11,.06); }
+  .walk-label { font-family: "IBM Plex Mono", "IBM Plex Sans Thai", ui-monospace, monospace; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .walk-btn { margin-left: auto; flex: none; font-family: "IBM Plex Mono", "IBM Plex Sans Thai", monospace; font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--mute); background: none; border: 1px solid var(--edge); border-radius: 6px; padding: 3px 10px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .walk-btn:hover { color: var(--amber); border-color: rgba(245,160,11,.5); }
+  .walk-stage { position: relative; aspect-ratio: 16 / 9; background: #0B1220; }
+  .walk-stage video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .walk--still .walk-stage { background: url(dab-walk-still.jpg) center / cover no-repeat #0B1220; }
+  .walk--still video, .walk--still .walk-btn { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  /* .step.rv must list all three: a bare .step transition would replace the
+     .rv reveal transition and break the scroll-in. */
+  .step.rv { transition: opacity .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1), border-color .3s; }
+  .step::before { transition: background-color .3s, color .3s, border-color .3s; }
+  .step.now { border-color: rgba(245,160,11,.55); }
+  .step.now::before { background: var(--amber); color: var(--ink); border-color: var(--amber); }
+  @media (max-width: 899px) { .walk { display: none; } .walk.rv { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) and (min-width: 900px) {
+    .walk-stage video, .walk-btn { display: none; }   /* the still comes from .walk--still, set when near */
+  }
 </style>
 </head>
 <body>
@@ -345,9 +380,26 @@
     <div class="eyebrow" data-i18n="howEyebrow">10 วินาทีแรก</div>
     <h2 data-i18n="howH2">ทำงานยังไง</h2>
   </div>
+  <!-- Walkthrough: a 23 s loop built from real screens of the app.
+       No autoplay, no <source>, no poster: nothing is fetched at page load.
+       landing.js arms it within 300 px of the viewport. Below 900 px it is
+       hidden; reduced motion and Save-Data get dab-walk-still.jpg, which is
+       also fetched only once #walk is near.
+       Source and re-render steps: tools/walkthrough/. -->
+  <figure class="walk rv" id="walk">
+    <div class="console-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="console-file walk-label" data-i18n="walkLabel">สาธิตจากหน้าจอจริง · ข้อมูลตัวอย่าง · ตัวเลขไม่ได้แต่ง</span>
+      <button class="walk-btn" id="walkBtn" type="button" data-i18n="walkPause">หยุด</button>
+    </div>
+    <div class="walk-stage">
+      <video muted playsinline loop preload="none" width="1600" height="900" aria-hidden="true" tabindex="-1" data-poster="dab-walk-poster.jpg" data-webm="dab-walk.webm" data-mp4="dab-walk.mp4"></video>
+    </div>
+    <figcaption class="sr-only" data-i18n="walkDesc">สาธิตจากหน้าจอจริงของแอป ตัวเลขไม่ได้แต่ง: ช่องอัปโหลดรับ CSV หรือ Excel ไม่เกิน 25 MB — แตะชุดตัวอย่าง “ยอดขายร้านโชห่วย” ระบบตรวจ 45 แถว × 5 คอลัมน์ด้วยสถิติล้วน ไม่ใช้ AI บันทึกข้างเล่มพบ 4 ประเด็น: “ยอดขาย” มี outliers 6 จุด (14.0%) · พบแถวซ้ำ 2 แถว · “วันที่” เป็นคอลัมน์วันที่ · “จำนวน” กับ “ยอดขาย” สัมพันธ์กันแรง (r=0.941) — ได้เกรดคุณภาพ A 92/100 พร้อมกราฟแท่งจำนวนตามสินค้า ส่งออกเป็น PNG หรือ SVG ได้</figcaption>
+  </figure>
   <div class="steps">
-    <div class="step rv"><h3 data-i18n="s1H">วางไฟล์ หรือแตะตัวอย่าง</h3><p data-i18n="s1P">CSV / Excel สูงสุด 10MB — หรือลองชุดข้อมูลตัวอย่างโดยไม่ต้องสมัครอะไรเลย</p></div>
-    <div class="step rv"><h3 data-i18n="s2H">Insights Engine ตรวจทันที</h3><p data-i18n="s2P">สถิติล้วน ไม่รอ AI: ค่าผิดปกติ แถวซ้ำ ค่าว่าง แนวโน้ม correlation — พร้อมใน ~10ms</p></div>
+    <div class="step rv"><h3 data-i18n="s1H">วางไฟล์ หรือแตะตัวอย่าง</h3><p data-i18n="s1P">CSV / Excel สูงสุด 25 MB — หรือลองชุดข้อมูลตัวอย่างโดยไม่ต้องสมัครอะไรเลย</p></div>
+    <div class="step rv"><h3 data-i18n="s2H">Insights Engine ตรวจทันที</h3><p data-i18n="s2P">สถิติล้วน ไม่รอ AI: ค่าผิดปกติ แถวซ้ำ ค่าว่าง แนวโน้ม correlation — เสร็จในระดับมิลลิวินาที</p></div>
     <div class="step rv"><h3 data-i18n="s3H">อ่านผลเป็นภาษาไทย</h3><p data-i18n="s3P">บันทึกข้างเล่มบอกว่าเจออะไร สำคัญแค่ไหน ควรทำอะไรต่อ — เข้าสู่ระบบเมื่ออยากได้บทวิเคราะห์ AI ฉบับเต็ม</p></div>
   </div>
 </div></section>
