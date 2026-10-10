@@ -1,10 +1,18 @@
 /**
  * routes/auth.js — v12 extraction from server.js
- * Register / login / refresh / logout / logout-all / me.
+ * Register / login / refresh / logout / logout-all / me / accept-terms.
+ *
+ * v21.30 click-wrap: register requires acceptTerms and ageConfirmed (400
+ * TERMS_REQUIRED) and records the accepted LEGAL_VERSION, time and IP.
+ * Login, register and /me report `legal: { accepted, current }`; when they
+ * differ the SPA blocks on a re-accept dialog that posts to accept-terms.
+ * Register and login leave the new session's user id on res.locals for the
+ * traffic log (services/trafficLog.js), since req.user is not set there.
  */
 import bcrypt from "bcryptjs";
 import * as R from "../db/repository.js";
 import { cache } from "../services/cache.js";
+import { LEGAL_VERSION } from "../services/legal.js";
 import { signAccess, signRefresh, verifyRefresh, hashToken, refreshExpiresAt, requireAuth } from "../auth.js";
 
 /* Bodies arrive as parsed JSON, so a field can be a number, array or object,
@@ -14,20 +22,30 @@ import { signAccess, signRefresh, verifyRefresh, hashToken, refreshExpiresAt, re
 const isCred = (v) => typeof v === "string" && v.length > 0;
 import { authLimiter } from "../middleware/rateLimiter.js";
 
+/* A ticked box arrives as JSON true; a form-encoded client sends "true".
+   Anything else — absent, "1", "yes", "on" — is not an agreement. */
+const ticked = (v) => v === true || v === "true";
+/** What the SPA compares to decide whether to ask for acceptance again. */
+const legalStatus = (accepted) => ({ accepted: accepted || null, current: LEGAL_VERSION });
+
 export function mountAuthRoutes(app) {
   app.post("/api/auth/register", authLimiter(), async (req, res, next) => {
     try {
-      const { username, password, email } = req.body;
+      const { username, password, email, acceptTerms, ageConfirmed } = req.body;
       if (!isCred(username) || !isCred(password)) return res.status(400).json({ error: "username and password must be non-empty strings" });
       if (username.length < 3)   return res.status(400).json({ error: "username must be 3+ chars" });
       if (password.length < 6)   return res.status(400).json({ error: "password must be 6+ chars" });
+      if (!ticked(acceptTerms) || !ticked(ageConfirmed)) {
+        return res.status(400).json({ error: "Agree to the Terms of Service and confirm your age to create an account", code: "TERMS_REQUIRED" });
+      }
       const hash = await bcrypt.hash(password, 12);
-      const user = await R.createUser({ username, passwordHash: hash, email });
+      const user = await R.createUser({ username, passwordHash: hash, email, terms: { version: LEGAL_VERSION, ip: req.ip } });
+      res.locals.trafficUserId = user.id;
       const at   = signAccess({ userId: user.id, username });
       const rt   = signRefresh({ userId: user.id });
       await R.storeRefreshToken(user.id, hashToken(rt), refreshExpiresAt());
       await R.auditLog({ userId: user.id, action: "register", ipAddress: req.ip });
-      res.status(201).json({ accessToken: at, refreshToken: rt, username });
+      res.status(201).json({ accessToken: at, refreshToken: rt, username, legal: legalStatus(LEGAL_VERSION) });
     } catch (err) { next(err); }   // DuplicateUserError carries status 400
   });
 
@@ -44,11 +62,12 @@ export function mountAuthRoutes(app) {
       if (!user || !(await bcrypt.compare(password, user.password_hash)))
         return res.status(401).json({ error: "Invalid credentials" });
       await R.updateLastLogin(user.id);
+      res.locals.trafficUserId = user.id;
       const at = signAccess({ userId: user.id, username: user.username });
       const rt = signRefresh({ userId: user.id });
       await R.storeRefreshToken(user.id, hashToken(rt), refreshExpiresAt());
       await R.auditLog({ userId: user.id, action: "login", ipAddress: req.ip });
-      res.json({ accessToken: at, refreshToken: rt, username: user.username });
+      res.json({ accessToken: at, refreshToken: rt, username: user.username, legal: legalStatus(user.terms_version) });
     } catch (err) { next(err); }
   });
 
@@ -111,7 +130,26 @@ export function mountAuthRoutes(app) {
         profile     = { ...user, stats };
         await cache.set(ck, profile, 60);
       }
-      res.json(profile);
+      // legal is worked out per response, not cached: `current` must be the
+      // running LEGAL_VERSION even in the minute after a release bumps it.
+      const { terms_version, ...rest } = profile;
+      res.json({ ...rest, legal: legalStatus(terms_version) });
+    } catch (err) { next(err); }
+  });
+
+  /* v21.30: re-acceptance after LEGAL_VERSION changes. The client echoes the
+     version it showed, so an acceptance can never be recorded for a text the
+     user did not see (a tab left open across a version bump gets a 400). */
+  app.post("/api/auth/accept-terms", requireAuth, async (req, res, next) => {
+    try {
+      if (req.body?.version !== LEGAL_VERSION) {
+        return res.status(400).json({ error: "Accept the current Terms of Service and Privacy Notice", code: "TERMS_REQUIRED", current: LEGAL_VERSION });
+      }
+      if (!(await R.recordTermsAcceptance(req.user.userId, { version: LEGAL_VERSION, ip: req.ip }))) {
+        return res.status(404).json({ error: "Not found" });
+      }
+      await cache.del(`user:${req.user.userId}:profile`);
+      res.json({ success: true, legal: legalStatus(LEGAL_VERSION) });
     } catch (err) { next(err); }
   });
 }

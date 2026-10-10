@@ -27,11 +27,13 @@ export const isUniqueViolation = (err) =>
   /unique constraint|UNIQUE constraint failed/i.test(err?.message || "") ||  // SQLite
   /SQLITE_CONSTRAINT/i.test(err?.rawCode || err?.code || "");
 
-export async function createUser({ username, passwordHash, email }) {
-  const id = uuid();
+/* terms (v21.30): { version, ip } of the Terms/Privacy acceptance given at
+   sign-up — written in the same INSERT, so no account exists without it. */
+export async function createUser({ username, passwordHash, email, terms }) {
+  const id = uuid(), t = now();
   try {
-    await query(`INSERT INTO users (id,username,password_hash,email,created_at) VALUES ($1,$2,$3,$4,$5)`,
-      [id, username, passwordHash, email||null, now()]);
+    await query(`INSERT INTO users (id,username,password_hash,email,created_at,terms_version,terms_accepted_at,terms_accepted_ip) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, username, passwordHash, email||null, t, terms?.version||null, terms ? t : null, terms?.ip||null]);
   } catch (err) {
     // v16 BUG FIX (found the moment integration tests started hitting the real
     // app): a duplicate username surfaced as a raw SQL error and fell through
@@ -48,8 +50,14 @@ export async function findUserByUsername(u) {
   return r[0]||null;
 }
 export async function findUserById(id) {
-  const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1`, [id]);
+  const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login,terms_version FROM users WHERE id=$1`, [id]);
   return r[0]||null;
+}
+/** v21.30: a re-acceptance of the current Terms/Privacy version. False when the user no longer exists. */
+export async function recordTermsAcceptance(id, { version, ip }) {
+  const r = await query(`UPDATE users SET terms_version=$1,terms_accepted_at=$2,terms_accepted_ip=$3 WHERE id=$4 RETURNING id`,
+    [version, now(), ip||null, id]);
+  return r.length === 1;
 }
 /** Like findUserById but honours the ban flag — refresh must not resurrect a
  *  deactivated user (login already filters on is_active!=0). */

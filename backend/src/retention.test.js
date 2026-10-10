@@ -4,7 +4,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { RETENTION_DEFAULTS, retentionDays, cutoffFor, retentionJobNames } from "./services/retention.js";
+import { RETENTION_DEFAULTS, retentionDays, cutoffFor, retentionJobNames, trafficLogDays } from "./services/retention.js";
 
 describe("retention settings", () => {
   test("the defaults are the periods the Privacy Notice states", () => {
@@ -16,6 +16,7 @@ describe("retention settings", () => {
       AUDIT_RETENTION_DAYS: 365,
       ACTIVITY_RETENTION_DAYS: 365,
       PRIVACY_REQUEST_RETENTION_DAYS: 1095,
+      TRAFFIC_LOG_RETENTION_DAYS: 90,
     });
   });
 
@@ -35,6 +36,14 @@ describe("retention settings", () => {
     }
   });
 
+  test("the traffic log is kept at least 90 days (Computer-Related Crime Act s.26), longer if set", () => {
+    assert.equal(trafficLogDays({}), 90);
+    assert.equal(trafficLogDays({ TRAFFIC_LOG_RETENTION_DAYS: "30" }), 90);
+    assert.equal(trafficLogDays({ TRAFFIC_LOG_RETENTION_DAYS: "89" }), 90);
+    assert.equal(trafficLogDays({ TRAFFIC_LOG_RETENTION_DAYS: "730" }), 730);
+    assert.equal(trafficLogDays({ TRAFFIC_LOG_RETENTION_DAYS: "abc" }), 90);
+  });
+
   test("cutoffFor is exactly N days before now, as ISO text", () => {
     const now = Date.parse("2026-10-10T00:00:00.000Z");
     assert.equal(cutoffFor(30, now), "2026-09-10T00:00:00.000Z");
@@ -42,7 +51,7 @@ describe("retention settings", () => {
   });
 
   test("every retention job is registered", () => {
-    for (const name of ["trash", "datasets", "analyses", "telemetry", "audit", "activity", "notifications", "privacy-requests"]) {
+    for (const name of ["trash", "datasets", "analyses", "telemetry", "audit", "activity", "notifications", "privacy-requests", "traffic-log"]) {
       assert.ok(retentionJobNames().includes(name), name);
     }
   });

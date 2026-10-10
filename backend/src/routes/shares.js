@@ -17,6 +17,7 @@ export function mountShareRoutes(app) {
       const passwordHash = password ? await bcrypt.hash(password, 10) : null;
       const expiresAt    = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
       const share = await R.createSharedReport({ analysisId: req.params.id, userId: req.user.userId, title, passwordHash, expiresAt });
+      res.locals.trafficRef = share.id;   // v21.30: traffic log ref — the link's id, never its token
       const shareUrl = `${req.protocol}://${req.get("host")}/share/${share.token}`;
       res.status(201).json({ ...share, shareUrl });
     } catch (err) { next(err); }
@@ -45,6 +46,7 @@ export function mountShareRoutes(app) {
         if (!password || !(await bcrypt.compare(password, report.password_hash)))
           return res.status(401).json({ error: "Password required", passwordProtected: true });
       }
+      res.locals.trafficRef = report.id;   // v21.30: traffic log ref — the link's id, never its token
       await R.incrementShareViewCount(req.params.token);
       const data = { ...report };
       /* getSharedReport does SELECT sr.*, so the row carries every column of

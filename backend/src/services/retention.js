@@ -19,6 +19,9 @@
  *   privacy-requests   privacy_requests rows (services/privacyRequests.js)
  *              older than PRIVACY_REQUEST_RETENTION_DAYS — 3 years, long
  *              enough to show a request was handled, then gone
+ *   traffic-log   traffic_log rows (services/trafficLog.js) older than
+ *              TRAFFIC_LOG_RETENTION_DAYS — 90, the Computer-Related Crime
+ *              Act s.26 minimum, which is also a floor for the setting
  *
  * Datasets and analyses go through the same cascades as a user's own delete,
  * so expiry is as complete as erasure. The registry is open: later modules
@@ -44,6 +47,7 @@ export const RETENTION_DEFAULTS = Object.freeze({
   AUDIT_RETENTION_DAYS:     365,
   ACTIVITY_RETENTION_DAYS:  365,
   PRIVACY_REQUEST_RETENTION_DAYS: 1095,
+  TRAFFIC_LOG_RETENTION_DAYS: 90,
 });
 
 /**
@@ -58,6 +62,16 @@ export function retentionDays(name, env = process.env, fallback = RETENTION_DEFA
   if (Number.isInteger(n) && n > 0) return n;
   log.warn({ setting: name, fallback }, "retention period must be a positive whole number of days — using the default");
   return fallback;
+}
+
+/* s.26 makes 90 days a minimum, not just a default: the traffic log may be
+   kept longer (an official order can ask for up to 2 years), never shorter. */
+export const TRAFFIC_LOG_MIN_DAYS = 90;
+export function trafficLogDays(env = process.env) {
+  const days = retentionDays("TRAFFIC_LOG_RETENTION_DAYS", env);
+  if (days >= TRAFFIC_LOG_MIN_DAYS) return days;
+  log.warn({ setting: "TRAFFIC_LOG_RETENTION_DAYS", minimum: TRAFFIC_LOG_MIN_DAYS }, "the traffic log must be kept at least 90 days — using 90");
+  return TRAFFIC_LOG_MIN_DAYS;
 }
 
 /** ISO time `days` before `now`: anything older is past retention. */
@@ -136,6 +150,7 @@ registerRetentionJob("audit",         (ctx) => deleteOlderThan("audit_log",     
 registerRetentionJob("activity",      (ctx) => deleteOlderThan("activity_feed",   cutoffOf("ACTIVITY_RETENTION_DAYS", ctx)));
 registerRetentionJob("notifications", (ctx) => deleteOlderThan("notifications",   cutoffOf("ACTIVITY_RETENTION_DAYS", ctx)));
 registerRetentionJob("privacy-requests", (ctx) => deleteOlderThan("privacy_requests", cutoffOf("PRIVACY_REQUEST_RETENTION_DAYS", ctx)));
+registerRetentionJob("traffic-log",   ({ now, env }) => deleteOlderThan("traffic_log", cutoffFor(trafficLogDays(env), now)));
 
 let started = false;
 
@@ -145,6 +160,7 @@ export function startRetention({ delayMs = 60_000 } = {}) {
   started = true;
   // Read every setting now so a bad value is reported at boot, not first at 03:17.
   for (const name of Object.keys(RETENTION_DEFAULTS)) retentionDays(name);
+  trafficLogDays();
   const run = () => runRetention().catch((err) => log.error({ error: err.message }, "retention run failed"));
   cron.schedule("17 3 * * *", run, { timezone: "Asia/Bangkok" });
   setTimeout(run, delayMs).unref();

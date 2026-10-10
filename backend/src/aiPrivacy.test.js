@@ -12,7 +12,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 import { mockRequests } from "./services/aiClient.js";
 import * as R from "./db/repository.js";
 
@@ -44,7 +44,7 @@ const uploadPII = (req) => req.attach("file", Buffer.from(PII_CSV), "customers.c
 before(async () => {
   agent = request(await buildApp());
   for (const [k, name] of Object.entries(NAME)) {
-    tok[k] = (await agent.post("/api/auth/register").send({ username: name, password: "Test1234!" })).body.accessToken;
+    tok[k] = (await agent.post("/api/auth/register").send({ username: name, password: "Test1234!", ...TERMS })).body.accessToken;
     assert.ok(tok[k], `could not register ${k}`);
   }
 });

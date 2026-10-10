@@ -9,6 +9,7 @@ import ErrorBoundary from "./components/errors";
 import CommandPalette, { firePaletteAction } from "./components/palette";
 import PerfOverlay from "./components/perf";
 import Dashboard from "./components/dashboard";
+import LegalGate from "./components/legal";   // v21.30: blocks until the current Terms/Privacy version is accepted
 
 // v11: pages load lazily — the first paint ships only the dashboard
 const WorkspacePanel = lazy(() => import("./components/workspace"));
@@ -210,6 +211,7 @@ function Shell() {
           </a>
         </div>
       </footer>
+      <LegalGate/>
       <CommandPalette/>
       <ShortcutsHelp/>
       <Toasts/>

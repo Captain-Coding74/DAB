@@ -18,8 +18,8 @@ export function canDelete({ typed, username, password }) {
     && typeof password === "string" && password.length > 0;
 }
 
-/** The accepted Terms/Privacy version when GET /api/auth/me reports one (`legal_version`); else null. */
-export const acceptedLegalVersion = (profile) => profile?.legal_version || null;
+/** The accepted Terms/Privacy version from GET /api/auth/me's `legal: { accepted, current }`; null if none. */
+export const acceptedLegalVersion = (profile) => profile?.legal?.accepted || null;
 
 /**
  * The file name the server chose (Content-Disposition), else the fallback.

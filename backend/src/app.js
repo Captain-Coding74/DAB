@@ -59,6 +59,7 @@ import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
 import { mountTelemetryRoutes } from "./routes/telemetry.js";
 import { startScheduler }        from "./services/scheduler.js";
+import { trafficLog }            from "./services/trafficLog.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
 import { requestMetrics, metricsHandler, requireMetricsAccess, errorHandler } from "./middleware/monitoring.js";
 import { apiLimiter, analyzeLimiter, authLimiter, speedLimiter } from "./middleware/rateLimiter.js";
@@ -117,6 +118,10 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(httpLogger);
   app.use(requestMetrics);
+  // v21.30: the Computer-Related Crime Act s.26 traffic log — one middleware
+  // that records the listed events after a successful response
+  // (services/trafficLog.js), instead of a write in every route.
+  app.use(trafficLog());
 
   // v9 fix: apiLimiter was imported but never mounted in v7/v8, so general
   // API routes had NO rate limiting at all. Now every /api route gets the

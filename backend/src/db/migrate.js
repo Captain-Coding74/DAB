@@ -224,6 +224,13 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS privacy_requests (id TEXT PRIMARY KEY, subject_hash TEXT NOT NULL, type TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, completed_at TEXT, note TEXT)`,
   `CREATE INDEX IF NOT EXISTS idx_privreq_created      ON privacy_requests(created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_privreq_subject      ON privacy_requests(subject_hash)`,
+
+  // v21.30: the computer traffic log (services/trafficLog.js) — Computer-
+  // Related Crime Act s.26. What happened, who, from which IP, when, and an
+  // optional id of the thing acted on; never content, a filename or a share
+  // token. Kept 90 days by the retention job, which deletes by created_at.
+  `CREATE TABLE IF NOT EXISTS traffic_log (id TEXT PRIMARY KEY, event TEXT NOT NULL, user_id TEXT, ip TEXT, ref TEXT, created_at TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS idx_traffic_created      ON traffic_log(created_at)`,
 ];
 
 /**
@@ -251,6 +258,12 @@ const ADDITIVE = [
   // authority to save a class roster (services/schoolRoster.js).
   { table: "datasets",         column: "last_used_at",       type: "TEXT" },
   { table: "datasets",         column: "school_attested_at", type: "TEXT" },
+  // v21.30: click-wrap. Which Terms/Privacy version (services/legal.js) the
+  // user accepted, when, and from which IP. NULL on accounts from before this
+  // release: the SPA asks those users to accept before carrying on.
+  { table: "users",            column: "terms_version",      type: "TEXT" },
+  { table: "users",            column: "terms_accepted_at",  type: "TEXT" },
+  { table: "users",            column: "terms_accepted_ip",  type: "TEXT" },
 ];
 
 /**

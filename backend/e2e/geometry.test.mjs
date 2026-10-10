@@ -89,7 +89,7 @@ before(async () => {
   username = `geo_${Date.now()}`;
   const reg = await fetch(`${BASE}/api/auth/register`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password: "geometry123" }),
+    body: JSON.stringify({ username, password: "geometry123", acceptTerms: true, ageConfirmed: true }),
   });
   assert.ok(reg.ok, "register failed");
   ({ accessToken: token, refreshToken } = await reg.json());

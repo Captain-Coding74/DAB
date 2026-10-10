@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 import { query } from "./db/pool.js";
 import { migrate } from "./db/migrate.js";
 import * as storage from "./services/storage.js";
@@ -36,7 +36,7 @@ const count = async (sql, args) => Number((await query(sql, args))[0].n);
 
 async function register(who) {
   const username = `dl_${who}_${u}`;
-  const res = await agent.post("/api/auth/register").send({ username, password: "Test1234!" });
+  const res = await agent.post("/api/auth/register").send({ username, password: "Test1234!", ...TERMS });
   assert.ok(res.body.accessToken, `could not register ${who}: ${JSON.stringify(res.body).slice(0, 120)}`);
   tok[who] = res.body.accessToken;
   ids[who] = (await query(`SELECT id FROM users WHERE username=$1`, [username]))[0].id;

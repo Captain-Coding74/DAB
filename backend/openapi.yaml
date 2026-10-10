@@ -56,6 +56,18 @@ components:
           description: Opaque refresh token (expires in 7d)
         username:
           type: string
+        legal: { $ref: "#/components/schemas/LegalStatus" }
+
+    LegalStatus:
+      type: object
+      description: >
+        v21.30 click-wrap. `current` is the version of the Terms of Service
+        and Privacy Notice in force; `accepted` is the one this user agreed
+        to (null for an account from before click-wrap). When they differ
+        the app asks the user to accept again (POST /api/auth/accept-terms).
+      properties:
+        accepted: { type: string, nullable: true, example: "2026-10-10" }
+        current:  { type: string, example: "2026-10-10" }
 
     ColStat:
       type: object
@@ -186,19 +198,27 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [username, password, acceptTerms, ageConfirmed]
               properties:
                 username: { type: string, minLength: 3, example: captain }
                 password: { type: string, minLength: 6, example: secret123 }
                 email:    { type: string, format: email, example: captain@example.com }
+                acceptTerms:
+                  type: boolean
+                  description: Agrees to the Terms of Service and has read the Privacy Notice (true or "true")
+                  example: true
+                ageConfirmed:
+                  type: boolean
+                  description: At least 18 years old, and if under 20 a parent or guardian agrees (true or "true")
+                  example: true
       responses:
         "201":
-          description: User created
+          description: User created; the accepted version, time and IP are recorded
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TokenPair" }
         "400":
-          description: Validation error or username taken
+          description: Validation error, username taken, or `TERMS_REQUIRED` (a box not ticked)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -302,6 +322,7 @@ paths:
                       total:      { type: integer }
                       total_rows: { type: integer }
                       avg_ms:     { type: number }
+                  legal: { $ref: "#/components/schemas/LegalStatus" }
     delete:
       tags: [Auth]
       summary: Delete my account (v21.30)
@@ -328,6 +349,37 @@ paths:
         "400": { description: "`PASSWORD_REQUIRED` — no password in the body" }
         "401": { description: Wrong password }
         "429": { description: Too many account requests }
+
+  /api/auth/accept-terms:
+    post:
+      tags: [Auth]
+      summary: Accept the current Terms of Service and Privacy Notice (v21.30)
+      description: >
+        Records the version, the time and the IP. `version` must be the
+        current one (LegalStatus.current) — a client still showing an older
+        text gets a 400.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string, example: "2026-10-10" }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  legal:   { $ref: "#/components/schemas/LegalStatus" }
+        "400": { description: "`TERMS_REQUIRED` — not the current version (the body carries `current`)" }
+        "401": { description: Not signed in }
 
   /api/auth/me/export:
     get:

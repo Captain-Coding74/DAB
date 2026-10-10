@@ -100,15 +100,19 @@ export function Textarea({ label, className, ...props }) {
 }
 
 // ── Modal — v11: focus trap, Esc to close, focus restore, dialog ARIA ──
-export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
+export function Modal({ open, onClose, title, children, width = "max-w-lg", dismissible = true }) {
   const boxRef  = React.useRef(null);
   const prevRef = React.useRef(null);
+  /* v21.30: dismissible={false} is for a question the user must answer (the
+     re-accept-terms gate): no close button, and Esc or a backdrop click do
+     nothing. The focus trap and focus restore are unchanged. */
+  const close = dismissible ? onClose : undefined;
   /* Consumers pass inline arrows for onClose, so its identity changes on every
      parent render (every keystroke in a modal form). With onClose in the deps
      the trap effect re-ran each time and yanked focus back to the X button —
      read the latest handler through a ref so the effect only runs on open. */
-  const onCloseRef = React.useRef(onClose);
-  onCloseRef.current = onClose;
+  const onCloseRef = React.useRef(close);
+  onCloseRef.current = close;
 
   React.useEffect(() => {
     if (!open) return;
@@ -118,7 +122,7 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
     (focusables()[0] || box).focus();
 
     const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current(); }
+      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current?.(); }
       if (e.key === "Tab") {
         const f = focusables(); if (!f.length) return;
         const first = f[0], last = f[f.length - 1];
@@ -132,13 +136,13 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={close}>
       <div className="absolute inset-0 bg-gray-950/50 backdrop-blur-sm"/>
       <div ref={boxRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}
         className={clsx("relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl w-full outline-none", width)} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
           <h2 className="eyebrow !text-[11px]">{title}</h2>
-          <button onClick={onClose} aria-label="ปิดหน้าต่าง" className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"><X size={16} className="text-gray-500 dark:text-gray-400"/></button>
+          {close && <button onClick={close} aria-label="ปิดหน้าต่าง" className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"><X size={16} className="text-gray-500 dark:text-gray-400"/></button>}
         </div>
         <div className="p-5">{children}</div>
       </div>

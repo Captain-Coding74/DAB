@@ -50,11 +50,13 @@ function check(label, cond, extra) {
 
 // 1. Register two users
 const suffix = Date.now().toString(36);
-const r1 = await jpost("/api/auth/register", { username: `alice_smoke_${suffix}`, password: "password123" });
+// v21.30: sign-up requires both click-wrap boxes (TERMS_REQUIRED otherwise).
+const TERMS = { acceptTerms: true, ageConfirmed: true };
+const r1 = await jpost("/api/auth/register", { username: `alice_smoke_${suffix}`, password: "password123", ...TERMS });
 check("register alice", r1.status === 201 && r1.data.accessToken, r1.data);
 const aliceToken = r1.data.accessToken;
 
-const r2 = await jpost("/api/auth/register", { username: `bob_smoke_${suffix}`, password: "password123" });
+const r2 = await jpost("/api/auth/register", { username: `bob_smoke_${suffix}`, password: "password123", ...TERMS });
 check("register bob", r2.status === 201 && r2.data.accessToken, r2.data);
 
 // 2. Create workspace

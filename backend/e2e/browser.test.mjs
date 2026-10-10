@@ -587,7 +587,12 @@ describe("Critical flow: auth", () => {
     // its placeholder rather than input[type=text] (which wouldn't match).
     await page.getByPlaceholder("your_username").fill(username);
     await page.locator('input[type="password"]').first().fill("Test1234!");
-    await page.getByRole("button", { name: "สมัครสมาชิก" }).last().click();
+    // v21.30: "Create account" stays disabled until both click-wrap boxes are ticked.
+    const submit = page.getByRole("button", { name: "สมัครสมาชิก" }).last();
+    assert.ok(await submit.isDisabled(), "sign-up is blocked until the Terms and age boxes are ticked");
+    await page.locator('input[name="acceptTerms"]').check();
+    await page.locator('input[name="ageConfirmed"]').check();
+    await submit.click();
 
     await page.getByText(username).waitFor({ timeout: 20_000 });
     assert.ok(await page.getByText(username).isVisible(), "registered user shown in nav");

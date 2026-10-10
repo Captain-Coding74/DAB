@@ -28,7 +28,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 
 const RANK = { public: 0, any: 1, viewer: 2, editor: 3, owner: 4 };
 
@@ -90,7 +90,7 @@ describe("permission matrix", () => {
     app = await buildApp();
 
     const reg = async (u) =>
-      (await request(app).post("/api/auth/register").send({ username: u, password: "password123" })).body;
+      (await request(app).post("/api/auth/register").send({ username: u, password: "password123", ...TERMS })).body;
 
     /* Unique per run. Fixed names made the suite pass once and fail forever
        after: the second run found pm_owner already registered, got no token

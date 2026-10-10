@@ -6,8 +6,10 @@
  *     analyses and chat included, no password or token hash anywhere — with a
  *     download path for each saved original file (owner only).
  *   • DELETE /api/auth/me needs the password, then leaves no row in any table
- *     that carries the user id, hands owned workspaces on (admin, else member,
- *     else the workspace goes), and leaves every other account's data alone.
+ *     that carries the user id — except the traffic log, a legal record kept
+ *     until its own 90-day retention ends — hands owned workspaces on (admin,
+ *     else member, else the workspace goes), and leaves every other account's
+ *     data alone.
  *   • Both are logged in privacy_requests under sha256(user id), which the
  *     retention job keeps for 3 years.
  */
@@ -16,10 +18,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 import { query } from "./db/pool.js";
 import * as storage from "./services/storage.js";
 import { runRetention } from "./services/retention.js";
+import { trafficSettled } from "./services/trafficLog.js";
 import { eraseAccount, ERASED_USER } from "./db/accountErase.js";
 
 const SALES = fs.readFileSync(new URL("../sample-data/sales.csv", import.meta.url));
@@ -37,7 +40,7 @@ const count = async (sql, args) => Number((await one(sql, args)).n);
 
 async function register(who) {
   name[who] = `ar_${who}_${u}`;
-  const res = await agent.post("/api/auth/register").send({ username: name[who], password: PASSWORD });
+  const res = await agent.post("/api/auth/register").send({ username: name[who], password: PASSWORD, ...TERMS });
   assert.ok(res.body.accessToken, `could not register ${who}`);
   tok[who] = res.body.accessToken;
   id[who] = (await one(`SELECT id FROM users WHERE username=$1`, [name[who]])).id;
@@ -55,10 +58,13 @@ async function workspace(label, members) {
 
 const upload = (who, file = "sales.csv") => as(agent.post("/api/datasets"), who).attach("file", SALES, file);
 
-/** Every row, in every table, holding this value in any column — exact or embedded. */
+/** Every row, in every table, holding this value in any column — exact or embedded.
+ *  traffic_log is left out on purpose: erasure keeps it (Computer-Related
+ *  Crime Act s.26) until retention deletes it — asserted separately below. */
 async function rowsHolding(value) {
   const found = {};
-  for (const { name: table } of await query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)) {
+  await trafficSettled();
+  for (const { name: table } of await query(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'traffic_log'`)) {
     for (const { name: col } of await query(`PRAGMA table_info(${table})`)) {
       const n = await count(`SELECT COUNT(*) AS n FROM ${table} WHERE CAST(${col} AS TEXT) LIKE $1`, [`%${value}%`]);
       if (n) found[`${table}.${col}`] = n;
@@ -222,6 +228,12 @@ describe("DELETE /api/auth/me", () => {
     for (const k of fx.keys) assert.equal(await storage.exists(k), false, "stored file deleted");
     assert.equal(await count(`SELECT COUNT(*) AS n FROM notifications WHERE title LIKE $1`, [`%${name.a}%`]), 0);
     assert.equal(await count(`SELECT COUNT(*) AS n FROM activity_feed WHERE metadata LIKE $1`, [`%${name.a}%`]), 0);
+  });
+
+  test("the traffic log is kept: it still records the account, its deletion included", async () => {
+    await trafficSettled();
+    const events = (await query(`SELECT event FROM traffic_log WHERE user_id=$1`, [id.a])).map((r) => r.event);
+    for (const e of ["register", "dataset_upload", "account_delete"]) assert.ok(events.includes(e), e);
   });
 
   test("owned workspaces pass to the earliest admin, else member; with only a viewer left it is deleted", async () => {

@@ -19,7 +19,7 @@
 import { test, before, after, describe } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 
 let app, agent;
 let accessToken, refreshToken;
@@ -59,7 +59,7 @@ function makeXlsxBuffer() {
 // ─────────────────────────────────────────────────────────
 describe("POST /api/auth/register", () => {
   test("creates a new user and returns tokens", async () => {
-    const res = await agent.post("/api/auth/register").send(testUser);
+    const res = await agent.post("/api/auth/register").send({ ...testUser, ...TERMS });
     assert.equal(res.status, 201);
     assert.ok(res.body.accessToken,  "should have accessToken");
     assert.ok(res.body.refreshToken, "should have refreshToken");
@@ -69,18 +69,18 @@ describe("POST /api/auth/register", () => {
   });
 
   test("rejects duplicate username", async () => {
-    const res = await agent.post("/api/auth/register").send(testUser);
+    const res = await agent.post("/api/auth/register").send({ ...testUser, ...TERMS });
     assert.equal(res.status, 400);
     assert.ok(res.body.error, "should have error message");
   });
 
   test("rejects short password", async () => {
-    const res = await agent.post("/api/auth/register").send({ username: "newuser", password: "123" });
+    const res = await agent.post("/api/auth/register").send({ username: "newuser", password: "123", ...TERMS });
     assert.equal(res.status, 400);
   });
 
   test("rejects short username", async () => {
-    const res = await agent.post("/api/auth/register").send({ username: "ab", password: "validpass" });
+    const res = await agent.post("/api/auth/register").send({ username: "ab", password: "validpass", ...TERMS });
     assert.equal(res.status, 400);
   });
 });

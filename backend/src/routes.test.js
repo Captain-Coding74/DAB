@@ -12,7 +12,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 
 let agent, token, otherToken, datasetId;
 const user  = { username: `owner_${Date.now()}`,  password: "Test1234!" };
@@ -23,8 +23,8 @@ const upload = (name = "d.csv") => ({ field: "file", buf: Buffer.from(CSV), name
 
 before(async () => {
   agent = request(await buildApp());
-  token      = (await agent.post("/api/auth/register").send(user)).body.accessToken;
-  otherToken = (await agent.post("/api/auth/register").send(other)).body.accessToken;
+  token      = (await agent.post("/api/auth/register").send({ ...user, ...TERMS })).body.accessToken;
+  otherToken = (await agent.post("/api/auth/register").send({ ...other, ...TERMS })).body.accessToken;
 });
 after(async () => { await closeApp(); });
 

@@ -96,7 +96,8 @@ describe("downloads", () => {
   });
 
   test("the accepted legal version shows only when the profile carries one", () => {
-    assert.equal(acceptedLegalVersion({ legal_version: "2026-10-10" }), "2026-10-10");
+    assert.equal(acceptedLegalVersion({ legal: { accepted: "2026-10-10", current: "2026-10-10" } }), "2026-10-10");
+    assert.equal(acceptedLegalVersion({ legal: { accepted: null, current: "2026-10-10" } }), null);
     assert.equal(acceptedLegalVersion({}), null);
     assert.equal(acceptedLegalVersion(null), null);
   });

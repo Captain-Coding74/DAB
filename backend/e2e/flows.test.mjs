@@ -200,7 +200,8 @@ describe("E2E · Journey A — anonymous: upload → analyze → export", () => 
 
 // ─────────────────────────────────────────────────────────
 describe("E2E · Journey B — registered: analyze → share → history → delete", () => {
-  const user = { username: `e2e_${Date.now()}`, password: "e2e-password-123" };
+  // v21.30: sign-up requires both click-wrap boxes (TERMS_REQUIRED otherwise).
+  const user = { username: `e2e_${Date.now()}`, password: "e2e-password-123", acceptTerms: true, ageConfirmed: true };
   let token, savedId, shareToken;
 
   test("register issues tokens", async () => {
@@ -272,7 +273,7 @@ describe("E2E · Journey B — registered: analyze → share → history → del
 
 // ─────────────────────────────────────────────────────────
 describe("E2E · Journey C — intelligence: chat + deep-dive agent", () => {
-  const user = { username: `e2e_ai_${Date.now()}`, password: "e2e-password-123" };
+  const user = { username: `e2e_ai_${Date.now()}`, password: "e2e-password-123", acceptTerms: true, ageConfirmed: true };
   let token, savedId;
 
   test("setup: register + analyze", async () => {

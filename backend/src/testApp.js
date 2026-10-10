@@ -19,6 +19,9 @@ import { initPool, closePool } from "./db/pool.js";
 import { migrate }             from "./db/migrate.js";
 import { initCache, cache }    from "./services/cache.js";
 
+/** v21.30: sign-up requires both click-wrap boxes (TERMS_REQUIRED otherwise) — spread into every register body. */
+export const TERMS = Object.freeze({ acceptTerms: true, ageConfirmed: true });
+
 export async function buildApp() {
   // In-process tests use SQLite, never a real Postgres URL.
   delete process.env.DATABASE_URL;
