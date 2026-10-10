@@ -81,7 +81,7 @@ What DAB does with data is set out in its public notices, served by the app itse
 
 - `/privacy` — Privacy Notice: what is collected, what the AI sees, how long things are kept, and how to use your rights
 - `/terms` — Terms of Service
-- [`docs/privacy/README.md`](docs/privacy/README.md) — the operator's back-office privacy documents
+- [`docs/privacy/README.md`](docs/privacy/README.md) — the operator's back-office privacy documents: records of processing (as controller and as processor), legitimate-interest assessments, the retention schedule, the breach plan, the data-request procedure, the vendor register, the DPO assessment, the evidence behind each public claim, and the owner's to-do list. Drafts for review by a Thai data-protection lawyer, not legal advice
 
 In short: try mode (signed out) reads a file in memory and stores none of its contents. Signed in, analyses go to History, and the original file is stored only when the user presses Save. The AI (Anthropic's Claude API) gets the question, column names and statistics, not raw rows — the one exception is an AI Edit the user explicitly confirms — and nothing from columns detected as personal data beyond their name and kind. Users can download their data or delete their account at `/account`. The notices name the operator from `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS`; set them in production.
 
