@@ -12,6 +12,7 @@ import { migrate }             from "./db/migrate.js";
 import { initCache, cache }    from "./services/cache.js";
 import { startScheduler }      from "./services/scheduler.js";
 import { logger, serviceLogger } from "./logger.js";
+import { warnMissingLegalContacts } from "./legalPages.js";
 
 /** Plain, un-decorated output: this is guidance for a human, not a log record. */
 const say = (...lines) => lines.forEach(l => process.stderr.write(l + "\n"));
@@ -44,6 +45,9 @@ try {
   }
   process.exit(1);
 }
+
+// v21.30: the Privacy Notice must name a way to reach the controller (PDPA s.23).
+warnMissingLegalContacts();
 
 const server = app.listen(PORT, () => {
   svcLog.info({ port: PORT }, "started");

@@ -37,6 +37,7 @@ export const STRINGS = {
   // Format names, not words — identical in both languages by design.
   "upload.hint":        { en: "CSV / Excel",        th: "CSV / Excel", sameInBoth: true },
   "upload.trySample":   { en: "Try a sample file",  th: "ลองไฟล์ตัวอย่าง" },
+  "upload.howWeHandle": { en: "How we handle your file", th: "เราจัดการไฟล์ของคุณอย่างไร" },
 
   // ── the readout strip ──
   "stat.rows":          { en: "ROWS",               th: "แถว" },
@@ -124,6 +125,10 @@ export const STRINGS = {
   // ── legal links — shared by every page that links the notices ──
   "legal.privacy":      { en: "Privacy",            th: "ความเป็นส่วนตัว" },
   "legal.terms":        { en: "Terms",              th: "ข้อกำหนดการใช้งาน" },
+  "legal.storage":      { en: "Storage",            th: "การจัดเก็บในเบราว์เซอร์" },
+  "legal.contact":      { en: "Contact",            th: "ติดต่อ" },
+  "legal.licences":     { en: "Licences",           th: "สัญญาอนุญาต" },
+  "legal.nav":          { en: "Legal",              th: "ข้อมูลทางกฎหมาย" },
 
   // ── common ──
   "common.cancel":      { en: "Cancel",             th: "ยกเลิก" },

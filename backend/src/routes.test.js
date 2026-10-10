@@ -820,3 +820,99 @@ describe("Public landing page (v20.4.1)", () => {
     assert.equal(res.body.version, pkg.version, "health version === package.json version");
   });
 });
+
+describe("Legal pages (v21.30)", () => {
+  const LEGAL_ENV = ["LEGAL_OPERATOR_NAME", "LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS",
+                     "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION"];
+  /** Run fn with exactly these LEGAL_* values (a developer's .env must not leak in), then restore. */
+  async function withLegalEnv(values, fn) {
+    const saved = Object.fromEntries(LEGAL_ENV.map((k) => [k, process.env[k]]));
+    for (const k of LEGAL_ENV) { if (k in values) process.env[k] = values[k]; else delete process.env[k]; }
+    try { return await fn(); }
+    finally { for (const k of LEGAL_ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } }
+  }
+
+  // Key headings in both languages — the Thai text is the one that prevails.
+  const PAGES = {
+    "/privacy":  ["Privacy Notice", "ประกาศความเป็นส่วนตัว", "AI analysis by Anthropic", "การวิเคราะห์ด้วย AI โดย Anthropic", "Your rights", "สิทธิของคุณ"],
+    "/terms":    ["Terms of Service", "ข้อกำหนดการใช้งาน", "Disclaimers and liability", "ข้อจำกัดความรับผิด", "the Thai version prevails", "ให้ถือฉบับภาษาไทยเป็นหลัก"],
+    "/storage":  ["Storage notice", "ประกาศการจัดเก็บข้อมูลในเบราว์เซอร์", "How to clear it", "วิธีล้างข้อมูล"],
+    "/contact":  ["Requests about your personal data", "คำขอเกี่ยวกับข้อมูลส่วนบุคคล", "Report a shared page", "แจ้งปัญหาหน้าที่แชร์"],
+    "/licenses": ["Third-party licences", "สัญญาอนุญาตของบุคคลที่สาม"],
+  };
+
+  test("every page is served, in both languages, with no unresolved placeholder", async () => {
+    await withLegalEnv({}, async () => {
+      for (const [url, headings] of Object.entries(PAGES)) {
+        const res = await agent.get(url);
+        assert.equal(res.status, 200, url);
+        assert.match(res.headers["content-type"], /text\/html/, url);
+        for (const h of headings) assert.ok(res.text.includes(h), `${url}: "${h}"`);
+        assert.ok(!res.text.includes("{{"), `${url} has an unresolved placeholder`);
+        assert.ok(res.text.includes('<body data-lang="en">'), `${url}: English is the default`);
+      }
+    });
+  });
+
+  test("operator details are filled in from the environment and HTML-escaped", async () => {
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "privacy@example.com", LEGAL_POSTAL_ADDRESS: '12 <b>Soi</b> & "Road"',
+                         LEGAL_HOSTING_PROVIDER: "Host <i>Co</i>", LEGAL_HOSTING_REGION: "Singapore" }, async () => {
+      const privacy = (await agent.get("/privacy")).text;
+      assert.ok(privacy.includes('<a href="mailto:privacy@example.com">privacy@example.com</a>'));
+      assert.ok(privacy.includes("12 &lt;b&gt;Soi&lt;/b&gt; &amp; &quot;Road&quot;"));
+      assert.ok(!privacy.includes("<b>Soi</b>"), "address markup was injected");
+      assert.ok(privacy.includes("Host &lt;i&gt;Co&lt;/i&gt;") && privacy.includes("Singapore"));
+      assert.ok(privacy.includes("Phatcharaphong Siriphatcharakul"), "default operator name");
+      assert.ok(!privacy.includes("being set up"), "no fallback once everything is configured");
+      const { LEGAL_VERSION } = await import("./services/legal.js");
+      assert.ok(privacy.includes(`Version ${LEGAL_VERSION}`));
+      assert.ok((await agent.get("/contact")).text.includes("mailto:privacy@example.com"));
+    });
+  });
+
+  test("missing contact details show a visible notice, never an empty mailto", async () => {
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "" }, async () => {
+      for (const url of ["/privacy", "/terms", "/contact"]) {
+        const html = (await agent.get(url)).text;
+        assert.ok(!html.includes("mailto:"), `${url}: empty mailto`);
+        assert.ok(html.includes("Contact details are being set up"), `${url}: EN fallback`);
+        assert.ok(html.includes("กำลังตั้งค่าข้อมูลติดต่อ"), `${url}: TH fallback`);
+      }
+    });
+  });
+
+  test("?lang=th serves the Thai version without JavaScript", async () => {
+    const res = await agent.get("/terms?lang=th");
+    assert.ok(res.text.includes('<html lang="th">') && res.text.includes('<body data-lang="th">'));
+  });
+
+  test("the .html file names redirect, so raw templates are never served", async () => {
+    for (const name of ["privacy", "terms", "storage", "contact", "licenses"]) {
+      const res = await agent.get(`/${name}.html`);
+      assert.equal(res.status, 301, name);
+      assert.equal(res.headers.location, `/${name}`);
+    }
+  });
+
+  test("GET /api/legal returns legalInfo()", async () => {
+    const { legalInfo } = await import("./services/legal.js");
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "a@b.th" }, async () => {
+      const res = await agent.get("/api/legal");
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, legalInfo());
+      assert.equal(res.body.contactEmail, "a@b.th");
+      assert.equal(res.body.postalAddress, "");
+    });
+  });
+
+  test("the landing footer links all five legal pages, in both languages", async () => {
+    const html = (await agent.get("/welcome")).text;
+    for (const href of ["/privacy", "/terms", "/storage", "/contact", "/licenses"]) {
+      assert.ok(html.includes(`href="${href}"`), `landing footer links ${href}`);
+    }
+    const js = (await agent.get("/landing.js")).text;
+    for (const key of ["lgPrivacy", "lgTerms", "lgStorage", "lgContact", "lgLicences"]) {
+      assert.equal(js.split(`${key}:`).length - 1, 2, `${key} has a Thai and an English label`);
+    }
+  });
+});

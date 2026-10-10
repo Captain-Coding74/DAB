@@ -117,7 +117,7 @@ const backend = run("backend", join(ROOT, "backend"),
      in-process test" despite having passing tests, and the uncounted-files
      budget drifted upward for no real reason. Kept in sync by hand for now;
      the budget failing is the signal to update both. */
-  `${TEST_ENV} node ${COV_FLAGS} src/stats.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js src/shareView.test.js src/logRedaction.test.js src/integration.test.js src/routes.test.js src/shares.test.js`);
+  `${TEST_ENV} node ${COV_FLAGS} src/stats.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js src/shareView.test.js src/logRedaction.test.js src/legalPages.test.js src/integration.test.js src/routes.test.js src/shares.test.js`);
 
 const frontend = run("frontend", join(ROOT, "frontend"),
   `node ${COV_FLAGS} src/lib/api.test.js src/lib/grade.test.js`);

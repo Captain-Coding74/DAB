@@ -493,3 +493,27 @@ paths:
                   db:      { type: string, example: sqlite, description: Active DB backend (postgres | sqlite) }
                   cache:   { type: string, example: memory, description: Active cache backend (redis | memory) }
                   ts:      { type: string, format: date-time }
+
+  /api/legal:
+    get:
+      tags: [System]
+      summary: Legal document version and operator contact details (v21.30)
+      description: |
+        The version shared by the Terms of Service and the Privacy Notice, and
+        the operator details the legal pages print (/privacy, /terms, /storage,
+        /contact, /licenses). Values come from LEGAL_* environment variables;
+        an unset one is an empty string.
+      responses:
+        "200":
+          description: Current legal version and operator identity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:         { type: string, example: "2026-10-10" }
+                  operatorName:    { type: string }
+                  contactEmail:    { type: string, description: Empty until LEGAL_CONTACT_EMAIL is set }
+                  postalAddress:   { type: string, description: Empty until LEGAL_POSTAL_ADDRESS is set }
+                  hostingProvider: { type: string }
+                  hostingRegion:   { type: string }

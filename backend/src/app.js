@@ -58,6 +58,7 @@ import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
 import { mountTelemetryRoutes } from "./routes/telemetry.js";
+import { mountLegalPages }      from "./legalPages.js";
 import { startScheduler }        from "./services/scheduler.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
 import { requestMetrics, metricsHandler, requireMetricsAccess, errorHandler } from "./middleware/monitoring.js";
@@ -138,6 +139,9 @@ export function createApp() {
      /app/frontend/dist, so the image served no UI at all and /api was the only
      thing answering. Default keeps the source-tree path for `npm run dev`. */
   const distPath = process.env.PUBLIC_DIR || path.join(__dirname, "../../frontend/dist");
+  // v21.30: /privacy, /terms, /storage, /contact, /licenses and /api/legal.
+  // Before static, so /privacy.html can never be served with raw placeholders.
+  mountLegalPages(app, distPath);
   app.use(express.static(distPath));
 
   const upload = multer({

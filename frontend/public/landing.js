@@ -54,6 +54,8 @@
       ctaEyebrow: "พร้อมเมื่อคุณพร้อม", ctaH2: "เอาไฟล์ที่เละที่สุดของคุณมา",
       ctaSub: 'เจอไฟล์ที่เครื่องนี้อ่านไม่ออก? บอกเราได้ที่<a href="/contact">หน้าติดต่อ</a> — เล่าลักษณะไฟล์ให้ฟัง และโปรดอย่าส่งข้อมูลส่วนบุคคลจริงมา', ctaBtn: "เปิดเครื่องตรวจ ↗",
       footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · {v} — สถิติล้วนตรวจซ้ำได้เสมอ · สร้างโดย Phatcharaphong Siriphatcharakul · 2 March 2025",
+      lgPrivacy: "ความเป็นส่วนตัว", lgTerms: "ข้อกำหนดการใช้งาน", lgStorage: "การจัดเก็บในเบราว์เซอร์",
+      lgContact: "ติดต่อ", lgLicences: "สัญญาอนุญาต",
       tSkip: "SKIPPED — หัวรายงาน", tHeader: "HEADER ✓", tFix1: "พ.ศ.→ค.ศ. · ฿→number", tFix2: "เดือนไทย · ติดลบบัญชี",
     },
     en: {
@@ -96,6 +98,8 @@
       ctaEyebrow: "Ready when you are", ctaH2: "Bring us your messiest file",
       ctaSub: 'Got a file it can\'t read? Tell us on the <a href="/contact">contact page</a> — describe the layout, and please don\'t send real personal data.', ctaBtn: "Open the inspector ↗",
       footer: "DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · {v} — pure statistics, always reproducible · Made by Phatcharaphong Siriphatcharakul · 2 March 2025",
+      lgPrivacy: "Privacy", lgTerms: "Terms", lgStorage: "Storage",
+      lgContact: "Contact", lgLicences: "Licences",
       tSkip: "SKIPPED — banner row", tHeader: "HEADER ✓", tFix1: "B.E.→C.E. · ฿→number", tFix2: "Thai month · acct negative",
     },
   };

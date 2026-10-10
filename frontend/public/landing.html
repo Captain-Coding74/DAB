@@ -233,6 +233,9 @@
   .final { text-align: center; padding: 96px 0 80px; }
   footer { border-top: 1px solid var(--edge); padding: 26px 0 34px; color: var(--faint);
            font-family: var(--mono); font-size: 11px; text-align: center; }
+  .legal-links { font-family: var(--sans); font-size: 13px; margin-bottom: 10px; color: var(--faint); }
+  .legal-links a { color: var(--mute); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--edge); }
+  .legal-links a:hover { color: var(--amber); text-decoration-color: currentColor; }
   .rv { opacity: 0; transform: translateY(16px); transition: opacity .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
   .rv.in { opacity: 1; transform: none; }
 
@@ -454,7 +457,12 @@
 </div>
 
 </main>
-<footer><div class="wrap" data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · <span class="ver-txt">—</span> — สถิติล้วนตรวจซ้ำได้เสมอ</div></footer>
+<!-- v21.30: the legal pages. The labels are separate [data-i18n] nodes because
+     applyLang() replaces a node's text, which would wipe links nested in it. -->
+<footer><div class="wrap">
+  <p class="legal-links"><a href="/privacy" data-i18n="lgPrivacy">ความเป็นส่วนตัว</a> · <a href="/terms" data-i18n="lgTerms">ข้อกำหนดการใช้งาน</a> · <a href="/storage" data-i18n="lgStorage">การจัดเก็บในเบราว์เซอร์</a> · <a href="/contact" data-i18n="lgContact">ติดต่อ</a> · <a href="/licenses" data-i18n="lgLicences">สัญญาอนุญาต</a></p>
+  <div data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · <span class="ver-txt">—</span> — สถิติล้วนตรวจซ้ำได้เสมอ</div>
+</div></footer>
 
 <script src="landing.js" defer></script>
 </body>
