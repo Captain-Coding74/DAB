@@ -42,6 +42,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm            # workspaces: the only lockfile is at the root
       - run: npm ci
+      # v21.30: THIRD_PARTY_NOTICES.md and /licenses/third-party.txt are
+      # generated from package-lock.json and the installed packages. Fails
+      # when they are stale (a dependency changed without `npm run licenses`)
+      # or a production dependency's licence is outside the allow-list and
+      # unreviewed. Here, not in quality-gates: it needs only `npm ci`, and a
+      # failing browser suite must not hide it.
+      - run: npm run licenses:check
       - run: npm test -w frontend
       - run: npm run build -w frontend
 

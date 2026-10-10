@@ -20,8 +20,61 @@
 <p class="eyebrow"><span lang="en">Data Analysis Bot · Legal</span><span lang="th">Data Analysis Bot · ข้อมูลทางกฎหมาย</span></p>
 <h1><span lang="en">Third-party licences</span><span lang="th">สัญญาอนุญาตของบุคคลที่สาม</span></h1>
 <p class="lead"><span lang="en">DAB is built with open-source software and fonts; their licences and notices are listed below.</span><span lang="th">DAB สร้างขึ้นด้วยซอฟต์แวร์และฟอนต์โอเพนซอร์ส สัญญาอนุญาตและประกาศของแต่ละรายการแสดงไว้ด้านล่าง</span></p>
-<!-- The list itself is generated and placed here by the licences work (v21.30, unit B4). -->
-<section id="licenses-body"></section>
+<!-- v21.30: the full list is generated (npm run licenses writes /licenses/third-party.txt);
+     this table is the short version, and thirdPartyNotices.test.js checks every
+     licence named in it against package-lock.json. -->
+<section id="licenses-body">
+<section id="fonts">
+<div lang="en">
+<h2>1. Fonts</h2>
+<p>DAB's pages and app use two font families made by IBM, served from DAB's own server: <strong>IBM Plex Sans Thai</strong> and <strong>IBM Plex Mono</strong>. Both are © IBM Corp. and licensed under the <strong>SIL Open Font License 1.1</strong>, which lets anyone use, share and change them on conditions that include keeping IBM's copyright notice and the licence with every copy. DAB serves them unchanged. PDF reports exported from DAB may embed the characters they use from IBM Plex Sans Thai; the licence's requirement to stay under the same licence does not apply to documents created with the fonts.</p>
+<p>Licence text and IBM's copyright notices: <a href="/licenses/OFL-1.1-IBM-Plex.txt">OFL-1.1-IBM-Plex.txt</a> (plain text, in English).</p>
+<h3>The fonts in the landing-page video</h3>
+<p>The 3D lettering in the background video on the <a href="/welcome">landing page</a> was rendered from outlines converted from these fonts. Converted outlines count as a modified version under the licence, and IBM reserves the name “Plex” for its own fonts, so DAB's versions are named <strong>DAB Render Sans Thai</strong> and <strong>DAB Render Mono</strong>. They remain under the SIL Open Font License 1.1 with IBM's copyright notices, and IBM has not reviewed or endorsed them. They are not sent to your browser; only the finished video is.</p>
+</div>
+<div lang="th">
+<h2>1. ฟอนต์</h2>
+<p>หน้าเว็บและแอปของ DAB ใช้ฟอนต์สองตระกูลของ IBM ซึ่งให้บริการจากเซิร์ฟเวอร์ของ DAB เอง ได้แก่ <strong>IBM Plex Sans Thai</strong> และ <strong>IBM Plex Mono</strong> ทั้งสองตระกูลเป็นลิขสิทธิ์ © ของ IBM Corp. และเผยแพร่ภายใต้สัญญาอนุญาต <strong>SIL Open Font License 1.1</strong> ซึ่งอนุญาตให้ทุกคนใช้ เผยแพร่ต่อ และดัดแปลงได้ ภายใต้เงื่อนไขที่รวมถึงการแนบประกาศลิขสิทธิ์ของ IBM และตัวสัญญาอนุญาตไปกับทุกสำเนา DAB ให้บริการฟอนต์เหล่านี้โดยไม่ได้ดัดแปลง รายงาน PDF ที่ส่งออกจาก DAB อาจฝังตัวอักษรที่ใช้จาก IBM Plex Sans Thai ไว้ในไฟล์ ทั้งนี้ ข้อกำหนดที่ให้ฟอนต์ต้องอยู่ภายใต้สัญญาอนุญาตเดิมไม่ใช้กับเอกสารที่สร้างขึ้นด้วยฟอนต์</p>
+<p>ข้อความสัญญาอนุญาตและประกาศลิขสิทธิ์ของ IBM: <a href="/licenses/OFL-1.1-IBM-Plex.txt">OFL-1.1-IBM-Plex.txt</a> (ไฟล์ข้อความภาษาอังกฤษ)</p>
+<h3>ฟอนต์ในวิดีโอหน้าแรก</h3>
+<p>ตัวอักษรสามมิติในวิดีโอพื้นหลังของ<a href="/welcome">หน้าแรก</a>เรนเดอร์จากโครงร่างตัวอักษรที่แปลงมาจากฟอนต์เหล่านี้ โครงร่างที่แปลงแล้วถือเป็นฉบับดัดแปลงตามสัญญาอนุญาต และ IBM สงวนชื่อ “Plex” ไว้สำหรับฟอนต์ของตนเอง ฉบับของ DAB จึงใช้ชื่อ <strong>DAB Render Sans Thai</strong> และ <strong>DAB Render Mono</strong> ฟอนต์ฉบับนี้ยังคงอยู่ภายใต้ SIL Open Font License 1.1 พร้อมประกาศลิขสิทธิ์ของ IBM และ IBM ไม่ได้ตรวจสอบหรือรับรองฉบับนี้ ฟอนต์ดังกล่าวไม่ถูกส่งไปยังเบราว์เซอร์ของคุณ มีเพียงวิดีโอที่เรนเดอร์เสร็จแล้วเท่านั้นที่ถูกส่งไป</p>
+</div>
+</section>
+
+<section id="software">
+<div lang="en">
+<h2>2. Software</h2>
+<p>DAB is built on open-source software. The full list of the packages its server and web app use in production, each with its licence and where its source code lives, followed by the complete licence texts, is in <a href="/licenses/third-party.txt">third-party.txt</a> (a long plain-text file, in English). The main ones:</p>
+</div>
+<div lang="th">
+<h2>2. ซอฟต์แวร์</h2>
+<p>DAB สร้างขึ้นด้วยซอฟต์แวร์โอเพนซอร์ส รายการแพ็กเกจทั้งหมดที่เซิร์ฟเวอร์และเว็บแอปของ DAB ใช้งานจริง พร้อมสัญญาอนุญาตและแหล่งซอร์สโค้ดของแต่ละแพ็กเกจ ตามด้วยข้อความสัญญาอนุญาตฉบับเต็ม อยู่ในไฟล์ <a href="/licenses/third-party.txt">third-party.txt</a> (ไฟล์ข้อความภาษาอังกฤษขนาดยาว) รายการหลักมีดังนี้</p>
+</div>
+<div class="table-wrap"><table>
+<thead><tr><th><span lang="en">Library</span><span lang="th">ไลบรารี</span></th><th><span lang="en">Package</span><span lang="th">แพ็กเกจ</span></th><th><span lang="en">Licence</span><span lang="th">สัญญาอนุญาต</span></th><th><span lang="en">Used for</span><span lang="th">ใช้สำหรับ</span></th></tr></thead>
+<tbody>
+<tr><td>React</td><td><code>react</code></td><td>MIT</td><td><span lang="en">The app's user interface</span><span lang="th">ส่วนติดต่อผู้ใช้ของแอป</span></td></tr>
+<tr><td>React DOM</td><td><code>react-dom</code></td><td>MIT</td><td><span lang="en">Showing the interface in your browser</span><span lang="th">แสดงส่วนติดต่อผู้ใช้ในเบราว์เซอร์</span></td></tr>
+<tr><td>React Router</td><td><code>react-router-dom</code></td><td>MIT</td><td><span lang="en">Moving between pages in the app</span><span lang="th">การเปลี่ยนหน้าภายในแอป</span></td></tr>
+<tr><td>Recharts</td><td><code>recharts</code></td><td>MIT</td><td><span lang="en">Charts</span><span lang="th">กราฟและแผนภูมิ</span></td></tr>
+<tr><td>Zustand</td><td><code>zustand</code></td><td>MIT</td><td><span lang="en">App state in the browser</span><span lang="th">สถานะของแอปในเบราว์เซอร์</span></td></tr>
+<tr><td>Lucide</td><td><code>lucide-react</code></td><td>ISC</td><td><span lang="en">Icons</span><span lang="th">ไอคอน</span></td></tr>
+<tr><td>Express</td><td><code>express</code></td><td>MIT</td><td><span lang="en">The web server</span><span lang="th">เว็บเซิร์ฟเวอร์</span></td></tr>
+<tr><td>Helmet</td><td><code>helmet</code></td><td>MIT</td><td><span lang="en">Security headers</span><span lang="th">HTTP header ด้านความปลอดภัย</span></td></tr>
+<tr><td>csv-parse</td><td><code>csv-parse</code></td><td>MIT</td><td><span lang="en">Reading CSV files</span><span lang="th">อ่านไฟล์ CSV</span></td></tr>
+<tr><td>ExcelJS</td><td><code>exceljs</code></td><td>MIT</td><td><span lang="en">Reading and writing Excel files</span><span lang="th">อ่านและเขียนไฟล์ Excel</span></td></tr>
+<tr><td>PDFKit</td><td><code>pdfkit</code></td><td>MIT</td><td><span lang="en">PDF reports</span><span lang="th">รายงาน PDF</span></td></tr>
+<tr><td>libSQL client</td><td><code>@libsql/client</code></td><td>MIT</td><td><span lang="en">The SQLite database</span><span lang="th">ฐานข้อมูล SQLite</span></td></tr>
+<tr><td>node-postgres</td><td><code>pg</code></td><td>MIT</td><td><span lang="en">The PostgreSQL database, when the operator uses one</span><span lang="th">ฐานข้อมูล PostgreSQL เมื่อผู้ให้บริการเลือกใช้</span></td></tr>
+<tr><td>bcrypt.js</td><td><code>bcryptjs</code></td><td>MIT</td><td><span lang="en">Password hashing</span><span lang="th">การแฮชรหัสผ่าน</span></td></tr>
+<tr><td>jsonwebtoken</td><td><code>jsonwebtoken</code></td><td>MIT</td><td><span lang="en">Sign-in tokens</span><span lang="th">โทเค็นการเข้าสู่ระบบ</span></td></tr>
+<tr><td>Anthropic SDK</td><td><code>@anthropic-ai/sdk</code></td><td>MIT</td><td><span lang="en">Requests to Anthropic's Claude API for the AI features</span><span lang="th">ส่งคำขอไปยัง Claude API ของ Anthropic สำหรับฟีเจอร์ AI</span></td></tr>
+<tr><td>Pino</td><td><code>pino</code></td><td>MIT</td><td><span lang="en">Server logs</span><span lang="th">บันทึกของเซิร์ฟเวอร์</span></td></tr>
+<tr><td>Swagger UI</td><td><code>swagger-ui-dist</code></td><td>Apache-2.0</td><td><span lang="en">The API documentation page</span><span lang="th">หน้าเอกสาร API</span></td></tr>
+</tbody></table></div>
+<p><span lang="en">These licences ask that each copyright notice and licence text stay with the software; third-party.txt carries them. If you think something is missing or wrong, please tell us through the <a href="/contact">contact page</a>.</span><span lang="th">สัญญาอนุญาตเหล่านี้กำหนดให้ประกาศลิขสิทธิ์และข้อความสัญญาอนุญาตต้องอยู่คู่กับซอฟต์แวร์ ซึ่งไฟล์ third-party.txt ได้รวบรวมไว้แล้ว หากพบว่ามีสิ่งใดขาดหายหรือไม่ถูกต้อง โปรดแจ้งเราผ่าน<a href="/contact">หน้าติดต่อ</a></span></p>
+</section>
+</section>
 </main>
 
 <footer class="foot"><div class="wrap">

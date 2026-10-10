@@ -905,6 +905,22 @@ describe("Legal pages (v21.30)", () => {
     });
   });
 
+  test("/licenses/*.txt are served from the build, as text, before the SPA fallback", async () => {
+    const notices = await agent.get("/licenses/third-party.txt");
+    assert.equal(notices.status, 200);
+    assert.match(notices.headers["content-type"], /^text\/plain; charset=utf-8/i);
+    assert.ok(notices.text.startsWith("Third-party notices\n"), "the generated notices, not index.html");
+    for (const pkg of ["express", "react", "exceljs"]) assert.match(notices.text, new RegExp(`^${pkg} +\\d`, "m"), pkg);
+    const ofl = await agent.get("/licenses/OFL-1.1-IBM-Plex.txt");
+    assert.equal(ofl.status, 200);
+    assert.match(ofl.headers["content-type"], /^text\/plain/);
+    assert.ok(ofl.text.includes("SIL OPEN FONT LICENSE Version 1.1") && ofl.text.includes("Copyright 2019 IBM Corp."));
+    const page = (await agent.get("/licenses")).text;
+    for (const h of ["IBM Plex Sans Thai", "DAB Render Sans Thai", "ฟอนต์ในวิดีโอหน้าแรก", 'href="/licenses/third-party.txt"']) {
+      assert.ok(page.includes(h), `/licenses: ${h}`);
+    }
+  });
+
   test("the landing footer links all five legal pages, in both languages", async () => {
     const html = (await agent.get("/welcome")).text;
     for (const href of ["/privacy", "/terms", "/storage", "/contact", "/licenses"]) {

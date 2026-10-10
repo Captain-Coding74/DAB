@@ -29,7 +29,7 @@ export async function build(ctx) {
   const [SH_T0, SH_T1] = SCH.flash;                                  // shock ring shares the ring-flash window (sculpture.js)
   const [S2_T0, S2_DUR] = SCH.s2;
 
-  // plex-mono-500 (the console's .grade font): size 0.80, depth 0.16, mono pitch 0.48 (600/1000 em).
+  // dab-render-mono-500 (outlines of the console's .grade font): size 0.80, depth 0.16, mono pitch 0.48 (600/1000 em).
   const TG_BP = { font: fonts.mono500, size: 0.80, depth: 0.16, curveSegments: 8, bevelEnabled: true,
     bevelThickness: 0.016, bevelSize: 0.012, bevelSegments: 3 };
   const BP_PITCH = 0.48;
