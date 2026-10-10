@@ -16,6 +16,7 @@ import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
 import foldersRouter from "./folders.js";
 import { setDatasetAi } from "./datasetAi.js";
+import { downloadVersion } from "./datasetDownload.js";
 import { schoolAuthority } from "../services/schoolRoster.js";
 import { pageParams } from "../pagination.js";
 
@@ -353,6 +354,9 @@ router.get("/:id/versions/:versionId", requireAuth, async (req, res, next) => {
     res.json(v);
   } catch (err) { next(err); }
 });
+
+// ── Original file of a version (v21.30, owner only — routes/datasetDownload.js) ──
+router.get("/:id/versions/:versionId/download", requireAuth, downloadVersion);
 
 router.post("/:id/versions/:versionId/restore", requireAuth, async (req, res, next) => {
   try {

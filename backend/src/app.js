@@ -45,6 +45,7 @@ import { computeStatsBundle, buildAnalysisPrompt, analysisResponse } from "./ser
 import { createAIClient } from "./services/aiClient.js";
 import { runAgent } from "./services/agent.js";
 import { mountAuthRoutes }   from "./routes/auth.js";
+import { mountAccountRoutes } from "./routes/account.js";
 import { mountExportRoutes } from "./routes/export.js";
 import { mountWorkspaceRoutes } from "./routes/workspaces.js";
 import { mountAnalysisRoutes }  from "./routes/analysis.js";
@@ -148,6 +149,8 @@ export function createApp() {
 
   // ── Auth routes → src/routes/auth.js (v12) ───────────────
   mountAuthRoutes(app);
+  // ── Account rights: data export + deletion → routes/account.js (v21.30) ──
+  mountAccountRoutes(app);
 
   // ── Workspaces → routes/workspaces.js (v16) ───────────────
   mountWorkspaceRoutes(app);

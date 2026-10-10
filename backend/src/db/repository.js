@@ -57,6 +57,11 @@ export async function findActiveUserById(id) {
   const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1 AND is_active!=0`, [id]);
   return r[0]||null;
 }
+/** v21.30: for re-checking the password before account deletion — the hash never leaves the server. */
+export async function findUserCredentials(id) {
+  const r = await query(`SELECT id,username,password_hash FROM users WHERE id=$1`, [id]);
+  return r[0]||null;
+}
 export async function updateLastLogin(id) {
   await query(`UPDATE users SET last_login=$1 WHERE id=$2`, [now(),id]);
 }

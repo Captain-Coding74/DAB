@@ -216,6 +216,14 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_shares_analysis      ON shared_reports(analysis_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_created        ON audit_log(created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_notif_created        ON notifications(created_at)`,
+
+  // v21.30: the privacy-request log (services/privacyRequests.js) — one row
+  // per export, deletion or manual request, kept 3 years to show each was
+  // handled. subject_hash is sha256(user id): the row outlives the account
+  // and must not identify anyone by itself.
+  `CREATE TABLE IF NOT EXISTS privacy_requests (id TEXT PRIMARY KEY, subject_hash TEXT NOT NULL, type TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, completed_at TEXT, note TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_privreq_created      ON privacy_requests(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_privreq_subject      ON privacy_requests(subject_hash)`,
 ];
 
 /**

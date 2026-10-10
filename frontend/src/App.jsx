@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
 import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
-import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command } from "lucide-react";
+import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command, CircleUser } from "lucide-react";
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
 import { Toasts, Skeleton, Modal, Kbd, Wordmark } from "./components/ui";
@@ -15,7 +15,8 @@ const WorkspacePanel = lazy(() => import("./components/workspace"));
 const AuthPage       = lazy(() => import("./pages/AuthPage"));
 const SharePage      = lazy(() => import("./pages/SharePage"));
 const HistoryPage    = lazy(() => import("./pages/HistoryPage"));
-const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace") };
+const AccountPage    = lazy(() => import("./pages/AccountPage"));   // v21.30: your data + account deletion
+const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace"), account: () => import("./pages/AccountPage") };
 
 function PageSkeleton() {
   return (
@@ -120,6 +121,9 @@ function Nav() {
               <NavLink viewTransition to="/workspace" onMouseEnter={prefetch.workspace} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
                 <Users size={14}/><span className="hidden sm:block">{t("nav.workspace")}</span>
               </NavLink>
+              <NavLink viewTransition to="/account" onMouseEnter={prefetch.account} aria-label={t("nav.account")} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+                <CircleUser size={14}/><span className="hidden sm:block">{t("nav.account")}</span>
+              </NavLink>
             </>
           )}
         </div>
@@ -181,6 +185,7 @@ function Shell() {
               <Route path="/auth"      element={<AuthPage/>}/>
               <Route path="/history"   element={<HistoryPage/>}/>
               <Route path="/workspace" element={<WorkspacePanel/>}/>
+              <Route path="/account"   element={<AccountPage/>}/>
             </Routes>
           </Suspense>
         </ErrorBoundary>

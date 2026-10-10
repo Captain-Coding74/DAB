@@ -16,6 +16,9 @@
  *   telemetry  upload_metadata rows older than TELEMETRY_RETENTION_DAYS
  *   audit      audit_log rows older than AUDIT_RETENTION_DAYS
  *   activity, notifications   rows older than ACTIVITY_RETENTION_DAYS
+ *   privacy-requests   privacy_requests rows (services/privacyRequests.js)
+ *              older than PRIVACY_REQUEST_RETENTION_DAYS — 3 years, long
+ *              enough to show a request was handled, then gone
  *
  * Datasets and analyses go through the same cascades as a user's own delete,
  * so expiry is as complete as erasure. The registry is open: later modules
@@ -40,6 +43,7 @@ export const RETENTION_DEFAULTS = Object.freeze({
   TELEMETRY_RETENTION_DAYS: 395,
   AUDIT_RETENTION_DAYS:     365,
   ACTIVITY_RETENTION_DAYS:  365,
+  PRIVACY_REQUEST_RETENTION_DAYS: 1095,
 });
 
 /**
@@ -131,6 +135,7 @@ registerRetentionJob("telemetry",     (ctx) => deleteOlderThan("upload_metadata"
 registerRetentionJob("audit",         (ctx) => deleteOlderThan("audit_log",       cutoffOf("AUDIT_RETENTION_DAYS", ctx)));
 registerRetentionJob("activity",      (ctx) => deleteOlderThan("activity_feed",   cutoffOf("ACTIVITY_RETENTION_DAYS", ctx)));
 registerRetentionJob("notifications", (ctx) => deleteOlderThan("notifications",   cutoffOf("ACTIVITY_RETENTION_DAYS", ctx)));
+registerRetentionJob("privacy-requests", (ctx) => deleteOlderThan("privacy_requests", cutoffOf("PRIVACY_REQUEST_RETENTION_DAYS", ctx)));
 
 let started = false;
 

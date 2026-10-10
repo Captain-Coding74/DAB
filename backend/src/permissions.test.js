@@ -69,6 +69,8 @@ const ROUTES = [
   /* v21.30: the AI switch — the owner answers for the data, so an editor
      cannot switch AI back on (or off) for everyone. */
   { m: "patch",  path: "/api/datasets/:id/ai",                 min: "owner", body: { aiEnabled: false } },
+  /* v21.30: the original file, for the account export's download links. */
+  { m: "get",    path: "/api/datasets/:id/versions/:versionId/download", min: "owner" },
 
   // ── the rest, classified after the coverage check flagged them ──
   { m: "patch",  path: "/api/datasets/:id/star",               min: "editor", body: { starred: true } },

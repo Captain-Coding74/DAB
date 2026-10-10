@@ -31,7 +31,12 @@ const placeholders = (n) => Array.from({ length: n }, (_, i) => `$${i + 1}`).joi
 
 /** Comments on a dataset or analysis, every reply under them, and their mentions. */
 async function deleteCommentThreads(column, id) {
-  let level = (await query(`SELECT id FROM comments WHERE ${column}=$1`, [id])).map((r) => r.id);
+  await deleteCommentsWithReplies((await query(`SELECT id FROM comments WHERE ${column}=$1`, [id])).map((r) => r.id));
+}
+
+/** These comments, every reply under them, and their mentions (also used by db/accountErase.js). */
+export async function deleteCommentsWithReplies(rootIds) {
+  let level = [...rootIds];
   const doomed = new Set(level);
   while (level.length) {
     const kids = await query(`SELECT id FROM comments WHERE parent_id IN (${placeholders(level.length)})`, level);

@@ -15,6 +15,7 @@ describe("retention settings", () => {
       TELEMETRY_RETENTION_DAYS: 395,
       AUDIT_RETENTION_DAYS: 365,
       ACTIVITY_RETENTION_DAYS: 365,
+      PRIVACY_REQUEST_RETENTION_DAYS: 1095,
     });
   });
 
@@ -41,7 +42,7 @@ describe("retention settings", () => {
   });
 
   test("every retention job is registered", () => {
-    for (const name of ["trash", "datasets", "analyses", "telemetry", "audit", "activity", "notifications"]) {
+    for (const name of ["trash", "datasets", "analyses", "telemetry", "audit", "activity", "notifications", "privacy-requests"]) {
       assert.ok(retentionJobNames().includes(name), name);
     }
   });

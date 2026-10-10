@@ -10,6 +10,9 @@
  *   Anonymous:    30 req / 15 min
  *   Authenticated: 100 req / 15 min
  *   Heavy (analyze): 20 req / 15 min (anon), 50 req / 15 min (auth)
+ *   Auth (register/login): 10 / 15 min per IP
+ *   Account (data export + account deletion, v21.30): 10 / 15 min per user
+ *   Share links: 30 / 15 min per IP and link
  *   Slow-down:    after 80% of limit, add 500ms delay per request
  */
 
@@ -111,21 +114,48 @@ export function analyzeLimiter() {
   });
 }
 
-// ── Auth brute-force protection ───────────────────────────
-export function authLimiter() {
+/**
+ * A fixed 15-minute window in its own store namespace, answering 429 with
+ * `message`. The brute-force limiters below differ only in namespace,
+ * ceiling, key and message; v21.30 made it three of them, so they share one
+ * builder rather than three copies of the same options.
+ */
+function bruteForceLimiter({ prefix, max, key, message }) {
   const windowMs = 15 * 60 * 1000;
   return rateLimit({
     windowMs,
-    max: OVERRIDE || 10,
+    max: OVERRIDE || max,
+    keyGenerator: key,
+    store: makeStore(prefix, windowMs),
+    standardHeaders: "draft-7",
+    legacyHeaders:   false,
+    handler: (_, res) => res.status(429).json({ error: message }),
+  });
+}
+
+// ── Auth brute-force protection ───────────────────────────
+export function authLimiter() {
+  return bruteForceLimiter({
+    prefix: "rl:auth", max: 10,
     // Distinct namespace: apiLimiter's keyByUserOrIp emits `ip:<addr>` for
     // anonymous requests, and /api/auth/* passes through BOTH limiters. Sharing
     // the key made express-rate-limit count one request twice
     // (ERR_ERL_DOUBLE_COUNT) and halved the real auth budget.
-    keyGenerator: (req) => `auth:${req.ip}`,
-    store: makeStore("rl:auth", windowMs),
-    standardHeaders: "draft-7",
-    legacyHeaders:   false,
-    handler: (_, res) => res.status(429).json({ error: "Too many auth attempts. Wait 15 minutes." }),
+    key: (req) => `auth:${req.ip}`,
+    message: "Too many auth attempts. Wait 15 minutes.",
+  });
+}
+
+// ── Account rights: data export + account deletion (v21.30) ──
+// Like the auth routes: an export reads every table that holds the user, and
+// DELETE /api/auth/me checks a password — a stolen access token must not
+// become a way to guess it. Keyed by user (both routes require auth; the IP
+// is only a fallback) in its own namespace.
+export function accountLimiter() {
+  return bruteForceLimiter({
+    prefix: "rl:account", max: 10,
+    key: (req) => `account:${req.user?.userId || req.ip}`,
+    message: "Too many account requests. Wait 15 minutes.",
   });
 }
 
@@ -134,15 +164,10 @@ export function authLimiter() {
 // password-protected link could otherwise be brute-forced unthrottled.
 // Keyed by IP + token so guessing one link can't exhaust another's budget.
 export function shareLimiter() {
-  const windowMs = 15 * 60 * 1000;
-  return rateLimit({
-    windowMs,
-    max: OVERRIDE || 30,
-    keyGenerator: (req) => `ip:${req.ip}:${req.params.token || "none"}`,
-    store: makeStore("rl:share", windowMs),
-    standardHeaders: "draft-7",
-    legacyHeaders:   false,
-    handler: (_, res) => res.status(429).json({ error: "Too many attempts on this link. Wait 15 minutes." }),
+  return bruteForceLimiter({
+    prefix: "rl:share", max: 30,
+    key: (req) => `ip:${req.ip}:${req.params.token || "none"}`,
+    message: "Too many attempts on this link. Wait 15 minutes.",
   });
 }
 

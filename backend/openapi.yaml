@@ -302,6 +302,53 @@ paths:
                       total:      { type: integer }
                       total_rows: { type: integer }
                       avg_ms:     { type: number }
+    delete:
+      tags: [Auth]
+      summary: Delete my account (v21.30)
+      description: |
+        Erases the signed-in account and everything it owns, immediately:
+        saved files and datasets, analyses, chat, share links, comments,
+        notifications and memberships. Owned workspaces pass to the
+        earliest-joined remaining admin, else member, else are deleted. Kept:
+        traffic-log rows until their 90-day retention ends, and a
+        privacy-request log entry holding only sha256(user id) for 3 years.
+        Rate-limited (10 per 15 minutes, shared with the export).
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "200": { description: Account erased }
+        "400": { description: "`PASSWORD_REQUIRED` — no password in the body" }
+        "401": { description: Wrong password }
+        "429": { description: Too many account requests }
+
+  /api/auth/me/export:
+    get:
+      tags: [Auth]
+      summary: Download everything DAB holds about me (v21.30)
+      description: |
+        A JSON attachment, `dab-export-<username>-<yyyy-mm-dd>.json`: profile
+        (no password hash), workspaces and roles, owned datasets with version
+        metadata and each original file's download path
+        (`GET /api/datasets/{id}/versions/{versionId}/download`, owner only),
+        analyses, chat, share links (no tokens or passwords), comments,
+        mentions, notifications, activity, audit log, telemetry, sessions and
+        privacy requests. Logged in the privacy-request log. Rate-limited.
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: The export
+          content:
+            application/json:
+              schema: { type: object }
+        "429": { description: Too many account requests }
 
   # ── Analyze ──────────────────────────────────────────────
   /api/analyze:
