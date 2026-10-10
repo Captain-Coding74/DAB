@@ -59,7 +59,7 @@ docker compose up -d
 | **🌙 Dark Mode (v9)** | Class-based Tailwind dark theme across every screen, charts included (was a dead toggle before v9) |
 | **🛡️ Security (v9)** | helmet CSP headers, global API rate limiting (was imported-but-unused), rate-limited exports, share passwords via header, JWT fail-fast in prod, file-type filter on dataset uploads |
 | **Multi-file** | Upload up to 10 files as one dataset |
-| **Shareable Reports** | Public links, password-protect, expiry |
+| **Shareable Reports** | Public links made from a warning dialog: expiry required (1, 7, 30 or 90 days), optional password, generic title (never the file name), `noindex`, personal-data column values withheld; revoking deletes the link |
 | **Custom Branding** | Per-workspace color, logo, name |
 | **Scheduled Reports** | Coming soon — switched off in v21.30. The runner was a stub that never sent anything, so creating a schedule now answers `501 FEATURE_UNAVAILABLE` and stored schedules (with their recipient addresses) were purged |
 | **Team Workspaces** | Owner / Admin / Member roles |
@@ -185,7 +185,7 @@ npm run benchmark          # perf: 100 / 1k / 10k rows
 
 ### 🛡️ Security
 - `helmet` with a CSP tuned for the SPA + Swagger UI (verified swagger-ui-express 5.x uses no inline scripts)
-- Share passwords sent via `X-Share-Password` header instead of query string (query still works for old links) — keeps passwords out of access logs, proxies, and browser history
+- Share passwords sent via `X-Share-Password` header instead of query string (the query parameter was removed in v21) — keeps passwords out of access logs, proxies, and browser history. Since v21.30 share tokens are redacted from request logs too
 - JWT secrets: server refuses to boot in production without real `JWT_SECRET` / `JWT_REFRESH_SECRET` (previously fell back silently to known dev strings)
 - `express.json` body limit set explicitly (1 MB)
 

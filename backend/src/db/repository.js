@@ -189,8 +189,9 @@ export async function createSharedReport({ analysisId, userId, title, passwordHa
     [id,analysisId,userId,token,title||null,passwordHash||null,expiresAt||null,now()]);
   return { id, token };
 }
+/* v21.30: no a.file_name — a public page never shows it (services/shareView.js). */
 export async function getSharedReport(token) {
-  const r = await query(`SELECT sr.*,a.analysis,a.file_name,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
+  const r = await query(`SELECT sr.*,a.analysis,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
   if (!r[0]) return null;
   if (r[0].expires_at && new Date(r[0].expires_at) < new Date()) return null;
   return r[0];
@@ -199,7 +200,11 @@ export async function incrementShareViewCount(token) { await query(`UPDATE share
 export async function getUserSharedReports(userId) {
   return query(`SELECT sr.id,sr.token,sr.title,sr.view_count,sr.expires_at,sr.created_at,a.file_name FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id WHERE sr.user_id=$1 ORDER BY sr.created_at DESC`,[userId]);
 }
-export async function deleteSharedReport(id, userId) { await query(`UPDATE shared_reports SET is_active=0 WHERE id=$1 AND user_id=$2`,[id,userId]); }
+/** v21.30: a hard delete (was is_active=0). True when the caller owned it. */
+export async function deleteSharedReport(id, userId) {
+  const r = await query(`DELETE FROM shared_reports WHERE id=$1 AND user_id=$2 RETURNING id`,[id,userId]);
+  return r.length > 0;
+}
 
 // ── Scheduled Reports ──────────────────────────────────────
 /* v21.30: the feature is off (routes/schedules.js) and the table was purged

@@ -23,8 +23,9 @@ export function Wordmark({ size = 24, className }) {
     </svg>
   );
 }
-import { X, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { X, AlertCircle, CheckCircle, Info, Sparkles } from "lucide-react";
 import { useAppStore } from "../../store";
+import { useLang } from "../../lib/i18n";
 import { clampScore, gradeFor, gradeHex, gradeStampClass } from "../../lib/grade";
 
 // ── Button ────────────────────────────────────────────────
@@ -82,7 +83,8 @@ export function Badge({ children, variant = "green" }) {
 export function Input({ label, error, className, ...props }) {
   return (
     <div className="space-y-1">
-      {label && <label className="eyebrow block">{label}</label>}
+      {/* htmlFor: a caller that passes an id gets a label screen readers announce. */}
+      {label && <label htmlFor={props.id} className="eyebrow block">{label}</label>}
       <input className={clsx("w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-brand-400 transition", error ? "border-rule" : "border-gray-200 dark:border-gray-700", className)} {...props}/>
       {error && <p className="text-xs text-rule dark:text-rule-dark">{error}</p>}
     </div>
@@ -143,6 +145,19 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
         <div className="p-5">{children}</div>
       </div>
     </div>
+  );
+}
+
+// ── AI label (v21.30) ─────────────────────────────────────
+/* Under every block of AI-written text: dashboard report, chat replies,
+   agent answers, share pages. Same words as the PDF/Excel exports
+   (backend/src/services/aiLabel.js). */
+export function AiLabel({ className }) {
+  const { t } = useLang();
+  return (
+    <p className={clsx("flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400", className)}>
+      <Sparkles size={11} aria-hidden="true" className="shrink-0"/> {t("ai.label")}
+    </p>
   );
 }
 

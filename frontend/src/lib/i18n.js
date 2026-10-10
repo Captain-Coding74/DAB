@@ -92,6 +92,39 @@ export const STRINGS = {
     th: "คำนวณบนเซิร์ฟเวอร์ของ DAB จากไฟล์ของคุณ แสดงให้คุณเห็นเท่านั้น — ไม่ส่งให้ AI และไม่รวมอยู่ในลิงก์แชร์" },
   "workspace.schedulesSoon": { en: "Scheduled reports — coming soon", th: "รายงานตามกำหนดเวลา — เปิดให้ใช้เร็ว ๆ นี้" },
 
+  // ── AI label (v21.30) — must equal backend/src/services/aiLabel.js (i18n.test.js checks) ──
+  "ai.label": {
+    en: "AI-generated — may be wrong. Check it before you rely on it.",
+    th: "สร้างโดย AI — อาจผิดพลาดได้ โปรดตรวจสอบก่อนนำไปใช้" },
+
+  // ── share links (v21.30) — the dialog is the only way to make one ──
+  "share.button":       { en: "Share",              th: "แชร์" },
+  "share.dialogTitle":  { en: "Share this report",  th: "แชร์รายงานนี้" },
+  /* Load-bearing: "anyone with the link" and "until it expires". Only the
+     VALUES of detected personal-data columns are withheld — their names stay
+     on the page, so the sentence says values, not columns. */
+  "share.warning": {
+    en: "Anyone with the link can see this report — the AI text, column names, statistics and chart — until it expires. Values in columns detected as personal data are hidden.",
+    th: "ทุกคนที่มีลิงก์จะเห็นรายงานนี้ได้ ทั้งข้อความจาก AI ชื่อคอลัมน์ สถิติ และกราฟ จนกว่าลิงก์จะหมดอายุ ค่าในคอลัมน์ที่ระบบตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะถูกซ่อนไว้" },
+  "share.titleLabel":   { en: "Title shown on the page", th: "ชื่อที่แสดงบนหน้ารายงาน" },
+  "share.defaultTitle": { en: "Analysis report",    th: "รายงานผลการวิเคราะห์" },
+  "share.expiry":       { en: "Link expires after", th: "ลิงก์หมดอายุหลังจาก" },
+  "share.day":          { en: "day",                th: "วัน" },
+  "share.days":         { en: "days",               th: "วัน" },
+  "share.password":     { en: "Password (optional)", th: "รหัสผ่าน (ไม่บังคับ)" },
+  "share.passwordHint": { en: "Viewers must enter it before the report opens.",
+                          th: "ผู้ชมต้องใส่รหัสผ่านนี้ก่อนจึงจะเปิดรายงานได้" },
+  "share.create":       { en: "Create link and copy", th: "สร้างลิงก์และคัดลอก" },
+  "share.copied":       { en: "Link created and copied to the clipboard.", th: "สร้างลิงก์และคัดลอกไปยังคลิปบอร์ดแล้ว" },
+  "share.copyManually": { en: "Link created. Copy it from the box below.", th: "สร้างลิงก์แล้ว คัดลอกจากช่องด้านล่างได้เลย" },
+  "share.linkLabel":    { en: "Share link",         th: "ลิงก์สำหรับแชร์" },
+  "share.expiresOn":    { en: "This link expires on", th: "ลิงก์นี้จะหมดอายุในวันที่" },
+  "share.reportPage":   { en: "Report this page",   th: "แจ้งปัญหาหน้านี้" },
+
+  // ── legal links — shared by every page that links the notices ──
+  "legal.privacy":      { en: "Privacy",            th: "ความเป็นส่วนตัว" },
+  "legal.terms":        { en: "Terms",              th: "ข้อกำหนดการใช้งาน" },
+
   // ── common ──
   "common.cancel":      { en: "Cancel",             th: "ยกเลิก" },
   "common.close":       { en: "Close",              th: "ปิด" },

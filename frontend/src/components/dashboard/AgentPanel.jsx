@@ -5,7 +5,7 @@
  */
 import React, { useState } from "react";
 import { Search } from "lucide-react";
-import { Card, Button, Eyebrow, WaveBars } from "../ui";
+import { Card, Button, Eyebrow, WaveBars, AiLabel } from "../ui";
 import { postJSON } from "../../lib/api";
 
 const TOOL_LABEL = {
@@ -91,6 +91,7 @@ export function AgentPanel({ analysisId }) {
           <p className="text-sm text-gray-800 dark:text-gray-200 leading-7 whitespace-pre-wrap border-t border-gray-100 dark:border-gray-800 pt-3 margin-rule">
             {result.reply}
           </p>
+          <AiLabel/>
         </div>
       )}
     </Card>

@@ -4,10 +4,29 @@ import { apiFetch } from "../lib/api";
 import { useParams } from "react-router-dom";
 import { AutoChart } from "../components/charts";
 import { ColumnStatsPanel } from "../components/ColumnStats";
-import { Spinner, Input, Button } from "../components/ui";
+import { Spinner, Input, Button, AiLabel } from "../components/ui";
 import { Lock, SearchX } from "lucide-react";
+import { useLang } from "../lib/i18n";
+
+/* v21.30: a share link is a bearer URL, not a public document. The server
+   sends X-Robots-Tag on the page and the API; this tag covers a crawler that
+   renders the page without honouring the header. Removed on unmount so the
+   rest of the SPA stays indexable. */
+function useNoIndex() {
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex";
+    document.head.appendChild(meta);
+    return () => meta.remove();
+  }, []);
+}
+
+const LINK = "underline underline-offset-2 hover:text-brand-600 dark:hover:text-brand-300";
 
 export default function SharePage() {
+  useNoIndex();
+  const { t, lang } = useLang();
   const { token }   = useParams();
   const [data,      setData]      = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -73,6 +92,9 @@ export default function SharePage() {
   const brandName  = data.brand_name  || "Data Analysis Bot";
   const statsJson  = data.stats_json  || {};
   const colAnalysis = statsJson.colAnalysis || [];
+  const expiresOn   = data.expires_at
+    ? new Date(data.expires_at).toLocaleDateString(lang === "th" ? "th-TH" : "en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -83,7 +105,8 @@ export default function SharePage() {
           <div className="min-w-0">
             {data.brand_logo && <img src={data.brand_logo} alt="logo" className="h-7 mb-2 object-contain"/>}
             <p className="eyebrow mb-1">Shared report · {brandName}</p>
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">{data.title || data.file_name}</h1>
+            {/* v21.30: never the file name — the API no longer sends it */}
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 truncate">{data.title || t("share.defaultTitle")}</h1>
           </div>
           <div className="text-right shrink-0">
             <p className="num text-xs text-gray-500 dark:text-gray-400">{data.total_rows?.toLocaleString()} rows · {data.view_count} views</p>
@@ -93,11 +116,14 @@ export default function SharePage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
-        {/* Analysis */}
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-          <h2 className="eyebrow mb-4">รายงานผู้ตรวจ · AI</h2>
-          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{data.analysis}</p>
-        </div>
+        {/* Analysis — a statistics-only report has no AI text, and no label */}
+        {data.analysis && (
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+            <h2 className="eyebrow mb-4">รายงานผู้ตรวจ · AI</h2>
+            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">{data.analysis}</p>
+            <AiLabel className="mt-3"/>
+          </div>
+        )}
 
         {/* Charts */}
         {colAnalysis.length > 0 && (
@@ -110,9 +136,16 @@ export default function SharePage() {
         {/* Column stats */}
         {colAnalysis.length > 0 && <ColumnStatsPanel colAnalysis={colAnalysis} shared/>}
 
-        <p className="text-center text-xs text-gray-400">
-          Shared report · Powered by {brandName}
-        </p>
+        <footer className="text-center text-xs text-gray-400 dark:text-gray-500 space-y-1.5">
+          {expiresOn && <p>{t("share.expiresOn")} {expiresOn}</p>}
+          <p>Shared report · Powered by {brandName}</p>
+          {/* Plain <a>: these are server pages, not routes inside the SPA. */}
+          <p className="flex justify-center gap-4 flex-wrap">
+            <a href="/contact#report" className={LINK}>{t("share.reportPage")}</a>
+            <a href="/privacy" className={LINK}>{t("legal.privacy")}</a>
+            <a href="/terms" className={LINK}>{t("legal.terms")}</a>
+          </p>
+        </footer>
       </div>
     </div>
   );

@@ -40,24 +40,44 @@ export const logger = pino({
   base: { service: "data-analysis-bot", version: VERSION },
 });
 
+// ── URL redaction (v21.30) ────────────────────────────────
+/* A share token IS the access to a report: anyone who reads it in a log line
+   can open the report. The `*.token` redact path above covers JSON fields,
+   but share tokens travel in the URL path (/api/public/share/<token>, the
+   /share/<token> page), which reached every request line verbatim. Same for
+   any `…token=` query parameter. Anchored at the start of the path so
+   /api/datasets/<id>/share (an owner-only route) keeps its id. Express
+   matches routes case-insensitively, so this does too. */
+const SHARE_PATH  = /^((?:\/api\/public)?\/share\/)[^/?#]+/i;
+const TOKEN_QUERY = /([?&][^=&#]*token=)[^&#]*/gi;
+export function redactUrl(url) {
+  if (typeof url !== "string") return url;
+  return url.replace(SHARE_PATH, "$1[redacted]").replace(TOKEN_QUERY, "$1[redacted]");
+}
+
 // ── HTTP request logger middleware ────────────────────────
-export const httpLogger = pinoHttp({
-  logger,
-  genReqId: () => crypto.randomUUID(),
-  customLogLevel: (req, res) => {
-    if (res.statusCode >= 500) return "error";
-    if (res.statusCode >= 400) return "warn";
-    return "info";
-  },
-  customSuccessMessage: (req, res) =>
-    `${req.method} ${req.url} → ${res.statusCode}`,
-  customErrorMessage: (req, res, err) =>
-    `${req.method} ${req.url} → ${res.statusCode} — ${err.message}`,
-  serializers: {
-    req: (req) => ({ id: req.id, method: req.method, url: req.url, remoteAddress: req.remoteAddress }),
-    res: (res) => ({ statusCode: res.statusCode }),
-  },
-});
+/** Built by a factory so a test can point the same options at its own
+ *  stream (the app's logger is silent under test). */
+export function createHttpLogger(base = logger) {
+  return pinoHttp({
+    logger: base,
+    genReqId: () => crypto.randomUUID(),
+    customLogLevel: (req, res) => {
+      if (res.statusCode >= 500) return "error";
+      if (res.statusCode >= 400) return "warn";
+      return "info";
+    },
+    customSuccessMessage: (req, res) =>
+      `${req.method} ${redactUrl(req.originalUrl || req.url)} → ${res.statusCode}`,
+    customErrorMessage: (req, res, err) =>
+      `${req.method} ${redactUrl(req.originalUrl || req.url)} → ${res.statusCode} — ${err.message}`,
+    serializers: {
+      req: (req) => ({ id: req.id, method: req.method, url: redactUrl(req.url), remoteAddress: req.remoteAddress }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  });
+}
+export const httpLogger = createHttpLogger();
 
 // ── Child loggers (attach context) ───────────────────────
 export function requestLogger(req) {

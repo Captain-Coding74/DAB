@@ -53,6 +53,7 @@ import { mountFixRoutes }       from "./routes/fixes.js";
 import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, TRUST_PROXY } from "./config.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
+import { SHARE_ROBOTS }         from "./services/shareView.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
@@ -211,8 +212,13 @@ export function createApp() {
   app.get("/welcome", (_, res) => sendOrFallback(res, "landing.html", () => res.redirect("/")));
 
   // Serve React for all non-API routes (SPA fallback)
-  app.get(/^(?!\/api).*/, (_, res) => sendOrFallback(res, "index.html",
-    () => res.status(200).send("Frontend not built. Run: npm run build -w frontend")));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    // v21.30: a /share/<token> document is a bearer link — keep it out of
+    // search indexes (SharePage adds the matching <meta name="robots">).
+    if (/^\/share\//i.test(req.path)) res.set("X-Robots-Tag", SHARE_ROBOTS);
+    sendOrFallback(res, "index.html",
+      () => res.status(200).send("Frontend not built. Run: npm run build -w frontend"));
+  });
 
   app.use(errorHandler);
 

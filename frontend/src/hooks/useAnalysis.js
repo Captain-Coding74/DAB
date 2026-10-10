@@ -183,14 +183,23 @@ export function useAnalysis() {
     finally { setExporting(null); }
   }, [file, currentAnalysis, toast]);
 
-  const shareReport = useCallback(async () => {
-    if (!currentAnalysis?.savedId) { toast("กรุณา login ก่อน share", "error"); return; }
+  /* v21.30: called by ShareDialog (dashboard/tabs.jsx) only. The one-click
+     version sent { title: file.name } with no expiry, so every link was
+     public forever under the uploaded file's name. The dialog supplies a
+     generic title, a required expiry and an optional password. Returns
+     { url, copied } so the dialog can show the link when the clipboard is
+     unavailable (plain-http origin, permission denied) instead of claiming
+     it was copied. */
+  const shareReport = useCallback(async ({ title, password, expiresInDays }) => {
+    if (!currentAnalysis?.savedId) { toast("กรุณา login ก่อน share", "error"); return null; }
     try {
-      const data = await postJSON(`/api/analyses/${currentAnalysis.savedId}/share`, { title: file?.name });
-      await navigator.clipboard.writeText(data.shareUrl);
-      toast("Copy link แล้ว! 🔗");
-    } catch (err) { toast(friendlyError(err), "error"); }
-  }, [currentAnalysis, file, toast]);
+      const data = await postJSON(`/api/analyses/${currentAnalysis.savedId}/share`,
+        { title, password: password || undefined, expiresInDays });
+      let copied = false;
+      try { await navigator.clipboard.writeText(data.shareUrl); copied = true; } catch { /* shown in the dialog */ }
+      return { url: data.shareUrl, copied };
+    } catch (err) { toast(friendlyError(err), "error"); return null; }
+  }, [currentAnalysis, toast]);
 
   return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport };
 }
