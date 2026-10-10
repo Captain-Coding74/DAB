@@ -318,6 +318,12 @@ paths:
         Response additionally includes `insights[]` and `sampleRows[]` (v9).
 
         Authentication is **optional** — if provided, the result is saved to history.
+
+        v21.30: the AI receives statistics only — never raw rows, and never the
+        values of columns detected as personal data (only their name and kind).
+        Send `noAi` to skip the AI entirely for this upload: the response has
+        `analysis: null`, `aiDisabled: true`, and chat/agent on the saved
+        analysis answer 403 `AI_DISABLED`.
       security: [{ BearerAuth: [] }]
       requestBody:
         required: true
@@ -335,6 +341,10 @@ paths:
                   type: string
                   default: สรุปภาพรวมข้อมูลทั้งหมด
                   description: Question to ask the AI about the data
+                noAi:
+                  type: string
+                  enum: ["1", "true"]
+                  description: "Statistics only — don't send anything from this file to the AI (signed-in uploads)"
       responses:
         "200":
           description: Analysis complete

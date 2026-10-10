@@ -148,10 +148,13 @@ export async function getWorkspaceDatasets(wsId) {
 }
 
 // ── Analyses ───────────────────────────────────────────────
-export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, fileType, totalRows, totalCols, prompt, analysis, statsJson, chartConfig, qualityScore, durationMs, ipAddress }) {
+/* aiDisabled (v21.30): the analysis was made "statistics only" (or from a
+   dataset whose AI switch is off) — chat and the agent refuse it with
+   AI_DISABLED (services/aiGate.js). */
+export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, fileType, totalRows, totalCols, prompt, analysis, statsJson, chartConfig, qualityScore, durationMs, ipAddress, aiDisabled = false }) {
   const id=uuid();
-  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now()]);
+  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at,ai_disabled) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+    [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now(),aiDisabled?1:0]);
   return { id };
 }
 export async function getAnalysis(id, userId) {

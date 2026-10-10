@@ -23,6 +23,7 @@
  * worse than one that was never clever.
  */
 import { OPERATIONS } from "./dataFixes.js";
+import { aiSafeColumns } from "./aiSafe.js";
 import { serviceLogger } from "../logger.js";
 
 const log = serviceLogger("fix-suggest");
@@ -133,8 +134,10 @@ export function validateSuggestions(raw, headers) {
 
 function buildPrompt({ headers, colAnalysis, totalRows, dupeCount }) {
   // Statistics only. No rows, no cell values beyond the frequency tables that
-  // were already computed — ADR-0006.
-  const summary = colAnalysis.map((c) => ({
+  // were already computed — ADR-0006. v21.30: and nothing but the name and
+  // kind of a detected personal-data column (the aiSafe view) — not even a
+  // "missing: 0" that would be a guess. The rule floor still covers it.
+  const summary = aiSafeColumns(colAnalysis).map((c) => c.sensitive ? { column: c.col, personalData: c.sensitive } : ({
     column: c.col,
     type: c.type,
     missing: c.missing ?? c.missingCount ?? 0,

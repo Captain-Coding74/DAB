@@ -81,7 +81,11 @@ export function useAnalysis() {
     return true;
   }, [toast, setCurrentAnalysis]);
 
-  const analyze = useCallback(async (question) => {
+  /* v21.30: `noAi` is the per-upload "Statistics only" choice. Sent as a
+     form field; the server skips the AI call and marks the saved analysis so
+     chat and the agent refuse it. Kept on the in-memory analysis (never in
+     storage) so a re-analysis of the saved copy honours it too. */
+  const analyze = useCallback(async (question, { noAi = false } = {}) => {
     if (!file || inFlightRef.current) return;
     inFlightRef.current = true;
     const runId = ++runRef.current;
@@ -90,6 +94,7 @@ export function useAnalysis() {
     const fd = new FormData();
     fd.append("file", file, file.name);
     fd.append("question", question);
+    if (noAi) fd.append("noAi", "1");
     try {
       const res  = await apiFetch("/api/analyze", { method: "POST", headers: {}, body: fd });
       const data = await res.json();
@@ -112,7 +117,7 @@ export function useAnalysis() {
         } catch { /* สถิติ tab stays gated — not worth failing the analysis */ }
       }
       if (runId !== runRef.current) return;   // re-check: the store call awaited
-      setCurrentAnalysis({ ...data, datasetId, fileName: file.name, perceivedMs });
+      setCurrentAnalysis({ ...data, datasetId, fileName: file.name, perceivedMs, noAi });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
@@ -152,10 +157,11 @@ export function useAnalysis() {
     setLoading(true);
     const endSpan = startSpan("analyze");
     try {
-      const data = await postJSON(`/api/datasets/${datasetId}/analyze`, { question: question || "" });
+      const noAi = !!currentAnalysis?.noAi;   // a stats-only upload stays stats-only after a fix
+      const data = await postJSON(`/api/datasets/${datasetId}/analyze`, { question: question || "", noAi });
       const perceivedMs = endSpan();
       if (runId !== runRef.current) return;
-      setCurrentAnalysis({ ...data, datasetId, fileName: currentAnalysis?.fileName, perceivedMs });
+      setCurrentAnalysis({ ...data, datasetId, fileName: currentAnalysis?.fileName, perceivedMs, noAi });
       toast("วิเคราะห์เวอร์ชันล่าสุดแล้ว ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }

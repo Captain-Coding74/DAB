@@ -19,7 +19,7 @@ import { generatePromptSuggestions, autoChartConfig } from "./promptSuggestions.
 import { computeQualityScore } from "./qualityScore.js";
 import { generateInsights }    from "./insights.js";
 import { buildClassReport } from "./classReport.js";
-import { classifySensitiveColumns, maskRows } from "./sensitive.js";
+import { aiSafeStats, aiSafeInsights } from "./aiSafe.js";
 
 /**
  * Everything derivable from a parsed file, in one call.
@@ -101,55 +101,55 @@ export function computeStatsBundle({ headers, colAnalysis, totalRows, dupeCount,
   const quality     = computeQualityScore(colAnalysis, totalRows, dupeCount);
   const suggestions = generatePromptSuggestions(colAnalysis, quality);
   const insights    = generateInsights({ colAnalysis, totalRows, dupeCount, corr, forecasts });
-  /* Identifier columns carry no statistics worth narrating — their masked
-     entries rendered as "Min:null StdDev:undefined" noise in the AI prompt.
-     Summarise the real columns; name the masked ones in one line so the
-     model knows they exist and knows not to ask for them. */
-  const openCols   = colAnalysis.filter((c) => !c.sensitive);
-  const maskedCols = colAnalysis.filter((c) => c.sensitive);
-  const summaryStr = buildSummaryString(openCols, missing, dupes, corr, forecasts) +
+  /* summaryStr and aiInsights are the AI-bound half of the bundle (both are
+     stripped from the HTTP response by analysisResponse). Detected
+     personal-data columns carry no statistics into them — not their
+     frequency tables, aggregates or missing counts, not a correlation,
+     forecast or finding that names them. v21.30 widened this from the five School
+     Edition identifiers to every detected kind, s.26 sensitive data
+     included, through the same aiSafe view chat and the agent use. The
+     model still learns the columns exist, by name and kind, in one line. */
+  const safe       = aiSafeStats({ colAnalysis, corr, forecasts });
+  const openCols   = safe.colAnalysis.filter((c) => !c.sensitive);
+  const maskedCols = safe.colAnalysis.filter((c) => c.sensitive);
+  const openMissing = missing.filter((m) => !safe.hidden.has(m.col));
+  const summaryStr = buildSummaryString(openCols, openMissing, dupes, safe.corr, safe.forecasts) +
     (maskedCols.length
       ? "\n[masked ตาม PDPA] " + maskedCols.map((c) => `${c.col} (${c.sensitive})`).join(", ")
       : "");
-  return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr, classReport };
+  const aiInsights = aiSafeInsights(insights, safe.hidden);
+  return { missing, dupes, corr, forecasts, chartRecs, autoCharts, suggestions, quality, insights, summaryStr, aiInsights, classReport };
 }
 
 /**
  * The analysis prompt. v12: deterministic findings ride along as verified
  * facts — the model comments on and extends them rather than guessing.
+ * v21.30: statistics ONLY. The prompt used to end with the header row and
+ * five reservoir-sampled raw rows, strict-masked for the five School
+ * Edition identifiers and nothing else — so an email address, a street
+ * address or a diagnosis in a business file reached the model verbatim.
+ * Every number the model may cite is already in summaryStr; the rows added
+ * nothing it was allowed to use (the rules below forbid computing from
+ * them), so they are gone rather than masked.
  */
 /** A question longer than this is not a question. */
 const MAX_QUESTION = 500;
 
-export function buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle, sampleRows }) {
+export function buildAnalysisPrompt({ question, totalRows, headers, fileType, bundle }) {
   /* req.body.question reached the prompt unbounded, and express.json allows a
      1 MB body — so a single request could bury the statistics under a wall of
      text and burn the AI budget on every call. Capped here rather than in the
      routes so every caller is covered. */
   const q = String(question ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_QUESTION) || "สรุปภาพรวมข้อมูลทั้งหมด";
-  /* School edition: the AI never needs ANY identifier. The parse guard has
-     already x'd citizen IDs and phones; the strict pass here additionally
-     blanks names, birthdates and student ids before the sample leaves for
-     the model. Detection re-runs on the sample rows because this function is
-     called with plain arrays — header patterns still catch identifier
-     columns whose values are already masked. */
-  const sensitive = classifySensitiveColumns(headers, sampleRows);
-  const safeRows  = sensitive.length ? maskRows(headers, sampleRows, sensitive, { strict: true }) : sampleRows;
-  const { quality, summaryStr, insights } = bundle;
-  const findings = insights?.length
+  const { quality, summaryStr, aiInsights } = bundle;
+  const findings = aiInsights?.length
     ? `\nผลตรวจเชิงสถิติที่ยืนยันแล้ว (อ้างอิงได้เลย):\n` +
-      insights.slice(0, 5).map(i => `- [${i.severity}] ${i.title} — ${i.detail}`).join("\n") + "\n"
+      aiInsights.slice(0, 5).map(i => `- [${i.severity}] ${i.title} — ${i.detail}`).join("\n") + "\n"
     : "";
   return (
     `คุณคือนักวิเคราะห์ข้อมูลมืออาชีพ วิเคราะห์ข้อมูลนี้แล้ว${q}\n\n` +
     `Dataset: ${totalRows.toLocaleString()} rows | ${headers.length} cols${fileType ? ` | ${fileType}` : ""} | quality: ${quality?.score || "?"}/100\n\n` +
-    /* The sample block used to be labelled just "Sample:", which reads as "here
-         is the start of the data". It is a RANDOM reservoir sample of five rows,
-         in sampling order, so a model narrating it ("January started strong…")
-         would be inventing a sequence that does not exist. Say what it is. */
       `${summaryStr}\n${findings}\n` +
-      `ตัวอย่างข้อมูล ${sampleRows.length} แถว (สุ่มมาจาก ${totalRows.toLocaleString()} แถว — ไม่ใช่แถวแรกและไม่เรียงตามลำดับ ห้ามใช้สรุปแนวโน้มหรือลำดับเวลา):\n` +
-      `${headers.join(",")}\n${safeRows.map(r => r.join(",")).join("\n")}\n\n` +
     /* ADR-0001 says the statistics are deterministic and the model only
          interprets them. The prompt handed over verified numbers but never said
          the model must not compute its own, so it could quietly produce an
@@ -169,6 +169,6 @@ export function analysisResponse({ aiAnalysis, totalRows, headers, durationMs, p
     success: true, analysis: aiAnalysis, rows: totalRows, columns: headers.length, durationMs,
     colAnalysis: parsed.colAnalysis, sampleRows: parsed.sampleRows,
     sensitiveColumns: parsed.sensitive || [],
-    ...bundle, summaryStr: undefined, savedId,
+    ...bundle, summaryStr: undefined, aiInsights: undefined, savedId,
   };
 }

@@ -48,6 +48,7 @@ const ROUTES = [
   { m: "post",   path: "/api/fixes/:id/preview",               min: "viewer", body: { op: "drop-duplicates" } },
   { m: "post",   path: "/api/fixes/:id/suggest",               min: "viewer", body: {} },
   { m: "post",   path: "/api/datasets/:id/analyze",            min: "viewer", body: {} },
+  { m: "get",    path: "/api/fixes/:id/ai-edit/scope",         min: "viewer" },
 
   // ── write ──
   { m: "patch",  path: "/api/datasets/:id/rename",             min: "editor", body: { name: "x" } },
@@ -57,7 +58,7 @@ const ROUTES = [
   { m: "post",   path: "/api/fixes/:id/apply",                 min: "editor", body: { op: "drop-duplicates" } },
   /* ai-edit is a PREVIEW — it returns a diff and writes nothing, so read
      access is enough. Only /ai-edit/apply stores a new version. */
-  { m: "post",   path: "/api/fixes/:id/ai-edit",               min: "viewer", body: { instruction: "trim" } },
+  { m: "post",   path: "/api/fixes/:id/ai-edit",               min: "viewer", body: { instruction: "trim", confirmSend: true } },
   { m: "post",   path: "/api/fixes/:id/ai-edit/apply",         min: "editor", body: { rows: [["1", "2"]], instruction: "x" } },
 
   // ── owner only ──
@@ -65,6 +66,9 @@ const ROUTES = [
   { m: "post",   path: "/api/datasets/:id/share",              min: "owner", body: { username: "__other__", role: "viewer" } },
   { m: "delete", path: "/api/datasets/:id/permanent",          min: "owner" },
   { m: "delete", path: "/api/datasets/:id/collaborators/:userId", min: "owner" },
+  /* v21.30: the AI switch — the owner answers for the data, so an editor
+     cannot switch AI back on (or off) for everyone. */
+  { m: "patch",  path: "/api/datasets/:id/ai",                 min: "owner", body: { aiEnabled: false } },
 
   // ── the rest, classified after the coverage check flagged them ──
   { m: "patch",  path: "/api/datasets/:id/star",               min: "editor", body: { starred: true } },

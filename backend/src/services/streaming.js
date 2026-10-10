@@ -443,7 +443,8 @@ export async function parseFileStreaming(buffer, originalName) {
   log.info({ file: originalName, rows: result.totalRows, ms, mode,
              norm: result.normalization }, "File parsed");
   // School edition (v21.18): PDPA guard at the one place every file becomes
-  // data — citizen IDs/phones masked, ID-column aggregates nulled, and a
-  // `sensitive` list attached for the UI banner and the AI's strict pass.
+  // data — direct identifiers masked, ID-column aggregates nulled, and a
+  // `sensitive` list attached for the UI banner (v21.30: every AI payload
+  // drops the flagged columns' values — services/aiSafe.js).
   return guardParsed({ ...result, parseMs: ms });
 }

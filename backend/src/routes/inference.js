@@ -14,7 +14,7 @@
  * already role-checked.
  */
 import { requireAuth } from "../auth.js";
-import { classifySensitiveColumns } from "../services/sensitive.js";
+import { classifySensitiveColumns, S26_KINDS } from "../services/sensitive.js";
 import { serviceLogger } from "../logger.js";
 import { parseAllRowsAny } from "../services/fullRows.js";
 import {
@@ -119,8 +119,13 @@ export function mountInferenceRoutes(app) {
          raw distinct values into the response (chi-square row/col labels and
          t-test/ANOVA groupNames carry every group value verbatim) — the one
          surface that would have echoed unmasked citizen ids — and the result
-         is statistically meaningless besides. Refuse by name. */
-      const protectedCols = new Set(classifySensitiveColumns(headers, allRows).map((d) => d.col));
+         is statistically meaningless besides. Refuse by name. v21.30: the
+         PDPA s.26 kinds (health, religion, …) are VARIABLES, not identifiers —
+         "does blood pressure differ by group" is exactly what a health thesis
+         asks — and this runs on the server for the owner, with no AI, so they
+         stay usable here; only the identifier kinds are refused. */
+      const protectedCols = new Set(classifySensitiveColumns(headers, allRows)
+        .filter((d) => !S26_KINDS.has(d.kind)).map((d) => d.col));
       const requestedCols = [valueColumn, groupColumn, xColumn, yColumn, beforeColumn, afterColumn,
         ...(Array.isArray(itemColumns) ? itemColumns : [])].filter(Boolean);
       const clash = requestedCols.find((c) => protectedCols.has(c));

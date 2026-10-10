@@ -8,12 +8,19 @@
  * (student ID), ชื่อ-สกุล, วันเกิด, เบอร์โทร. The data subjects are minors,
  * so "probably fine" is not a policy:
  *
- *   • Nothing that identifies a child may reach the AI. aiEdit.js warns the
- *     caller; this module MASKS. Strict mode strips every identifier —
- *     including the student ID, because the model never needs one.
+ *   • Nothing that identifies a child may reach the AI. This module DETECTS
+ *     and masks; every AI payload is built from aiSafe.js, which drops a
+ *     detected column's values entirely and keeps only its name and kind.
  *   • Citizen IDs must not survive into previews or exports either. A
  *     teacher keeps the student ID (pseudonymous inside the school, and the
  *     only way to find the right row) but never the citizen ID.
+ *
+ * v21.30: the same machinery now covers ordinary business files — email,
+ * payment card, bank account, passport, postal address, LINE/social IDs —
+ * and the PDPA s.26 categories (health, religion, ethnicity, disability,
+ * criminal record, sexual orientation, political opinion, trade union,
+ * biometric), which are detected by header and stay READABLE in the owner's
+ * own view but are excluded from AI payloads like every other kind.
  *
  * WHY VALUE-AWARE, NOT HEADER-ONLY
  * --------------------------------
@@ -30,80 +37,14 @@
  * leaks a child's identity.
  */
 
-// ── Thai citizen ID checksum ──────────────────────────────
+import {
+  isThaiCitizenId, ROLL_HEADER_RE, looksLikeRollSequence,
+  VALUE_KINDS, SHAPES, HEADER_PATTERNS, S26_KINDS,
+} from "./sensitivePatterns.js";
 
-/**
- * True for a 13-digit Thai citizen ID with a VALID mod-11 check digit.
- * Digits may be interleaved with spaces or dashes ("1-2345-67890-12-1");
- * any other character rejects. 13 digits with a wrong check digit reject —
- * that is the whole point of using the checksum as evidence. The first
- * digit of a real ID is never 0.
- */
-export function isThaiCitizenId(value) {
-  if (value == null) return false;
-  const s = String(value).trim();
-  if (s === "" || !/^[\d\s-]+$/.test(s)) return false;
-  const digits = s.replace(/[\s-]/g, "");
-  if (!/^\d{13}$/.test(digits) || digits[0] === "0") return false;
-  const d = [...digits].map(Number);
-  let sum = 0;
-  for (let i = 0; i < 12; i++) sum += d[i] * (13 - i);
-  return (11 - (sum % 11)) % 10 === d[12];
-}
-
-// ── Header patterns (Thai AND English), in severity order ─
-/* Order matters: "เลขประจำตัวประชาชน" — the official name of the citizen
-   ID — contains "เลขประจำตัว", which alone means student ID. The citizen
-   pattern is checked first so the more severe kind wins. */
-const HEADER_PATTERNS = [
-  { kind: "citizen-id", re: /ประชาชน|เลขบัตร|citizen|national[\s_-]?id/i },
-  { kind: "student-id", re: /เลขประจำตัว|รหัสนักเรียน|รหัสนิสิต|รหัสนักศึกษา|student[\s_-]?id/i },
-  { kind: "dob",        re: /เกิด|birth|\bdob\b|d\.o\.b/i },
-  { kind: "phone",      re: /เบอร์|โทร|มือถือ|phone|\btel\b|mobile/i },
-  { kind: "name",       re: /ชื่อ|สกุล|name/i },
-];
-
-// ── Value-shape corroborators ─────────────────────────────
-
-/* Roll-call headers, anchored — bare "ที่" only as the WHOLE header, so
-   "เลขที่บ้าน" (house number) or "วันที่" can never match. */
-const ROLL_HEADER_RE = /^(ลำดับ(ที่)?|เลขที่|ที่|no\.?|#)$/i;
-
-/** A 1..N-ish sequence: small integers, starts at ≤3, mostly +1 steps. */
-function looksLikeRollSequence(values) {
-  if (values.length < 3) return false;
-  const nums = values.map((v) => Number(v));
-  if (!nums.every((n) => Number.isInteger(n) && n >= 1 && n <= 999)) return false;
-  if (nums[0] > 3) return false;
-  let steps = 0;
-  for (let i = 1; i < nums.length; i++) if (nums[i] === nums[i - 1] + 1) steps++;
-  return steps >= (nums.length - 1) * 0.7;
-}
-
-/** Thai mobile/landline: leading 0 then 8-9 more digits, dashes/spaces ok. */
-function looksLikeThaiPhone(s) {
-  if (!/^[\d\s-]+$/.test(s)) return false;
-  const digits = s.replace(/\D/g, "");
-  return digits[0] === "0" && (digits.length === 9 || digits.length === 10);
-}
-
-/** ISO 2010-05-14 or Thai day-first 14/05/2553 (Buddhist years included). */
-function looksLikeDob(s) {
-  return /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(s)
-      || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}$/.test(s);
-}
-
-/** Contains an actual letter (Thai or Latin) — a name is never a number. */
-function looksLikeName(s) {
-  return /[A-Za-zก-๎]/.test(s);
-}
-
-/** A digit run (dashes/spaces allowed) that is NOT a valid citizen ID. */
-function looksLikeStudentId(s) {
-  if (!/^[\d\s-]+$/.test(s)) return false;
-  const digits = s.replace(/\D/g, "");
-  return digits.length >= 3 && digits.length <= 13 && !isThaiCitizenId(s);
-}
+/* Re-exported: callers and tests have imported these from here since the
+   School Edition; the patterns themselves now live in sensitivePatterns.js. */
+export { isThaiCitizenId, S26_KINDS };
 
 /* Sampling is capped so classification stays O(1) per column on a 25 MB
    upload — 50 NON-EMPTY values is plenty to establish a majority. The cap
@@ -137,10 +78,12 @@ function majority(values, pred) {
 /**
  * classifySensitiveColumns(headers, rows) -> [{ index, col, kind, confidence }]
  *
- * kinds: "citizen-id" | "student-id" | "name" | "dob" | "phone".
- * Evidence, strongest first:
- *   1. A majority of sampled non-empty values passing the mod-11 checksum is
- *      "citizen-id" at high confidence, whatever the header says.
+ * kinds: "citizen-id" | "student-id" | "name" | "dob" | "phone" | "email" |
+ * "card" | "bank-account" | "passport" | "address" | "social-id" | the
+ * PDPA s.26 kinds (S26_KINDS). Evidence, strongest first:
+ *   1. A majority of sampled non-empty values passing a value test — the
+ *      mod-11 citizen-ID checksum, the Luhn card check, an email shape — is
+ *      that kind at high confidence, whatever the header says.
  *   2. A header pattern match flags the column; when the sampled values also
  *      fit the kind's shape, confidence is "high", otherwise "medium".
  * A column is never flagged for merely being numeric.
@@ -152,9 +95,11 @@ export function classifySensitiveColumns(headers = [], rows = []) {
     const values = sampleValues(rows, index);
 
     /* Checksum evidence trumps the header entirely — schools routinely put
-       citizen IDs in columns named for something else. */
-    if (majority(values, isThaiCitizenId)) {
-      found.push({ index, col, kind: "citizen-id", confidence: "high" });
+       citizen IDs in columns named for something else, and a CRM export's
+       "contact" column full of addresses is an email column. */
+    const byValue = VALUE_KINDS.find((v) => majority(values, v.test));
+    if (byValue) {
+      found.push({ index, col, kind: byValue.kind, confidence: "high" });
       return;
     }
 
@@ -164,7 +109,7 @@ export function classifySensitiveColumns(headers = [], rows = []) {
        and worse: a 1..N column is numeric, so it was SUMMED into every
        student's score total. Classified as student-id so all the identity
        semantics follow: out of the score set, readable for the teacher,
-       strict-masked from the AI, aggregates and trend nulled. Header AND
+       kept out of the AI, aggregates and trend nulled. Header AND
        values must agree — a column merely NAMED ลำดับ holding scores stays
        a score column. */
     if (ROLL_HEADER_RE.test(col.trim()) && looksLikeRollSequence(values)) {
@@ -175,15 +120,11 @@ export function classifySensitiveColumns(headers = [], rows = []) {
     const match = HEADER_PATTERNS.find((p) => p.re.test(col));
     if (!match) return;
 
-    const corroborated = {
-      /* Header said citizen-id but the checksum majority above already
-         failed — value support for this kind can only come from there. */
-      "citizen-id": () => false,
-      "student-id": () => majority(values, looksLikeStudentId),
-      "name":       () => majority(values, looksLikeName),
-      "dob":        () => majority(values, looksLikeDob),
-      "phone":      () => majority(values, looksLikeThaiPhone),
-    }[match.kind]();
+    /* A header that said citizen-id/card/email reaches here only after the
+       value majority above failed — value support for those kinds can only
+       come from there, so SHAPES has no entry for them. */
+    const shape = SHAPES[match.kind];
+    const corroborated = shape ? majority(values, shape) : false;
 
     found.push({
       index, col, kind: match.kind,
@@ -195,23 +136,44 @@ export function classifySensitiveColumns(headers = [], rows = []) {
 
 // ── Masking ───────────────────────────────────────────────
 
+/* Keep the first `head` and last `tail` digits and x the rest; separators
+   survive so the masked value still reads as what it was. Fewer than
+   `minTotal` digits is not the shape we expected — keep nothing. */
+function maskDigits(s, head, tail, minTotal) {
+  const total = s.replace(/\D/g, "").length;
+  if (total < minTotal) return s.replace(/\d/g, "x");
+  let seen = 0;
+  return [...s].map((ch) => {
+    if (!/\d/.test(ch)) return ch;
+    const keep = seen < head || seen >= total - tail;
+    seen++;
+    return keep ? ch : "x";
+  }).join("");
+}
+
 /**
  * maskValue(value, kind) -> string. Empty/null stays "".
  *
- *   citizen-id : "1-xxxx-xxxxx-xx-21" — real first digit and last two,
- *                everything between becomes x, canonical dashes kept.
- *   phone      : first 2 and last 2 digits kept, separators preserved.
- *   name       : first character + "***".
- *   dob        : year survives, month/day masked (both 2010-05-14 and
- *                14/05/2553 shapes); unparseable becomes "xxxx".
- *   student-id : returned UNCHANGED — teachers need it to identify rows;
- *                it is pseudonymous within the school. (Strict maskRows
- *                overrides this for AI-bound payloads.)
+ *   citizen-id   : "1-xxxx-xxxxx-xx-21" — real first digit and last two,
+ *                  everything between becomes x, canonical dashes kept.
+ *   phone        : first 2 and last 2 digits kept, separators preserved.
+ *   card         : last 4 digits kept ("xxxx-xxxx-xxxx-1234").
+ *   bank-account : last 4 digits kept.
+ *   passport     : first 2 characters kept, the rest x.
+ *   email        : first character + "***@" + the domain.
+ *   name, address, social-id : first character + "***".
+ *   dob          : year survives, month/day masked (both 2010-05-14 and
+ *                  14/05/2553 shapes); unparseable becomes "xxxx".
+ *   student-id and the s.26 kinds : returned UNCHANGED — a teacher needs
+ *                  the student id to find the row, and s.26 values are the
+ *                  owner's own data in the owner's own view. Neither ever
+ *                  reaches the AI: aiSafe.js drops detected columns whole.
  */
 export function maskValue(value, kind) {
   if (value == null) return "";
   const s = String(value);
-  if (s.trim() === "") return "";
+  const t = s.trim();
+  if (t === "") return "";
 
   switch (kind) {
     case "citizen-id": {
@@ -222,77 +184,67 @@ export function maskValue(value, kind) {
       /* Not a real ID shape — keep nothing rather than guess positions. */
       return s.replace(/\d/g, "x");
     }
-    case "phone": {
-      const total = s.replace(/\D/g, "").length;
-      if (total < 5) return s.replace(/\d/g, "x");
-      let seen = 0;
-      return [...s].map((ch) => {
-        if (!/\d/.test(ch)) return ch;
-        const keep = seen < 2 || seen >= total - 2;
-        seen++;
-        return keep ? ch : "x";
-      }).join("");
+    case "phone":        return maskDigits(s, 2, 2, 5);
+    case "card":
+    case "bank-account": return maskDigits(s, 0, 4, 8);
+    case "passport":     return t.slice(0, 2) + t.slice(2).replace(/[0-9A-Za-z]/g, "x");
+    case "email": {
+      const at = t.lastIndexOf("@");
+      return at > 0 ? `${t[0]}***${t.slice(at)}` : `${t[0]}***`;
     }
     case "name":
-      return s.trim().slice(0, 1) + "***";
+    case "address":
+    case "social-id":
+      return t.slice(0, 1) + "***";
     case "dob": {
-      let m = s.trim().match(/^(\d{4})([-/.])\d{1,2}\2\d{1,2}$/);
+      let m = t.match(/^(\d{4})([-/.])\d{1,2}\2\d{1,2}$/);
       if (m) return `${m[1]}${m[2]}xx${m[2]}xx`;
-      m = s.trim().match(/^\d{1,2}([-/.])\d{1,2}\1(\d{4})$/);
+      m = t.match(/^\d{1,2}([-/.])\d{1,2}\1(\d{4})$/);
       if (m) return `xx${m[1]}xx${m[1]}${m[2]}`;
       return "xxxx";
     }
-    case "student-id":
     default:
       return s;
   }
 }
 
-/* Strict-mode student IDs: maskValue's student-id branch is the
-   teacher-facing contract (unchanged), but the AI never needs ANY
-   identifier — so for AI-bound rows every letter and digit becomes x. */
-function fullMask(value) {
-  if (value == null) return "";
-  const s = String(value);
-  if (s.trim() === "") return "";
-  return s.replace(/[0-9A-Za-zก-๛]/g, "x");
-}
+/* Masked in EVERY view, the owner's own included: the direct identifiers
+   that let a stranger reach the person. Names, birthdates and student ids
+   stay readable in previews (a teacher works with them inside the school),
+   and so do the s.26 kinds — those are kept out of AI payloads and share
+   pages instead, which is where they would leave the owner's hands. */
+const MASKED_IN_VIEW = new Set([
+  "citizen-id", "phone", "email", "card", "bank-account", "passport", "address", "social-id",
+]);
 
 /**
- * maskRows(headers, rows, detections, { strict }) -> new rows.
+ * maskRows(headers, rows, detections) -> new rows, inputs never mutated.
  *
- * Non-strict (previews and exports a teacher keeps): only citizen-id and
- * phone are masked — names and birthdates are data a teacher legitimately
- * works with inside the school.
- * Strict (anything leaving for the AI): citizen-id, phone, name, dob AND
- * student-id are all masked. Never mutates its inputs.
+ * The view a user keeps — previews, exports, fix previews. v21.30 removed
+ * the old { strict } mode: it existed for the five sample rows the analyze
+ * prompt used to carry, and no prompt carries rows any more.
  */
-export function maskRows(headers, rows, detections = [], { strict = false } = {}) {
-  const maskable = strict
-    ? new Set(["citizen-id", "phone", "name", "dob", "student-id"])
-    : new Set(["citizen-id", "phone"]);
+export function maskRows(headers, rows, detections = []) {
   const kindByIndex = new Map();
   for (const d of detections) {
-    if (maskable.has(d.kind)) kindByIndex.set(d.index, d.kind);
+    if (MASKED_IN_VIEW.has(d.kind)) kindByIndex.set(d.index, d.kind);
   }
-  return rows.map((row) => row.map((cell, i) => {
-    if (!kindByIndex.has(i)) return cell;
-    const kind = kindByIndex.get(i);
-    if (strict && kind === "student-id") return fullMask(cell);
-    return maskValue(cell, kind);
-  }));
+  return rows.map((row) => row.map((cell, i) =>
+    (kindByIndex.has(i) ? maskValue(cell, kindByIndex.get(i)) : cell)));
 }
 
 /* The "average citizen ID" is nonsense that must not render or reach the
    AI — a 13-digit label parses as a number, so analyze.js dutifully
    computes min/max/avg for it. Those aggregates are wiped, not masked:
-   there is no truthful masked version of a meaningless statistic. */
+   there is no truthful masked version of a meaningless statistic. Card and
+   bank-account numbers are digit runs too, and their "max" IS a number. */
 const NUMERIC_AGGREGATES = ["min", "max", "avg", "median", "q1", "q3", "stdDev", "sum"];
+const IDENTIFIER_NUMBERS = new Set(["citizen-id", "phone", "student-id", "card", "bank-account", "passport"]);
 
 /**
  * maskColAnalysis(colAnalysis, detections) -> new array, inputs untouched.
  * Flagged columns get { sensitive: kind }, their top[].value masked, and —
- * for citizen-id/phone columns that came out numeric — their aggregate
+ * for identifier columns that came out numeric — their aggregate
  * statistics nulled.
  */
 export function maskColAnalysis(colAnalysis = [], detections = []) {
@@ -304,7 +256,7 @@ export function maskColAnalysis(colAnalysis = [], detections = []) {
     if (Array.isArray(c.top)) {
       masked.top = c.top.map((t) => ({ ...t, value: maskValue(t.value, kind) }));
     }
-    if ((kind === "citizen-id" || kind === "phone") && c.type === "numeric") {
+    if (IDENTIFIER_NUMBERS.has(kind) && c.type === "numeric") {
       for (const key of NUMERIC_AGGREGATES) masked[key] = null;
     }
     return masked;
@@ -317,11 +269,11 @@ export function maskColAnalysis(colAnalysis = [], detections = []) {
  * response, saved stats_json, chat/agent context, exports, dataset previews,
  * the demo — receives the SAME protected view. Detection runs on the ordered
  * head rows (up to 500) rather than the 5-row reservoir so a sparse ID
- * column cannot slip past on a tiny sample. Non-strict masking here (citizen
- * IDs and phones x'd; names/DOB/student ids stay readable — teachers need
- * them); the AI boundary applies its own STRICT pass on top. The original
- * file bytes in object storage are untouched: this guards what the SERVER
- * shows and sends, not what the owner keeps.
+ * column cannot slip past on a tiny sample. The masking here is the view a
+ * user keeps (direct identifiers x'd; names/DOB/student ids and s.26 values
+ * stay readable — see MASKED_IN_VIEW); every AI payload is cut down further
+ * by aiSafe.js. The original file bytes in object storage are untouched:
+ * this guards what the SERVER shows and sends, not what the owner keeps.
  */
 export function guardParsed(parsed) {
   const basis = parsed.headRows?.length ? parsed.headRows : (parsed.sampleRows || []);
@@ -337,7 +289,7 @@ export function guardParsed(parsed) {
     const d = detections.find((x) => x.col === c.col);
     if (!d) return c;
     const out = { ...c };
-    if (d.kind === "citizen-id" || d.kind === "phone" || d.kind === "student-id") {
+    if (IDENTIFIER_NUMBERS.has(d.kind)) {
       for (const k of ["min", "max", "avg", "median", "q1", "q3", "iqr", "stdDev", "sum"]) {
         if (k in out) out[k] = null;
       }

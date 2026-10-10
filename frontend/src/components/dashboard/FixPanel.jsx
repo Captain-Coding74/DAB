@@ -13,11 +13,19 @@
  *     no effect in this file talks to the network.
  *   • Protected (PDPA) columns never reach the model — the backend strips
  *     them; this panel just says so out loud (the 🔒 line).
+ *   • v21.30: AI edit sends rows only after AiEditConfirm — row count, the
+ *     columns that go, the detected columns that stay, the recipient — and
+ *     the claim under the textarea says DETECTED personal data, because
+ *     detection is what the server actually does. With AI off (the dataset
+ *     switch or a "statistics only" analysis) suggestions come from the
+ *     rules and AI edit is not offered.
  */
 import React, { useState } from "react";
 import { Card, Eyebrow, Badge, Button, Textarea } from "../ui";
-import { postJSON } from "../../lib/api";
+import { getJSON, postJSON } from "../../lib/api";
 import { useAppStore } from "../../store";
+import { useLang } from "../../lib/i18n";
+import { AiEditConfirm } from "./AiEditConfirm";
 
 /* Mirrors OPERATIONS in backend/src/services/dataFixes.js — Thai labels for
    the ops a suggestion can name, kept here so rendering costs no extra
@@ -54,8 +62,9 @@ function CellVal({ v }) {
     : <>{String(v)}</>;
 }
 
-export function FixPanel({ datasetId, onApplied }) {
+export function FixPanel({ datasetId, onApplied, aiOff = false }) {
   const toast = useAppStore((s) => s.toast);
+  const { t } = useLang();
 
   // ── ข้อเสนอการแก้ไข (suggest → preview → apply) ─────────
   const [sug, setSug]         = useState(null);   // { list, source } after fetch
@@ -68,6 +77,7 @@ export function FixPanel({ datasetId, onApplied }) {
   const [aiBusy, setAiBusy]         = useState(false);
   const [ai, setAi]                 = useState(null); // the /ai-edit preview response
   const [aiApplying, setAiApplying] = useState(false);
+  const [confirm, setConfirm]       = useState(null); // the /ai-edit/scope answer while the dialog is open
 
   /* Same gate as the สถิติ tab: fixes read/write the STORED dataset, and an
      anonymous analysis never stored one. One line, same phrasing family. */
@@ -84,7 +94,7 @@ export function FixPanel({ datasetId, onApplied }) {
   async function fetchSuggestions() {
     setSugBusy(true);
     try {
-      const d = await postJSON(`/api/fixes/${datasetId}/suggest`, {});
+      const d = await postJSON(`/api/fixes/${datasetId}/suggest`, aiOff ? { noAi: true } : {});
       setSug({ list: d.suggestions || [], source: d.source });
       setPv({});
     } catch (e) { toast(e.message || "ขอข้อเสนอไม่สำเร็จ", "error"); }
@@ -115,11 +125,27 @@ export function FixPanel({ datasetId, onApplied }) {
     }
   }
 
+  /* Step 1: ask the server what WOULD be sent, and open the dialog. Nothing
+     leaves for the AI here — the scope is computed on the server alone. */
+  async function askAiEdit() {
+    setAiBusy(true);
+    try {
+      const scope = await getJSON(`/api/fixes/${datasetId}/ai-edit/scope`);
+      if (!scope.aiEnabled) toast(t("aiEdit.off"), "error");
+      else if (scope.tooMany) toast(t("aiEdit.tooMany").replace("{rows}", scope.rowCount.toLocaleString()).replace("{max}", scope.maxRows), "error");
+      else if (!scope.sentColumns.length) toast(t("aiEdit.nothingToSend"), "error");
+      else setConfirm(scope);
+    } catch (e) { toast(e.message || "เรียก AI ไม่สำเร็จ", "error"); }
+    finally { setAiBusy(false); }
+  }
+
+  /* Step 2, only from the dialog's Send: confirmSend is the user's click. */
   async function runAiEdit() {
+    setConfirm(null);
     setAiBusy(true);
     setAi(null);
     try {
-      const d = await postJSON(`/api/fixes/${datasetId}/ai-edit`, { instruction: inst.trim() });
+      const d = await postJSON(`/api/fixes/${datasetId}/ai-edit`, { instruction: inst.trim(), confirmSend: true });
       setAi(d);
     } catch (e) { toast(e.message || "เรียก AI ไม่สำเร็จ", "error"); }
     finally { setAiBusy(false); }
@@ -233,18 +259,22 @@ export function FixPanel({ datasetId, onApplied }) {
       <Card>
         <Eyebrow className="mb-1">สั่ง AI แก้ไขอิสระ · AI EDIT</Eyebrow>
         <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">
-          พิมพ์คำสั่ง แล้ว AI จะเสนอการแก้ทีละช่องให้ตรวจก่อนยืนยัน (สูงสุด {MAX_AI_EDIT_ROWS} แถว) —
-          คอลัมน์ข้อมูลส่วนบุคคลไม่ถูกส่งเข้า AI
+          {t("aiEdit.intro").replace("{max}", MAX_AI_EDIT_ROWS)} {t("aiEdit.notSent")}
         </p>
-        <Textarea
-          value={inst}
-          onChange={(e) => setInst(e.target.value)}
-          placeholder={'เช่น แปลงคอลัมน์วันที่ให้เป็นรูปแบบ YYYY-MM-DD ทั้งหมด'}
-          className="h-20"
-        />
-        <Button className="mt-3" size="sm" onClick={runAiEdit} loading={aiBusy} disabled={inst.trim().length < 3}>
-          ให้ AI เสนอการแก้ไข
-        </Button>
+        {aiOff ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">{t("aiEdit.off")}</p>
+        ) : (<>
+          <Textarea
+            value={inst}
+            onChange={(e) => setInst(e.target.value)}
+            placeholder={'เช่น แปลงคอลัมน์วันที่ให้เป็นรูปแบบ YYYY-MM-DD ทั้งหมด'}
+            className="h-20"
+          />
+          <Button className="mt-3" size="sm" onClick={askAiEdit} loading={aiBusy} disabled={inst.trim().length < 3}>
+            ให้ AI เสนอการแก้ไข
+          </Button>
+        </>)}
+        <AiEditConfirm scope={confirm} onSend={runAiEdit} onCancel={() => setConfirm(null)}/>
 
         {ai && (
           <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 space-y-3">

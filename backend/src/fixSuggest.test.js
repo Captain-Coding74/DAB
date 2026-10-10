@@ -121,3 +121,23 @@ describe("fix suggestions — the AI path", () => {
     assert.equal(r.suggestions.length, 0, "the model may legitimately say the data is clean");
   });
 });
+
+describe("fix suggestions — v21.30 the prompt is AI-safe", () => {
+  test("a detected column's values never reach the model, its name and kind do", async () => {
+    let sent = "";
+    const capture = { messages: { create: async (req) => { sent = req.messages[0].content; return { content: [{ type: "text", text: "[]" }] }; } } };
+    await suggestFixes(capture, {
+      headers: ["customer_email", "ที่อยู่", "ยอดขาย"],
+      colAnalysis: [
+        { col: "customer_email", type: "text", missing: 3, top: [{ value: "user0@example.com" }, { value: "user1@example.com" }] },
+        { col: "ที่อยู่", type: "text", missing: 0, top: [{ value: "99 ถนนสุขุมวิท" }] },
+        { col: "ยอดขาย", type: "text", missing: 0, top: [{ value: "ร้าน A" }] },
+      ],
+      totalRows: 100, dupeCount: 0,
+    });
+    for (const leak of ["@example.com", "สุขุมวิท"]) assert.ok(!sent.includes(leak), `leaked: ${leak}`);
+    assert.match(sent, /"personalData": "email"/);
+    assert.match(sent, /"personalData": "address"/);
+    assert.ok(sent.includes("ร้าน A"), "an undetected column keeps its top values");
+  });
+});

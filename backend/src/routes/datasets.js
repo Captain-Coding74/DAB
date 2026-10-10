@@ -15,6 +15,7 @@ import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
 import foldersRouter from "./folders.js";
+import { setDatasetAi } from "./datasetAi.js";
 import { pageParams } from "../pagination.js";
 
 const router = express.Router();
@@ -243,6 +244,9 @@ router.patch("/:id/star", requireAuth, async (req, res, next) => {
     res.json({ success: true });
   } catch (err) { next(err); }
 });
+
+// ── AI switch (v21.30, owner only — handler in routes/datasetAi.js) ──
+router.patch("/:id/ai", requireAuth, setDatasetAi);
 
 // ── Move to folder ─────────────────────────────────────────
 router.patch("/:id/move", requireAuth, async (req, res, next) => {

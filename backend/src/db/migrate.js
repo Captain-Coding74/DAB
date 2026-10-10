@@ -223,6 +223,10 @@ const ADDITIVE = [
   // file_content stays for backfill and is dropped once every row has moved.
   { table: "dataset_versions", column: "storage_key",    type: "TEXT" },
   { table: "dataset_versions", column: "storage_sha256", type: "TEXT" },
+  // v21.30: the two AI switches (services/aiGate.js). Existing datasets keep
+  // AI on and existing analyses keep it allowed — exactly their old behaviour.
+  { table: "datasets",         column: "ai_enabled",     type: "INTEGER NOT NULL DEFAULT 1" },
+  { table: "analyses",         column: "ai_disabled",    type: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 async function existingColumns(table) {

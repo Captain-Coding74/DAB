@@ -212,6 +212,12 @@ export async function toggleStar(id, starred) {
   await query(`UPDATE datasets SET is_starred=$1 WHERE id=$2`, [starred ? 1 : 0, id]);
 }
 
+/* v21.30: the owner's AI switch (services/aiGate.js reads it). 0/1 like
+   is_starred, so the same column works on SQLite and Postgres. */
+export async function setDatasetAiEnabled(id, enabled) {
+  await query(`UPDATE datasets SET ai_enabled=$1 WHERE id=$2`, [enabled ? 1 : 0, id]);
+}
+
 export async function trashDataset(id) {
   await query(`UPDATE datasets SET is_trashed=1, trashed_at=$1 WHERE id=$2`, [now(), id]);
 }

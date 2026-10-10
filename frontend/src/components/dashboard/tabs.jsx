@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { Download, Share2, FileText, Upload } from "lucide-react";
 import { Card, Badge, Button, QualityRing, GradeStamp, Eyebrow } from "../ui";
 import { FixPanel } from "./FixPanel";
+import { useLang } from "../../lib/i18n";
 
 /* Findings as auditor's marginalia: mark · red rule · entry */
 const SEVERITY = {
@@ -40,11 +41,13 @@ export function InsightRow({ ins, index = 0 }) {
 }
 
 export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
-  // No AI prose to show — three honest reasons, one shared shell:
-  //   demo     → pitch uploading your own file (v20.1)
-  //   aiGated  → anonymous upload: stats were free, AI is the signed-in tier (v20.3)
-  //   aiBudget → global daily cap reached: degrade gracefully, never go down (v20.3)
-  if (!a.analysis && (a.demo || a.aiGated || a.aiBudget)) {
+  const { t } = useLang();
+  // No AI prose to show — four honest reasons, one shared shell:
+  //   demo       → pitch uploading your own file (v20.1)
+  //   aiGated    → anonymous upload: stats were free, AI is the signed-in tier (v20.3)
+  //   aiBudget   → global daily cap reached: degrade gracefully, never go down (v20.3)
+  //   aiDisabled → the user chose statistics only, or the dataset's AI is off (v21.30)
+  if (!a.analysis && (a.demo || a.aiGated || a.aiBudget || a.aiDisabled)) {
     return (
       <Card>
         <div className="flex items-center gap-2.5 mb-4">
@@ -52,7 +55,9 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
           {a.quality && <GradeStamp score={a.quality.score}/>}
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
-          {a.aiBudget ? (
+          {a.aiDisabled ? (
+            <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">{t("ai.offReport")}</p>
+          ) : a.aiBudget ? (
             <p className="text-sm text-gray-800 dark:text-gray-200 leading-7">
               วันนี้โควต้าบทวิเคราะห์ AI ของระบบเต็มแล้ว 🙏 ผลตรวจเชิงสถิติทั้งหมด —
               insights, คุณภาพ, กราฟ, correlation — ยังครบถ้วนตามปกติ พรุ่งนี้บทวิเคราะห์ AI จะกลับมาให้อัตโนมัติ
@@ -82,7 +87,7 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
                 <Upload size={13}/> อัปโหลดไฟล์ของฉัน
               </Button>
             )}
-            {!a.aiBudget && (
+            {!a.aiBudget && !a.aiDisabled && (
               <Link to="/auth" className="font-mono text-[11px] px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-brand-400 hover:text-brand-600 dark:hover:text-brand-300 transition-colors">
                 {a.demo ? "สมัครฟรี — เก็บประวัติ + แชร์รายงาน" : "เข้าสู่ระบบ / สมัครฟรี"}
               </Link>
@@ -121,13 +126,13 @@ export function InsightsTab({ a }) {
   );
 }
 
-export function QualityTab({ a, onApplied }) {
+export function QualityTab({ a, onApplied, aiOff }) {
   /* v21.22: the quality tab is where problems are first SEEN, so it is also
      where they get FIXED — FixPanel (suggest → preview → apply + free-text AI
      edit) renders below the score card. The panel gates itself on a stored
      dataset (a.datasetId), same as the สถิติ tab, so the quality card no
      longer short-circuits the whole tab when quality is absent. */
-  if (!a.quality) return <FixPanel datasetId={a.datasetId} onApplied={onApplied}/>;
+  if (!a.quality) return <FixPanel datasetId={a.datasetId} onApplied={onApplied} aiOff={aiOff}/>;
   return (
     <>
     <Card title="ผลตรวจคุณภาพ · Quality">
@@ -161,7 +166,7 @@ export function QualityTab({ a, onApplied }) {
         </div>
       )}
     </Card>
-    <FixPanel datasetId={a.datasetId} onApplied={onApplied}/>
+    <FixPanel datasetId={a.datasetId} onApplied={onApplied} aiOff={aiOff}/>
     </>
   );
 }

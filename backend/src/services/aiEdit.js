@@ -9,10 +9,16 @@
  *
  *   • Raw cell values leave the server and go to the Anthropic API — but ONLY
  *     from columns that carry no identifier. Columns classified as personal
- *     data (citizen ID, student ID, name, birthdate, phone) are stripped from
- *     the payload before it is built: not masked, ABSENT. Their headers do
- *     not appear either, so the model cannot even learn the dataset HAS a
+ *     data (every kind sensitive.js detects: citizen ID, student ID, name,
+ *     birthdate, phone, email, card, bank account, passport, address,
+ *     LINE/social ID and the PDPA s.26 categories) are stripped from the
+ *     payload before it is built: not masked, ABSENT. Their headers do not
+ *     appear either, so the model cannot even learn the dataset HAS a
  *     citizen-ID column.
+ *   • v21.30: nothing is sent without an explicit confirmation. The route
+ *     refuses a request without confirmSend: true (AI_EDIT_CONFIRM_REQUIRED)
+ *     and the UI shows aiEditScope() — how many rows, which columns go, which
+ *     detected columns stay — before the user presses Send.
  *   • The model chooses the new values. Unlike dataFixes.js, there is no
  *     catalogue constraining what it may do — the instruction is free text.
  *
@@ -79,6 +85,24 @@ const PII_HINTS = [
  */
 export function detectSensitiveColumns(headers = []) {
   return headers.filter((h) => PII_HINTS.some((re) => re.test(String(h))));
+}
+
+/**
+ * aiEditScope(headers, rows) -> exactly what aiEditRows WOULD send, from the
+ * same value-aware classification, for the confirmation dialog: the row
+ * count, the columns that go, and the detected columns that stay behind.
+ */
+export function aiEditScope(headers = [], rows = []) {
+  const detections = classifySensitiveColumns(headers, rows);
+  const held = new Set(detections.map((d) => d.index));
+  return {
+    rowCount: rows.length,
+    maxRows: MAX_AI_EDIT_ROWS,
+    tooMany: rows.length > MAX_AI_EDIT_ROWS,
+    sentColumns: headers.filter((_, i) => !held.has(i)),
+    protectedColumns: detections.map(({ col, kind }) => ({ col, kind })),
+    recipient: "Anthropic, PBC (USA)",
+  };
 }
 
 /**
