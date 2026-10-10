@@ -86,7 +86,7 @@ export function mountInferenceRoutes(app) {
    */
   app.post("/api/inference/:id", requireAuth, async (req, res, next) => {
     try {
-      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes } =
+      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes, touchDataset } =
         await import("../db/datasetRepository.js");
       const { parseFileStreaming } = await import("../services/streaming.js");
 
@@ -95,6 +95,7 @@ export function mountInferenceRoutes(app) {
 
       const ds = await getDatasetWithContent(req.params.id);
       if (!ds?.version) return res.status(404).json({ error: "Dataset not found" });
+      await touchDataset(ds.id);   // v21.30: a test run is use (services/retention.js)
 
       const buffer = await getVersionBytes(ds.version);
       /* Every row, not sampleRows.

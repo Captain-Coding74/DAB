@@ -4,6 +4,7 @@
  */
 import { query } from "./pool.js";
 import { isUniqueViolation } from "./repository.js";
+import { deleteDatasetCascade } from "./cascade.js";
 import crypto from "crypto";
 
 const uuid = () => crypto.randomUUID();
@@ -41,7 +42,7 @@ export async function deleteFolder(id, ownerId) {
 }
 
 // ── Datasets — Create with first version ────────────────────
-export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes }) {
+export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes, schoolAttestedAt }) {
   // The caller may supply the id so the storage key it already wrote points
   // at the same dataset; otherwise generate one as before.
   const datasetId = providedId || uuid();
@@ -59,9 +60,9 @@ export async function createDataset({ datasetId: providedId, workspaceId, ownerI
   );
 
   await query(
-    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t]
+    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at,school_attested_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t, schoolAttestedAt||null]
   );
 
   return { id: datasetId, versionId };
@@ -222,25 +223,26 @@ export async function trashDataset(id) {
   await query(`UPDATE datasets SET is_trashed=1, trashed_at=$1 WHERE id=$2`, [now(), id]);
 }
 
+/* v21.30: "use" for the inactivity rule in services/retention.js — opening
+   or analysing a dataset changes no column updated_at tracks. */
+export async function touchDataset(id) {
+  await query(`UPDATE datasets SET last_used_at=$1 WHERE id=$2`, [now(), id]);
+}
+
+/* v21.30: a class roster added as a new version carries a fresh attestation. */
+export async function markSchoolAttested(id, at) {
+  await query(`UPDATE datasets SET school_attested_at=$1 WHERE id=$2`, [at, id]);
+}
+
 export async function restoreDataset(id) {
   await query(`UPDATE datasets SET is_trashed=0, trashed_at=NULL WHERE id=$1`, [id]);
 }
 
-export async function permanentlyDeleteDataset(id) {
-  // Remove the stored objects FIRST — "permanently delete" must not leave the
-  // user's file bytes on disk/S3 forever. storage.remove is idempotent, so a
-  // version without a key (legacy file_content rows) is a no-op.
-  const versions = await query(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1 AND storage_key IS NOT NULL`, [id]);
-  if (versions.length) {
-    const storage = await import("../services/storage.js");
-    for (const v of versions) await storage.remove(v.storage_key);
-  }
-  await query(`DELETE FROM dataset_versions WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM dataset_tags WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM comments WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM datasets WHERE id=$1`, [id]);
-}
+/* v21.30: permanent delete is the full cascade (db/cascade.js). It used to
+   stop at versions, tags, permissions and comments, leaving every analysis
+   made from the file — filename, top values, AI report — plus its chat,
+   share links and activity rows behind. */
+export const permanentlyDeleteDataset = deleteDatasetCascade;
 
 export async function emptyTrash(ownerId) {
   const trashed = await query(`SELECT id FROM datasets WHERE owner_id=$1 AND is_trashed=1`, [ownerId]);

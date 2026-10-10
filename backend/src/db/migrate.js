@@ -208,6 +208,14 @@ const SCHEMA = [
     created_at    TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_uploadmeta_created   ON upload_metadata(created_at DESC)`,
+
+  // v21.30: data lifecycle (db/cascade.js, services/retention.js). Deleting
+  // an analysis looks up its chat and share links by analysis_id, and the
+  // daily retention jobs delete audit and notification rows by age.
+  `CREATE INDEX IF NOT EXISTS idx_chat_analysis        ON chat_messages(analysis_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_shares_analysis      ON shared_reports(analysis_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_created        ON audit_log(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_notif_created        ON notifications(created_at)`,
 ];
 
 /**
@@ -227,6 +235,24 @@ const ADDITIVE = [
   // AI on and existing analyses keep it allowed — exactly their old behaviour.
   { table: "datasets",         column: "ai_enabled",     type: "INTEGER NOT NULL DEFAULT 1" },
   { table: "analyses",         column: "ai_disabled",    type: "INTEGER NOT NULL DEFAULT 0" },
+  // v21.30: data lifecycle. last_used_at feeds the inactivity rule in
+  // services/retention.js — updated_at only moves on edits, so opening or
+  // re-analysing a dataset would not otherwise count as use. NULL on old rows
+  // is fine: the rule takes the latest of every timestamp it has.
+  // school_attested_at is when the uploader confirmed their school's
+  // authority to save a class roster (services/schoolRoster.js).
+  { table: "datasets",         column: "last_used_at",       type: "TEXT" },
+  { table: "datasets",         column: "school_attested_at", type: "TEXT" },
+];
+
+/**
+ * One-off data fixes, run after ADDITIVE on every boot. Each must be
+ * idempotent (a no-op once applied) and valid SQL on SQLite and Postgres.
+ */
+const DATA_FIXES = [
+  // v21.30: analyses no longer keep the client IP (routes/analysis.js passes
+  // null). Clear what earlier releases stored; the column stays for old dumps.
+  `UPDATE analyses SET ip_address = NULL WHERE ip_address IS NOT NULL`,
 ];
 
 async function existingColumns(table) {
@@ -255,6 +281,8 @@ export async function migrate() {
       if (!/duplicate column|already exists/i.test(err.message)) throw err;
     }
   }
+
+  for (const sql of DATA_FIXES) await query(sql);
 
   log.info({ backend: getBackend() }, "migrations applied");
 }

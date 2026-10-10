@@ -9,6 +9,8 @@ import { useState, useCallback, useRef } from "react";
 import { useAppStore } from "../store";
 import { apiFetch, getJSON, postJSON } from "../lib/api";
 import { startSpan } from "../lib/perf";
+import { saveDataset } from "../lib/saveDataset";
+import { t } from "../lib/i18n";
 
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
 
@@ -89,6 +91,10 @@ export function useAnalysis() {
     if (!file || inFlightRef.current) return;
     inFlightRef.current = true;
     const runId = ++runRef.current;
+    // A result on screen is always this file's (selectFile clears it), so a
+    // dataset it was saved as stays linked — offering Save again would store
+    // a duplicate copy of the same file.
+    const savedAs = useAppStore.getState().currentAnalysis?.datasetId ?? null;
     setLoading(true);
     const endSpan = startSpan("analyze");   // v13: measure what the USER waits for
     const fd = new FormData();
@@ -101,23 +107,12 @@ export function useAnalysis() {
       if (!res.ok) throw new Error(data.error);
       const perceivedMs = endSpan();
       if (runId !== runRef.current) return;   // superseded — a newer file/run owns the state now
-/* School edition: the สถิติ tab's hypothesis tests need a STORED
-         dataset (they run on every row server-side), but nothing in the UI
-         ever created one — a.datasetId was read in exactly one place and set
-         in zero, so the whole inference panel was unreachable. For a
-         signed-in user, store the same file as a dataset and light the tab
-         up; failure is non-fatal (the tab just stays gated). */
-      let datasetId = data.datasetId ?? null;
-      if (!datasetId && useAppStore.getState().accessToken) {
-        try {
-          const dsFd = new FormData();
-          dsFd.append("file", file, file.name);
-          const dsRes = await apiFetch("/api/datasets", { method: "POST", headers: {}, body: dsFd });
-          if (dsRes.ok) datasetId = (await dsRes.json()).id ?? null;
-        } catch { /* สถิติ tab stays gated — not worth failing the analysis */ }
-      }
-      if (runId !== runRef.current) return;   // re-check: the store call awaited
-      setCurrentAnalysis({ ...data, datasetId, fileName: file.name, perceivedMs, noAi });
+      /* v21.30: analyze stores the analysis record and nothing else. This
+         used to POST the same File to /api/datasets straight after, for
+         every signed-in user, so the hypothesis tests had a stored copy —
+         keeping the original file indefinitely without asking. Storing it is
+         now the user's explicit "Save dataset" (saveCurrentDataset below). */
+      setCurrentAnalysis({ ...data, datasetId: data.datasetId ?? savedAs, fileName: file.name, perceivedMs, noAi });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
@@ -168,6 +163,25 @@ export function useAnalysis() {
     finally { inFlightRef.current = false; setLoading(false); }
   }, [toast, setCurrentAnalysis, currentAnalysis]);
 
+  /* v21.30: "Save dataset" — the only path that stores the original file,
+     reached through components/dashboard/SaveDatasetDialog.jsx.
+     Resolves the server's answer so the dialog can react to its code. The
+     dataset id joins the result on screen only if the user has not moved on
+     to another file meanwhile (same generation guard as analyze). */
+  const saveCurrentDataset = useCallback(async ({ schoolAuthority = false } = {}) => {
+    if (!file) return { ok: false };
+    const runId = runRef.current;
+    try {
+      const r = await saveDataset(file, { schoolAuthority });
+      const cur = useAppStore.getState().currentAnalysis;
+      if (r.ok && cur && runId === runRef.current) {
+        setCurrentAnalysis({ ...cur, datasetId: r.id });
+        toast(t("save.done"));
+      }
+      return r;
+    } catch (err) { return { ok: false, error: friendlyError(err) }; }
+  }, [file, toast, setCurrentAnalysis]);
+
   const exportReport = useCallback(async (format, question) => {
     if (!file) return;
     setExporting(format);
@@ -198,5 +212,5 @@ export function useAnalysis() {
     } catch (err) { toast(friendlyError(err), "error"); }
   }, [currentAnalysis, file, toast]);
 
-  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport };
+  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, saveCurrentDataset, exportReport, shareReport };
 }

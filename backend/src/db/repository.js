@@ -1,4 +1,5 @@
 import { query } from "./pool.js";
+import { deleteAnalysisCascade } from "./cascade.js";
 
 /* Default workspace brand — the stamp token (mirrors frontend LEDGER.stamp) */
 const DEFAULT_BRAND_COLOR = "#2F9E6E";
@@ -168,7 +169,12 @@ export async function getAnalysisCount(userId) {
   const r = await query(`SELECT COUNT(*) AS cnt FROM analyses WHERE user_id=$1`,[userId]);
   return parseInt(r[0]?.cnt||0);
 }
-export async function deleteAnalysis(id, userId) { await query(`DELETE FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]); }
+/* v21.30: owner-checked, then the full cascade (db/cascade.js) — this used to
+   delete the analyses row alone and leave its chat and share links behind. */
+export async function deleteAnalysis(id, userId) {
+  const own = await query(`SELECT id FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]);
+  if (own.length) await deleteAnalysisCascade(id);
+}
 export async function getUserStats(userId) {
   const r = await query(`SELECT COUNT(*) AS total, SUM(total_rows) AS total_rows, AVG(duration_ms) AS avg_ms FROM analyses WHERE user_id=$1`,[userId]);
   return r[0]||{ total:0, total_rows:0, avg_ms:0 };

@@ -318,6 +318,10 @@ paths:
         Response additionally includes `insights[]` and `sampleRows[]` (v9).
 
         Authentication is **optional** — if provided, the result is saved to history.
+        v21.30: the saved record keeps no IP address, and the uploaded file
+        itself is NOT stored — saving it is a separate, explicit
+        `POST /api/datasets` (which, for a file detected as a class roster,
+        requires `schoolAuthority=1` or answers 400 `SCHOOL_AUTHORITY_REQUIRED`).
 
         v21.30: the AI receives statistics only — never raw rows, and never the
         values of columns detected as personal data (only their name and kind).
@@ -430,6 +434,7 @@ paths:
     get:
       tags: [History]
       summary: Get a single analysis record (full)
+      description: v21.30 — never includes `ip_address`.
       security: [{ BearerAuth: [] }]
       parameters:
         - name: id
@@ -445,6 +450,10 @@ paths:
     delete:
       tags: [History]
       summary: Delete an analysis record
+      description: |
+        v21.30 — deletes the analysis together with its chat messages, share
+        links, comments (with their mentions) and the notifications that link
+        to it.
       security: [{ BearerAuth: [] }]
       parameters:
         - name: id

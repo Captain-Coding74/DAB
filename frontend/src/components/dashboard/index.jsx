@@ -19,6 +19,8 @@ import { AnalysisTab, InsightsTab, QualityTab, ForecastTab } from "./tabs";
 import { ColumnStatsPanel } from "../ColumnStats";
 import { ClassReportCard } from "./ClassReport";
 import { DatasetAiSwitch } from "./DatasetAiSwitch";
+import { NeedsSavedDataset } from "./SaveDataset";
+import { saveStatus, needsSchoolAttestation } from "../../lib/saveDataset";
 
 /* Mirrors MAX_UPLOAD_MB in backend/src/config.js. One constant here so the
    UI cannot advertise a limit the server would reject; /api/health also
@@ -29,6 +31,7 @@ const MAX_UPLOAD_MB = 25;
 const ChartsTab      = lazy(() => import("./tabs-charts").then(m => ({ default: m.ChartsTab })));
 const CorrelationTab = lazy(() => import("./tabs-charts").then(m => ({ default: m.CorrelationTab })));
 const InferencePanel  = lazy(() => import("../inference").then(m => ({ default: m.InferencePanel })));
+const SaveDatasetDialog = lazy(() => import("./SaveDatasetDialog"));   // v21.30: fetched on the first "Save dataset"
 
 const ChartFallback = () => (
   <Card><div className="space-y-3" aria-busy="true">
@@ -50,7 +53,7 @@ const TABS = ["analysis", "insights", "charts", "quality", "correlation", "ส�
 export default function Dashboard() {
   const accessToken = useAppStore(s => s.accessToken);
   const { t } = useLang();
-  const { file, loading, exporting, analysis: a, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport } = useAnalysis();
+  const { file, loading, exporting, analysis: a, selectFile, analyze, analyzeStored, runDemo, saveCurrentDataset, exportReport, shareReport } = useAnalysis();
 
   // v20.1: first-10-seconds demo — sample catalogue for the empty state.
   const [samples, setSamples] = useState(null);
@@ -74,6 +77,12 @@ export default function Dashboard() {
   const [dsAi,      setDsAi]      = useState(null);
   useEffect(() => { setDsAi(null); }, [a?.datasetId]);
   const aiOff = !!a?.aiDisabled || dsAi === false;
+  /* v21.30: the original file is stored only through "Save dataset" (opt-in,
+     with a notice). `save` travels to every feature that needs the stored
+     copy, so each can offer the action instead of failing. */
+  const [saveOpen,  setSaveOpen]  = useState(false);
+  useEffect(() => { setSaveOpen(false); }, [file]);
+  const save = { status: saveStatus({ signedIn: !!accessToken, file, analysis: a }), onSave: () => setSaveOpen(true) };
 
   const question = customPmt.trim() || prompt;
 
@@ -260,13 +269,13 @@ export default function Dashboard() {
                 {activeTab === "analysis"    && <AnalysisTab a={a} canShare={!!accessToken} exporting={exporting} onShare={shareReport} onExport={(fmt) => exportReport(fmt, question)}/>}
                 {activeTab === "insights"    && <InsightsTab a={a}/>}
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}
-                {activeTab === "quality"     && <QualityTab a={a} aiOff={aiOff} onApplied={() => analyzeStored(a.datasetId, question)}/>}
+                {activeTab === "quality"     && <QualityTab a={a} aiOff={aiOff} save={save} onApplied={() => analyzeStored(a.datasetId, question)}/>}
                 {activeTab === "correlation" && <Suspense fallback={<ChartFallback/>}><CorrelationTab a={a}/></Suspense>}
                 {activeTab === "สถิติ"        && (<>
                   {a.classReport && <ClassReportCard report={a.classReport}/>}
                   {a.datasetId
                     ? <Suspense fallback={<ChartFallback/>}><InferencePanel datasetId={a.datasetId}/></Suspense>
-                    : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">การทดสอบสมมติฐาน (t-test, ANOVA, Cronbach) ต้องใช้ข้อมูลทุกแถว — เข้าสู่ระบบแล้ววิเคราะห์ไฟล์อีกครั้ง ระบบจะบันทึกชุดข้อมูลให้อัตโนมัติ</p></Card>}
+                    : <NeedsSavedDataset need="inf.needSaved" save={save}/>}
                 </>)}
                 {activeTab === "forecast"    && <ForecastTab a={a}/>}
                 {activeTab === "deep dive"   && (a.savedId && aiOff
@@ -278,6 +287,9 @@ export default function Dashboard() {
 
               <div className="space-y-4">
                 <ColumnStatsPanel colAnalysis={a.colAnalysis}/>
+                {save.status === "ready" && (
+                  <Button variant="secondary" className="w-full" onClick={save.onSave}>{t("save.action")}</Button>
+                )}
                 {a.datasetId && <DatasetAiSwitch datasetId={a.datasetId} onChange={setDsAi}/>}
                 {a.savedId && aiOff && (
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 margin-rule">{t("ai.offFeature")}</p>
@@ -295,6 +307,11 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      {saveOpen && save.status === "ready" && (
+        <Suspense fallback={null}>
+          <SaveDatasetDialog roster={needsSchoolAttestation(a)} onSave={saveCurrentDataset} onClose={() => setSaveOpen(false)}/>
+        </Suspense>
+      )}
       <Tour open={tourOpen} onClose={() => setTourOpen(false)}/>
     </div>
   );

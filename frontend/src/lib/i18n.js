@@ -104,6 +104,26 @@ export const STRINGS = {
   "inf.value":          { en: "Value",              th: "ค่า" },
   "inf.meaning":        { en: "Meaning",            th: "ความหมาย" },
 
+  // ── saving a dataset — opt-in (v21.30) ──
+  "save.action":        { en: "Save dataset",       th: "บันทึกชุดข้อมูล" },
+  "save.title":         { en: "Save this dataset?", th: "บันทึกชุดข้อมูลนี้หรือไม่" },
+  "save.body":          { en: "Save the original file to DAB so you can run hypothesis tests and re-analyse later. It is kept until you delete it, or after 365 days without use.",
+                          th: "บันทึกไฟล์ต้นฉบับไว้ใน DAB เพื่อใช้ทดสอบสมมติฐานและวิเคราะห์ซ้ำภายหลัง ไฟล์จะถูกเก็บไว้จนกว่าคุณจะลบเอง หรือจนกว่าจะไม่มีการใช้งานครบ 365 วัน" },
+  "save.retention":     { en: "How long DAB keeps data", th: "DAB เก็บข้อมูลไว้นานเท่าใด" },
+  "save.confirm":       { en: "Save",               th: "บันทึก" },
+  "save.rosterNote":    { en: "This file looks like a class roster, so saving it needs your confirmation.",
+                          th: "ไฟล์นี้มีลักษณะเป็นรายชื่อนักเรียน จึงต้องยืนยันก่อนบันทึก" },
+  "save.school":        { en: "I am authorised by my school to process these students' data, and I will delete it when it is no longer needed",
+                          th: "ข้าพเจ้าได้รับอนุญาตจากโรงเรียนให้ประมวลผลข้อมูลของนักเรียนเหล่านี้ และจะลบข้อมูลเมื่อไม่มีความจำเป็นต้องใช้แล้ว" },
+  "save.done":          { en: "Dataset saved",      th: "บันทึกชุดข้อมูลแล้ว" },
+  "save.failed":        { en: "Could not save the dataset", th: "บันทึกชุดข้อมูลไม่สำเร็จ" },
+  "save.needFixes":     { en: "Fixes are saved as new versions of a saved dataset — save it first.",
+                          th: "การแก้ไขจะบันทึกเป็นเวอร์ชันใหม่ของชุดข้อมูล จึงต้องบันทึกชุดข้อมูลก่อน" },
+  "save.signedOut":     { en: "Sign in for the AI report, history, and the option to save.",
+                          th: "เข้าสู่ระบบเพื่อรับรายงานจาก AI ดูประวัติ และเลือกบันทึกข้อมูลได้" },
+  "save.noFile":        { en: "Analyse your own file to save it.",
+                          th: "วิเคราะห์ไฟล์ของคุณเองก่อน จึงจะบันทึกได้" },
+
   // ── auth ──
   "auth.username":      { en: "Username",           th: "ชื่อผู้ใช้" },
   "auth.password":      { en: "Password",           th: "รหัสผ่าน" },

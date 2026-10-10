@@ -9,6 +9,7 @@
 import cron from "node-cron";
 import { getDueScheduledReports, updateScheduledRun, pruneRefreshTokens } from "../db/repository.js";
 import { serviceLogger } from "../logger.js";
+import { startRetention } from "./retention.js";
 
 const log = serviceLogger("scheduler");
 
@@ -120,5 +121,7 @@ export function startScheduler() {
   // nothing deleted revoked/expired ones, so the table grew without bound.
   cron.schedule("7 * * * *", pruneTokens, { timezone: "Asia/Bangkok" });
   pruneTokens();   // once at startup so a long-running instance doesn't wait an hour
+  // v21.30: data retention — daily, plus once shortly after boot (services/retention.js).
+  startRetention();
   log.info("Scheduler started (reports every minute, token prune hourly)");
 }

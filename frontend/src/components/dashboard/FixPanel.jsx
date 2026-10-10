@@ -26,6 +26,7 @@ import { getJSON, postJSON } from "../../lib/api";
 import { useAppStore } from "../../store";
 import { useLang } from "../../lib/i18n";
 import { AiEditConfirm } from "./AiEditConfirm";
+import { NeedsSavedDataset } from "./SaveDataset";
 
 /* Mirrors OPERATIONS in backend/src/services/dataFixes.js — Thai labels for
    the ops a suggestion can name, kept here so rendering costs no extra
@@ -62,7 +63,7 @@ function CellVal({ v }) {
     : <>{String(v)}</>;
 }
 
-export function FixPanel({ datasetId, onApplied, aiOff = false }) {
+export function FixPanel({ datasetId, onApplied, aiOff = false, save }) {
   const toast = useAppStore((s) => s.toast);
   const { t } = useLang();
 
@@ -79,17 +80,10 @@ export function FixPanel({ datasetId, onApplied, aiOff = false }) {
   const [aiApplying, setAiApplying] = useState(false);
   const [confirm, setConfirm]       = useState(null); // the /ai-edit/scope answer while the dialog is open
 
-  /* Same gate as the สถิติ tab: fixes read/write the STORED dataset, and an
-     anonymous analysis never stored one. One line, same phrasing family. */
-  if (!datasetId) {
-    return (
-      <Card>
-        <p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">
-          การแก้ไขข้อมูลต้องใช้ชุดข้อมูลที่บันทึกไว้ — เข้าสู่ระบบแล้ววิเคราะห์ไฟล์อีกครั้ง ระบบจะบันทึกชุดข้อมูลให้อัตโนมัติ
-        </p>
-      </Card>
-    );
-  }
+  /* Same gate as the สถิติ tab: fixes read/write the STORED dataset. v21.30:
+     nothing stores one automatically any more, so the gate offers the
+     opt-in "Save dataset" (or says to sign in) instead of promising a save. */
+  if (!datasetId) return <NeedsSavedDataset need="save.needFixes" save={save}/>;
 
   async function fetchSuggestions() {
     setSugBusy(true);

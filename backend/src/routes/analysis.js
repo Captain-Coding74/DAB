@@ -35,7 +35,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
     const t0  = performance.now();
     const log = requestLogger(req);
     try {
-      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes } = await import("../db/datasetRepository.js");
+      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes, touchDataset } = await import("../db/datasetRepository.js");
       const role = await getUserDatasetRole(req.params.id, req.user.userId);
       if (!role) return res.status(403).json({ error: "No access to this dataset" });
 
@@ -75,8 +75,9 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
         fileName: ds.version.file_name, fileType: ds.version.file_type,
         totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis ?? "",
         statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0],
-        qualityScore: quality?.score, durationMs, ipAddress: req.ip, aiDisabled,
+        qualityScore: quality?.score, durationMs, ipAddress: null, aiDisabled,
       });
+      await touchDataset(ds.id);   // v21.30: analysing is use — see services/retention.js
       await cache.delPattern(`user:${req.user.userId}:history:`);
 
       const { logActivity } = await import("../db/collabRepository.js");
@@ -134,9 +135,14 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       }
       const durationMs = Math.round(performance.now() - t0);
 
+      /* v21.30: no IP is stored with an analysis, on either analyze path —
+         History never used it, and an analysis can live a year. The column
+         stays (migrate.js clears old values). Saving the FILE is a separate,
+         explicit choice: the SPA offers "Save dataset" (POST /api/datasets)
+         and nothing here stores it. */
       let savedId = null;
       if (req.user) {
-        const rec = await R.saveAnalysis({ userId: req.user.userId, workspaceId, datasetId, fileName: req.file.originalname, fileType, totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis ?? "", statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0], qualityScore: quality?.score, durationMs, ipAddress: req.ip, aiDisabled });
+        const rec = await R.saveAnalysis({ userId: req.user.userId, workspaceId, datasetId, fileName: req.file.originalname, fileType, totalRows, totalCols: headers.length, prompt: question, analysis: aiAnalysis ?? "", statsJson: { colAnalysis, corr, forecasts }, chartConfig: autoCharts[0], qualityScore: quality?.score, durationMs, ipAddress: null, aiDisabled });
         savedId = rec.id;
         await cache.delPattern(`user:${req.user.userId}:history:`);
       }
