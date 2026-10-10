@@ -33,6 +33,16 @@ describe("i18n", () => {
     assert.equal(t("nav.analyze"), "วิเคราะห์");
   });
 
+  test("v21.30 privacy notes keep the conditions that make them true", () => {
+    // Public claims. "Stored only if you save" and "not sent to the AI" are
+    // the load-bearing parts; a shortened rewrite must not drop them.
+    assert.match(t("columns.pdpaNotice", "en"), /left out of what the AI sees/);
+    assert.match(t("columns.pdpaNotice", "en"), /stored only if you save/);
+    assert.match(t("columns.pdpaNotice", "th"), /ก็ต่อเมื่อคุณบันทึกชุดข้อมูล/);
+    assert.match(t("classReport.privacy", "en"), /not sent to the AI and not included in share links/);
+    assert.match(t("workspace.schedulesSoon", "en"), /coming soon/);
+  });
+
   test("an explicit language is honoured", () => {
     assert.equal(t("nav.analyze", "th"), "วิเคราะห์");
   });

@@ -435,30 +435,88 @@ describe("Data fix routes (v21.3)", () => {
   });
 });
 
-describe("Scheduled reports respect dataset access", () => {
-  test("you cannot schedule a report against a dataset you cannot read", async () => {
-    // The WORKSPACE role was checked but the DATASET was not, so anyone could
-    // create a workspace they own and schedule a recurring report against
-    // someone else's private dataset, delivered to any address. The scheduler
-    // is a stub today, which is why this would have shipped unnoticed and gone
-    // live the day email delivery landed.
-    const up = await auth(agent.post("/api/datasets"))
-      .attach("file", Buffer.from("secret,value\n1,2\n3,4\n"), "private.csv");
-    assert.equal(up.status, 201);
+describe("Scheduled reports are off (v21.30)", () => {
+  // The runner was a stub that sent nothing, yet the form collected recipient
+  // email addresses and the scheduler logged them every minute. The feature is
+  // "coming soon": nothing can be created, and stored rows are purged.
+  let wsId;
 
-    const ws = await auth(agent.post("/api/workspaces"), otherToken).send({ name: "outsider ws" });
+  test("setup: a workspace the caller owns", async () => {
+    const ws = await auth(agent.post("/api/workspaces")).send({ name: "schedules off" });
     assert.equal(ws.status, 201);
-
-    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`), otherToken)
-      .send({ name: "exfil", datasetId: up.body.id, cronExpr: "0 9 * * *", recipients: ["x@y.com"] });
-    assert.equal(res.status, 403, "must not schedule against another user's dataset");
+    wsId = ws.body.id;
   });
 
-  test("a schedule with no dataset attached is still allowed", async () => {
-    const ws = await auth(agent.post("/api/workspaces")).send({ name: "mine" });
-    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`))
-      .send({ name: "plain", cronExpr: "0 9 * * *", recipients: ["me@x.com"] });
-    assert.equal(res.status, 201);
+  test("creating a schedule answers 501 FEATURE_UNAVAILABLE and stores nothing", async () => {
+    const res = await auth(agent.post(`/api/workspaces/${wsId}/schedules`))
+      .send({ name: "weekly", cronExpr: "0 9 * * 1", recipients: ["someone@example.com"] });
+    assert.equal(res.status, 501);
+    assert.equal(res.body.code, "FEATURE_UNAVAILABLE");
+    assert.match(res.body.error, /not available yet/);
+    const { query } = await import("./db/pool.js");
+    const rows = await query(`SELECT COUNT(*) AS n FROM scheduled_reports`);
+    assert.equal(Number(rows[0].n), 0, "no schedule (and no recipient address) was written");
+  });
+
+  test("editing a schedule answers 501 too", async () => {
+    for (const verb of ["put", "patch"]) {
+      const res = await auth(agent[verb](`/api/workspaces/${wsId}/schedules/any-id`)).send({ recipients: ["x@example.com"] });
+      assert.equal(res.status, 501, verb);
+      assert.equal(res.body.code, "FEATURE_UNAVAILABLE", verb);
+    }
+  });
+
+  test("it is still behind sign-in", async () => {
+    const res = await agent.post(`/api/workspaces/${wsId}/schedules`).send({ name: "x" });
+    assert.equal(res.status, 401);
+  });
+
+  test("listing answers an empty array for members and 403 for outsiders", async () => {
+    const mine = await auth(agent.get(`/api/workspaces/${wsId}/schedules`));
+    assert.equal(mine.status, 200);
+    assert.deepEqual(mine.body, []);
+    const theirs = await auth(agent.get(`/api/workspaces/${wsId}/schedules`), otherToken);
+    assert.equal(theirs.status, 403);
+  });
+
+  test("migrate() purges schedules stored before v21.30, recipients included", async () => {
+    const { query } = await import("./db/pool.js");
+    const { migrate } = await import("./db/migrate.js");
+    await query(
+      `INSERT INTO scheduled_reports (id,workspace_id,user_id,name,prompt,cron_expr,recipients,format,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [`legacy-${Date.now()}`, wsId, "legacy-user", "old weekly", "สรุปภาพรวม", "0 9 * * 1", JSON.stringify(["old@example.com"]), "pdf", new Date().toISOString()]);
+    await migrate();
+    const rows = await query(`SELECT COUNT(*) AS n FROM scheduled_reports`);
+    assert.equal(Number(rows[0].n), 0);
+    await migrate();   // idempotent: a second boot finds nothing and does not throw
+  });
+
+  test("the scheduler no longer runs reports or logs recipients", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./services/scheduler.js", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /recipients|ScheduledReport|scheduled_reports/, "no report runner left in the scheduler");
+    const repo = await import("./db/repository.js");
+    for (const gone of ["createScheduledReport", "getScheduledReports", "getDueScheduledReports", "updateScheduledRun"]) {
+      assert.equal(repo[gone], undefined, `${gone} should be gone`);
+    }
+  });
+});
+
+describe("The class report stays UI-only (v21.30 banner claim)", () => {
+  // ClassReport.jsx tells the teacher it is "not sent to the AI and not
+  // included in share links". Share pages render only the saved stats_json,
+  // so the claim holds exactly as long as the report never lands there.
+  test("returned to the uploader, not saved with the analysis", async () => {
+    const { readFileSync } = await import("node:fs");
+    const buf = readFileSync(new URL("../sample-data/classroom.csv", import.meta.url));
+    const res = await auth(agent.post("/api/analyze")).attach("file", buf, "classroom.csv");
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.ok(res.body.classReport?.students?.length, "the teacher sees the class report");
+    assert.ok(res.body.savedId, "a signed-in analysis is saved to History");
+    const { query } = await import("./db/pool.js");
+    const [row] = await query(`SELECT stats_json FROM analyses WHERE id=$1`, [res.body.savedId]);
+    assert.equal(JSON.parse(row.stats_json).classReport, undefined);
+    assert.doesNotMatch(row.stats_json, /"students"|"honorCount"/, "no class-report rows in saved stats");
   });
 });
 
@@ -738,7 +796,22 @@ describe("Public landing page (v20.4.1)", () => {
     assert.equal(res.status, 200);
     assert.ok(res.text.includes("AFTER-HOURS CONSOLE"), "landing brand present");
     assert.ok(res.text.includes('id="langEn" class="on"'), "English is the default language");
-    assert.ok(res.text.includes("LIVE PARSE"), "signature console present");
+    // v21.30: the hero console is a scripted loop, so it is labelled as one.
+    assert.ok(res.text.includes("ILLUSTRATION"), "signature console present, labelled as an illustration");
+    assert.ok(!res.text.includes("LIVE PARSE"), "the scripted console is not called live");
+  });
+
+  test("v21.30: landing claims are scoped to what the app really does", async () => {
+    const res = await agent.get("/landing.js");
+    assert.equal(res.status, 200);
+    for (const gone of ["Privacy first", "ความเป็นส่วนตัวมาก่อน", "Every figure on this page",
+                        "ตัวเลขทุกตัวบนหน้านี้", "we genuinely want to see it", "sample files never stored"]) {
+      assert.ok(!res.text.includes(gone), `overstated claim still on the landing: ${gone}`);
+    }
+    assert.ok(res.text.includes("Privacy by default"), "the privacy card is present");
+    // >= 2, not === 2: footer links to the legal pages may add more.
+    assert.ok((res.text.match(/href="\/privacy"/g) || []).length >= 2, "both languages link the Privacy Notice");
+    assert.ok((res.text.match(/href="\/contact"/g) || []).length >= 2, "both languages point file reports at the contact page");
   });
 
   test("/api/health reports the real package version, not a hardcoded one", async () => {

@@ -77,6 +77,21 @@ export const STRINGS = {
   "auth.toRegister":    { en: "No account yet? Create one", th: "ยังไม่มีบัญชี? สมัครเลย" },
   "auth.toSignIn":      { en: "Already have an account? Sign in", th: "มีบัญชีแล้ว? เข้าสู่ระบบ" },
 
+  // ── privacy notes (v21.30) — public claims: each must stay literally true ──
+  /* Kinds are listed, not "all personal data": student IDs are detected but
+     deliberately left readable for the teacher (sensitive.js maskValue). */
+  "columns.pdpaNotice": {
+    en: "Detected Thai IDs, phone numbers, names, birth dates, emails and card or bank numbers are masked here, and the values of every column detected as personal data are left out of what the AI sees. Your original file is not changed — it is stored only if you save the dataset.",
+    th: "เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล และเลขบัตรเครดิต/เดบิตหรือเลขบัญชีธนาคารที่ระบบตรวจพบจะถูกปิดบังในหน้านี้ และค่าในทุกคอลัมน์ที่ตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะไม่ถูกส่งให้ AI ไฟล์ต้นฉบับของคุณไม่ถูกแก้ไข — และจะถูกเก็บไว้ก็ต่อเมื่อคุณบันทึกชุดข้อมูลเท่านั้น" },
+  // The share page shows the same panel to someone who is not the owner.
+  "columns.pdpaNoticeShared": {
+    en: "Detected personal data (e.g. Thai ID, phone, name, birth date, email, card or bank number) is masked or hidden in this shared report.",
+    th: "ข้อมูลส่วนบุคคลที่ระบบตรวจพบ (เช่น เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล เลขบัตรเครดิต/เดบิต หรือเลขบัญชีธนาคาร) ถูกปิดบังหรือซ่อนไว้ในรายงานที่แชร์นี้" },
+  "classReport.privacy": {
+    en: "Computed on DAB's server from your file, for you only — not sent to the AI and not included in share links.",
+    th: "คำนวณบนเซิร์ฟเวอร์ของ DAB จากไฟล์ของคุณ แสดงให้คุณเห็นเท่านั้น — ไม่ส่งให้ AI และไม่รวมอยู่ในลิงก์แชร์" },
+  "workspace.schedulesSoon": { en: "Scheduled reports — coming soon", th: "รายงานตามกำหนดเวลา — เปิดให้ใช้เร็ว ๆ นี้" },
+
   // ── common ──
   "common.cancel":      { en: "Cancel",             th: "ยกเลิก" },
   "common.close":       { en: "Close",              th: "ปิด" },

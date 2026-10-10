@@ -9,10 +9,12 @@
  */
 import React from "react";
 import { Card, Eyebrow, Badge } from "../ui";
+import { useLang } from "../../lib/i18n";
 
 const num = (v) => (v == null ? "—" : Number(v).toLocaleString());
 
 export function ClassReportCard({ report }) {
+  const { t } = useLang();   // before the early return: hooks run on every render
   if (!report?.students?.length) return null;
   const r = report;
   const medianRank = r.students.find((s) => s.total === r.median)?.rank;
@@ -101,7 +103,11 @@ export function ClassReportCard({ report }) {
           )}
         </div>
       )}
-      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">* มีช่องคะแนนว่าง — นับเป็น 0 ในยอดรวม · มุมมองนี้แสดงเฉพาะบนเครื่องครู ไม่ส่งเข้า AI</p>
+      {/* v21.30: this said "shown only on the teacher's machine" — but it is
+          computed on the server from the uploaded file. It is UI-only: not in
+          the AI prompt, not in saved stats_json, so not on share pages. */}
+      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-2">* มีช่องคะแนนว่าง — นับเป็น 0 ในยอดรวม</p>
+      <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">🔒 {t("classReport.privacy")}</p>
     </Card>
   );
 }

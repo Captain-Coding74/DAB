@@ -108,7 +108,7 @@ export default function SharePage() {
         )}
 
         {/* Column stats */}
-        {colAnalysis.length > 0 && <ColumnStatsPanel colAnalysis={colAnalysis}/>}
+        {colAnalysis.length > 0 && <ColumnStatsPanel colAnalysis={colAnalysis} shared/>}
 
         <p className="text-center text-xs text-gray-400">
           Shared report · Powered by {brandName}

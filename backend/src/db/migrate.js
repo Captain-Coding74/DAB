@@ -225,6 +225,21 @@ const ADDITIVE = [
   { table: "dataset_versions", column: "storage_sha256", type: "TEXT" },
 ];
 
+/**
+ * One-off data fixes, run after ADDITIVE on every boot (v21.30).
+ *
+ * Each must be idempotent — a second run finds nothing left to change — and
+ * valid SQL on both SQLite and Postgres. Each runs through query() on its own,
+ * so a fix can rely on an ADDITIVE column existing.
+ */
+const DATA_FIXES = [
+  // v21.30: Scheduled Reports is off. Its stub runner never sent anything, so
+  // the stored schedules — recipient email addresses included — served no
+  // purpose and are deleted. Nothing can create a row any more
+  // (routes/schedules.js → FEATURE_UNAVAILABLE), so this stays a no-op.
+  `DELETE FROM scheduled_reports`,
+];
+
 async function existingColumns(table) {
   if (getBackend() === "postgres") {
     // current_schema() filter: without it a same-named table in another schema
@@ -251,6 +266,8 @@ export async function migrate() {
       if (!/duplicate column|already exists/i.test(err.message)) throw err;
     }
   }
+
+  for (const sql of DATA_FIXES) await query(sql);
 
   log.info({ backend: getBackend() }, "migrations applied");
 }
