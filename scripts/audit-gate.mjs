@@ -48,6 +48,14 @@ const ALLOW = {
   "zip-stream":      "ADR-0008: DoS-class, transitive under exceljs; the only npm-offered fix downgrades the parser (ADR-0003)",
   "yamljs":          "ADR-0008: DoS-class transitive glob; only consumer is the OpenAPI spec loader",
   "postcss":         "dev-only (build-time CSS pipeline via vite), not in production runtime",
+  // v21.30: the remaining fix is tailwindcss 4, a rewrite of the config and
+  // class pipeline. All five sit under the frontend's devDependencies and
+  // `npm ls --omit=dev` finds none of them; they run only at build time.
+  "tailwindcss":     "dev-only build-time CSS generator; the only fix is the tailwindcss 4 rewrite",
+  "braces":          "dev-only (via tailwindcss → chokidar/micromatch), not in production runtime",
+  "chokidar":        "dev-only (tailwindcss file watcher), not in production runtime",
+  "micromatch":      "dev-only (via tailwindcss), not in production runtime",
+  "fast-glob":       "dev-only (via tailwindcss), not in production runtime",
 };
 
 /**
