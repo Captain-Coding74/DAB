@@ -1,4 +1,5 @@
 import { query } from "./pool.js";
+import { deleteAnalysisCascade } from "./cascade.js";
 
 /* Default workspace brand — the stamp token (mirrors frontend LEDGER.stamp) */
 const DEFAULT_BRAND_COLOR = "#2F9E6E";
@@ -26,11 +27,13 @@ export const isUniqueViolation = (err) =>
   /unique constraint|UNIQUE constraint failed/i.test(err?.message || "") ||  // SQLite
   /SQLITE_CONSTRAINT/i.test(err?.rawCode || err?.code || "");
 
-export async function createUser({ username, passwordHash, email }) {
-  const id = uuid();
+/* terms (v21.30): { version, ip } of the Terms/Privacy acceptance given at
+   sign-up — written in the same INSERT, so no account exists without it. */
+export async function createUser({ username, passwordHash, email, terms }) {
+  const id = uuid(), t = now();
   try {
-    await query(`INSERT INTO users (id,username,password_hash,email,created_at) VALUES ($1,$2,$3,$4,$5)`,
-      [id, username, passwordHash, email||null, now()]);
+    await query(`INSERT INTO users (id,username,password_hash,email,created_at,terms_version,terms_accepted_at,terms_accepted_ip) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, username, passwordHash, email||null, t, terms?.version||null, terms ? t : null, terms?.ip||null]);
   } catch (err) {
     // v16 BUG FIX (found the moment integration tests started hitting the real
     // app): a duplicate username surfaced as a raw SQL error and fell through
@@ -47,13 +50,24 @@ export async function findUserByUsername(u) {
   return r[0]||null;
 }
 export async function findUserById(id) {
-  const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1`, [id]);
+  const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login,terms_version FROM users WHERE id=$1`, [id]);
   return r[0]||null;
+}
+/** v21.30: a re-acceptance of the current Terms/Privacy version. False when the user no longer exists. */
+export async function recordTermsAcceptance(id, { version, ip }) {
+  const r = await query(`UPDATE users SET terms_version=$1,terms_accepted_at=$2,terms_accepted_ip=$3 WHERE id=$4 RETURNING id`,
+    [version, now(), ip||null, id]);
+  return r.length === 1;
 }
 /** Like findUserById but honours the ban flag — refresh must not resurrect a
  *  deactivated user (login already filters on is_active!=0). */
 export async function findActiveUserById(id) {
   const r = await query(`SELECT id,username,email,role,avatar_url,created_at,last_login FROM users WHERE id=$1 AND is_active!=0`, [id]);
+  return r[0]||null;
+}
+/** v21.30: for re-checking the password before account deletion — the hash never leaves the server. */
+export async function findUserCredentials(id) {
+  const r = await query(`SELECT id,username,password_hash FROM users WHERE id=$1`, [id]);
   return r[0]||null;
 }
 export async function updateLastLogin(id) {
@@ -113,8 +127,11 @@ export async function updateWorkspaceBranding({ id, brandLogo, brandColor, brand
   await query(`UPDATE workspaces SET brand_logo=$1,brand_color=$2,brand_name=$3 WHERE id=$4`,
     [brandLogo||null,brandColor||DEFAULT_BRAND_COLOR,brandName||null,id]);
 }
-export async function getWorkspaceMembers(wsId) {
-  return query(`SELECT u.id,u.username,u.email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId]);
+/* v21.30: a member's email reached every other member of the workspace. Now
+   only `viewerId`'s own row carries it — the masking happens in SQL, so other
+   people's addresses never leave the database. No viewer → no emails. */
+export async function getWorkspaceMembers(wsId, { viewerId = null } = {}) {
+  return query(`SELECT u.id,u.username,CASE WHEN u.id=$2 THEN u.email ELSE NULL END AS email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId, viewerId]);
 }
 export async function addWorkspaceMember(wsId, userId, role="member", invitedBy=null) {
   // Duplicate invites stay a no-op via the UNIQUE(workspace_id,user_id)
@@ -148,15 +165,28 @@ export async function getWorkspaceDatasets(wsId) {
 }
 
 // ── Analyses ───────────────────────────────────────────────
-export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, fileType, totalRows, totalCols, prompt, analysis, statsJson, chartConfig, qualityScore, durationMs, ipAddress }) {
+/* aiDisabled (v21.30): the analysis was made "statistics only" (or from a
+   dataset whose AI switch is off) — chat and the agent refuse it with
+   AI_DISABLED (services/aiGate.js). */
+export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, fileType, totalRows, totalCols, prompt, analysis, statsJson, chartConfig, qualityScore, durationMs, ipAddress, aiDisabled = false }) {
   const id=uuid();
-  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-    [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now()]);
+  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at,ai_disabled,ai_minimised) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1)`,
+    [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now(),aiDisabled?1:0]);
   return { id };
 }
+/* v21.30: the owner only. `OR user_id IS NULL` let any signed-in user open,
+   chat with, comment on or share a legacy ownerless analysis by its id.
+   Every caller is an authenticated route, and anonymous analyses are not
+   saved, so no caller needs ownerless rows. */
 export async function getAnalysis(id, userId) {
-  const r = await query(`SELECT * FROM analyses WHERE id=$1 AND (user_id=$2 OR user_id IS NULL)`,[id,userId]);
+  if (!userId) return null;
+  const r = await query(`SELECT * FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]);
   return r[0]||null;
+}
+/** v21.30: "Save dataset" links the analysis on screen to the dataset it
+ *  saved — the owner's own analysis, and only one not linked yet. */
+export async function linkAnalysisToDataset(id, datasetId, userId) {
+  await query(`UPDATE analyses SET dataset_id=$1 WHERE id=$2 AND user_id=$3 AND dataset_id IS NULL`,[datasetId,id,userId]);
 }
 export async function getUserAnalyses(userId, { limit=20, offset=0 }={}) {
   return query(`SELECT id,file_name,file_type,total_rows,total_cols,prompt,quality_score,created_at,duration_ms,substr(analysis,1,200) AS preview FROM analyses WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,[userId,limit,offset]);
@@ -165,7 +195,12 @@ export async function getAnalysisCount(userId) {
   const r = await query(`SELECT COUNT(*) AS cnt FROM analyses WHERE user_id=$1`,[userId]);
   return parseInt(r[0]?.cnt||0);
 }
-export async function deleteAnalysis(id, userId) { await query(`DELETE FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]); }
+/* v21.30: owner-checked, then the full cascade (db/cascade.js) — this used to
+   delete the analyses row alone and leave its chat and share links behind. */
+export async function deleteAnalysis(id, userId) {
+  const own = await query(`SELECT id FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]);
+  if (own.length) await deleteAnalysisCascade(id);
+}
 export async function getUserStats(userId) {
   const r = await query(`SELECT COUNT(*) AS total, SUM(total_rows) AS total_rows, AVG(duration_ms) AS avg_ms FROM analyses WHERE user_id=$1`,[userId]);
   return r[0]||{ total:0, total_rows:0, avg_ms:0 };
@@ -189,8 +224,9 @@ export async function createSharedReport({ analysisId, userId, title, passwordHa
     [id,analysisId,userId,token,title||null,passwordHash||null,expiresAt||null,now()]);
   return { id, token };
 }
+/* v21.30: no a.file_name — a public page never shows it (services/shareView.js). */
 export async function getSharedReport(token) {
-  const r = await query(`SELECT sr.*,a.analysis,a.file_name,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
+  const r = await query(`SELECT sr.*,a.analysis,a.ai_minimised,a.file_name,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
   if (!r[0]) return null;
   if (r[0].expires_at && new Date(r[0].expires_at) < new Date()) return null;
   return r[0];
@@ -199,24 +235,17 @@ export async function incrementShareViewCount(token) { await query(`UPDATE share
 export async function getUserSharedReports(userId) {
   return query(`SELECT sr.id,sr.token,sr.title,sr.view_count,sr.expires_at,sr.created_at,a.file_name FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id WHERE sr.user_id=$1 ORDER BY sr.created_at DESC`,[userId]);
 }
-export async function deleteSharedReport(id, userId) { await query(`UPDATE shared_reports SET is_active=0 WHERE id=$1 AND user_id=$2`,[id,userId]); }
+/** v21.30: a hard delete (was is_active=0). True when the caller owned it. */
+export async function deleteSharedReport(id, userId) {
+  const r = await query(`DELETE FROM shared_reports WHERE id=$1 AND user_id=$2 RETURNING id`,[id,userId]);
+  return r.length > 0;
+}
 
 // ── Scheduled Reports ──────────────────────────────────────
-export async function createScheduledReport({ workspaceId, userId, name, datasetId, prompt, cronExpr, recipients, format }) {
-  const id=uuid();
-  await query(`INSERT INTO scheduled_reports (id,workspace_id,user_id,name,dataset_id,prompt,cron_expr,recipients,format,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id,workspaceId||null,userId,name,datasetId||null,prompt,cronExpr,JSON.stringify(recipients),format||"pdf",now()]);
-  return { id };
-}
-export async function getScheduledReports(wsId) {
-  return query(`SELECT * FROM scheduled_reports WHERE workspace_id=$1 AND is_active=1 ORDER BY created_at DESC`,[wsId]);
-}
-/** Mark a run and advance next_run — without persisting the next fire time,
- *  getDueScheduledReports matched every report on every one-minute tick. */
-export async function updateScheduledRun(id, nextRun = null) { await query(`UPDATE scheduled_reports SET last_run=$1,next_run=$2,run_count=run_count+1 WHERE id=$3`,[now(),nextRun,id]); }
-export async function getDueScheduledReports() {
-  return query(`SELECT * FROM scheduled_reports WHERE is_active=1 AND (next_run IS NULL OR next_run<=$1)`,[now()]);
-}
+/* v21.30: the feature is off (routes/schedules.js) and the table was purged
+   (db/migrate.js DATA_FIXES), so create/list/run helpers went with the stub
+   runner. Delete stays so an older client still gets a clean 200; with the
+   table empty it removes nothing. */
 export async function deleteScheduledReport(id, userId) { await query(`DELETE FROM scheduled_reports WHERE id=$1 AND user_id=$2`,[id,userId]); }
 
 // ── Audit ──────────────────────────────────────────────────

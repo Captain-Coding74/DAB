@@ -1,6 +1,6 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
-import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
-import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command } from "lucide-react";
+import { Routes, Route, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command, CircleUser } from "lucide-react";
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
 import { Toasts, Skeleton, Modal, Kbd, Wordmark } from "./components/ui";
@@ -9,13 +9,16 @@ import ErrorBoundary from "./components/errors";
 import CommandPalette, { firePaletteAction } from "./components/palette";
 import PerfOverlay from "./components/perf";
 import Dashboard from "./components/dashboard";
+import LegalGate from "./components/legal";   // v21.30: blocks until the current Terms/Privacy version is accepted
+import { gateActive, gateShown } from "./lib/legal.js";
 
 // v11: pages load lazily — the first paint ships only the dashboard
 const WorkspacePanel = lazy(() => import("./components/workspace"));
 const AuthPage       = lazy(() => import("./pages/AuthPage"));
 const SharePage      = lazy(() => import("./pages/SharePage"));
 const HistoryPage    = lazy(() => import("./pages/HistoryPage"));
-const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace") };
+const AccountPage    = lazy(() => import("./pages/AccountPage"));   // v21.30: your data + account deletion
+const prefetch = { history: () => import("./pages/HistoryPage"), workspace: () => import("./components/workspace"), account: () => import("./pages/AccountPage") };
 
 function PageSkeleton() {
   return (
@@ -35,6 +38,7 @@ function useGlobalShortcuts() {
   const paletteOpen    = useAppStore(s => s.paletteOpen);
   useEffect(() => {
     const onKey = (e) => {
+      if (gateActive(useAppStore.getState())) return;   // v21.30: nothing acts behind the re-accept dialog
       const typing = FIELD_TAG_RE.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(!paletteOpen); return; }
       if (typing) return;
@@ -93,7 +97,9 @@ function Nav() {
     navigate("/");
   };
 
-  const navLink = "relative flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-[11px] uppercase tracking-eyebrow text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition";
+  // v21.30: px-2 below sm — the Account link made a fourth icon, and at 390 px
+  // the row pushed sign-out 22 px past the edge (e2e/geometry.test.mjs).
+  const navLink = "relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg font-mono text-[11px] uppercase tracking-eyebrow text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition";
   const activeLink = "!text-gray-900 dark:!text-gray-100 before:content-[''] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-rule dark:before:bg-rule-dark";
 
   return (
@@ -119,6 +125,9 @@ function Nav() {
               </NavLink>
               <NavLink viewTransition to="/workspace" onMouseEnter={prefetch.workspace} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
                 <Users size={14}/><span className="hidden sm:block">{t("nav.workspace")}</span>
+              </NavLink>
+              <NavLink viewTransition to="/account" onMouseEnter={prefetch.account} aria-label={t("nav.account")} className={({isActive}) => `${navLink} ${isActive ? activeLink : ""}`}>
+                <CircleUser size={14}/><span className="hidden sm:block">{t("nav.account")}</span>
               </NavLink>
             </>
           )}
@@ -165,10 +174,24 @@ function Nav() {
   );
 }
 
+/* v21.30: the legal pages are server documents (backend/src/legalPages.js),
+   not routes in this router — so plain <a>s, for the same reason as /welcome
+   below. Same five links, same order, as the landing page footer. */
+const LEGAL_LINKS = [
+  ["/privacy", "legal.privacy"], ["/terms", "legal.terms"], ["/storage", "legal.storage"],
+  ["/contact", "legal.contact"], ["/licenses", "legal.licences"],
+];
+
 function Shell() {
   useGlobalShortcuts();
+  const { t } = useLang();
+  // v21.30: while the re-accept dialog is up the app behind it is inert — no
+  // Tab, click or screen-reader focus reaches it ("contents": no layout box).
+  const { pathname } = useLocation();
+  const gated = useAppStore((s) => gateShown(s, pathname));
   return (
     <>
+      <div className="contents" inert={gated ? "" : undefined}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-white dark:focus:bg-gray-900 focus:px-3 focus:py-2 focus:rounded-lg focus:border focus:border-brand-400 text-sm">
         ข้ามไปเนื้อหาหลัก
       </a>
@@ -181,6 +204,7 @@ function Shell() {
               <Route path="/auth"      element={<AuthPage/>}/>
               <Route path="/history"   element={<HistoryPage/>}/>
               <Route path="/workspace" element={<WorkspacePanel/>}/>
+              <Route path="/account"   element={<AccountPage/>}/>
             </Routes>
           </Suspense>
         </ErrorBoundary>
@@ -199,12 +223,19 @@ function Shell() {
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-10">
         <div className="max-w-screen-xl mx-auto px-4 py-5 flex items-center gap-4 flex-wrap">
           <span className="eyebrow">Data Analysis Bot · After-hours console · สร้างโดย Phatcharaphong Siriphatcharakul · 2 March 2025</span>
+          <nav aria-label={t("legal.nav")} className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
+            {LEGAL_LINKS.map(([href, key]) => (
+              <a key={href} href={href} className="text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">{t(key)}</a>
+            ))}
+          </nav>
           <a href="/welcome"
              className="ml-auto text-sm text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">
             Why DAB ↗
           </a>
         </div>
       </footer>
+      </div>
+      <LegalGate/>
       <CommandPalette/>
       <ShortcutsHelp/>
       <Toasts/>

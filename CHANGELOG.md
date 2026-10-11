@@ -3,6 +3,232 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.30] — 2026-10-11 "Privacy"
+A legal review of DAB against Thailand's PDPA, the Computer-Related Crime
+Act and consumer law found gaps that carried legal risk: what the app did
+with data, what its pages claimed, and what it never told anyone. This
+release closes them in ten parts, built in two streams and merged, and
+publishes the notices that describe the result. The notices are interim:
+they and the back-office drafts await review by a Thai data-protection
+lawyer (open questions in `docs/privacy/README.md`).
+- **AI minimisation.** Analyze, chat, the deep-dive agent and fix
+  suggestions send statistics only — no raw rows. Personal-data detection
+  now also covers email, payment-card and bank-account numbers, passports,
+  postal addresses, LINE/social IDs and the PDPA s.26 kinds (by header), and
+  a detected column reaches the AI as its name and kind only. AI Edit sends
+  rows only after a confirmation dialog (`AI_EDIT_CONFIRM_REQUIRED`).
+  "Statistics only" per upload and an owner-only AI switch per dataset:
+  chat, the agent and AI Edit refuse (`AI_DISABLED`); analysis and fix
+  suggestions fall back to statistics and rules.
+- **Data lifecycle.** Analyze stores the analysis record only; the file is
+  stored on an explicit "Save dataset" (a class roster also needs the
+  school-authority confirmation, `SCHOOL_AUTHORITY_REQUIRED`). No IP with
+  analyses. A daily job enforces the retention periods (Trash 30 days,
+  inactive datasets 365, analyses 365, telemetry 395, audit log 365, feed
+  and notifications 365, traffic log 90, privacy requests 3 years), and
+  deletes cascade.
+- **Account rights.** `/account`: download everything as JSON, delete the
+  account (password-confirmed, immediate). A privacy-request log keeps only
+  a hash of the user id; `privacy-request.mjs` logs email and post requests.
+- **Click-wrap and the traffic log.** Sign-up needs the Terms/Privacy box
+  and the age line; the accepted version, time and IP are kept, and a
+  version change asks signed-in users to accept again. The Computer-Related
+  Crime Act s.26 traffic log records the listed events for 90 days (never
+  less), with a dataset id, share id or export format as its only reference.
+- **Security hardening.** Stored files are encrypted at rest (AES-256-GCM)
+  when `STORAGE_ENCRYPTION_KEY` is set; new object keys hold no file name;
+  Postgres certificate verification (`DATABASE_SSL_CA` /
+  `DATABASE_SSL_VERIFY`); no default secrets in `docker-compose.yml`; the
+  workspace and collaborator lists show no one's email.
+- **Honest claims.** Landing copy scoped to what the engine really does, the
+  hero console labelled an illustration, in-app privacy notes. Scheduled
+  Reports is off ("coming soon", `FEATURE_UNAVAILABLE`); the stub runner and
+  the stored schedules, recipient emails included, are gone.
+- **Share links and AI labels.** Links come only from a dialog that warns
+  who can see the report, with a generic title, a required expiry (1, 7, 30
+  or 90 days — old links got 30) and an optional password. Public pages are
+  noindex, omit the file name and the values of personal-data columns, and
+  link "Report this page"; revoking deletes. AI text is labelled in the app,
+  on share pages and in PDF/Excel exports (`ai_generated`). Share tokens are
+  redacted from request logs.
+- **Legal pages.** `/privacy`, `/terms`, `/storage`, `/contact` and
+  `/licenses`, in English and Thai, served before the SPA; `GET /api/legal`;
+  footer links on every page.
+- **Licences.** Third-party notices are generated and gated
+  (`npm run licenses:check`, in CI); the IBM Plex OFL ships with the fonts.
+- **Back office.** `docs/privacy/`: records of processing, retention
+  schedule, breach plan, request procedure, vendor register, DPO assessment
+  and the evidence behind every public claim.
+- **Integration fixes.** "Save dataset" links the analysis on screen and
+  keeps a statistics-only choice (the dataset starts with AI off). Share
+  pages re-classify analyses saved before the wider detection.
+  `POST /api/analyze` checks the `datasetId`/`workspaceId` it is given, and
+  a legacy analysis with no owner is no longer open to every signed-in user.
+  Service logs carry no file names, column names or values. The first paint
+  is back under its 101 kB budget (string packs for lazy screens, the fixes
+  panel loads with its tab). The History preview carries the AI label, the
+  phone nav fits again, and `docker-compose.yml` passes the `LEGAL_*` and
+  `*_RETENTION_DAYS` settings through.
+- **Review fixes.** Four reviews of the merged tree found gaps, now closed.
+  `/account` lists every stored file (copies earlier versions stored
+  without asking are marked so, and the notices disclose them) and every
+  share link, each with a delete, and "Analyse again" reopens a file;
+  `/account` stays open behind the re-accept dialog, which nothing can act
+  behind any more (shortcuts, palette, Tab). Listing or filing datasets in
+  a workspace needs membership. A storage delete that fails now fails the
+  erasure instead of reporting it done, sessions are revoked first, and an
+  erased id cannot refresh. A wrong password at deletion is
+  `403 WRONG_PASSWORD`, not a 401 the SPA re-sent. `storage-encrypt` also
+  seals pre-v21.1 file copies left in the database, and reads check the
+  stored sha256. Legal templates are unreachable under any spelling of
+  their file names. A CSV quote error is a 400 and never puts a cell in the
+  error log. Old analyses: numeric card columns are re-detected, and their
+  pre-v21.30 AI report and chat are neither re-sent to the AI nor shown on
+  share pages; Thai file names are kept out of old share titles, and new
+  uploads store them as UTF-8. Re-analysing after Save keeps the dataset's
+  AI switch; "Statistics only" keeps Share and the exports; recent comments
+  and restores count as dataset activity. The notices name the contact
+  mailbox's provider among recipients, print the hosting transfer
+  safeguard (`LEGAL_HOSTING_TRANSFER_BASIS`), describe how a new version
+  takes effect, and say the traffic log is sent on request rather than in
+  the download.
+- **Tests and budgets.** 594 backend unit, 399 integration, 81 frontend,
+  25 HTTP e2e and 39 browser/geometry tests pass; the browser suites now
+  drive sign-up, Save dataset, the share dialog, the AI-edit confirmation,
+  the `/account` file and link deletes, a Statistics-only result, the
+  re-accept dialog (and its keyboard guards) and the legal pages. They run
+  on the bundled Chromium again (without its `--single-process` flag).
+  Initial payload 100.9 / 101 kB; total code 246.5 / 247 kB (raised from
+  244 for the `/account` lists, reason in `frontend/perf-budget.json`). The coverage run reads its
+  suite lists from `backend/package.json`; `maxFilesUncounted` 29 → 38 for
+  eight lazily loaded privacy components and two operator CLIs (reason in
+  `quality-budget.json`).
+- **Dependencies.** `npm run audit:gate` was red on 21.29 too: advisories
+  published since the last dependency pass. `npm audit fix` (lockfile only)
+  brings proxy-addr 2.0.8 (IP spoofing through an IPv4-mapped IPv6 trust
+  subnet; `req.ip` feeds the traffic log and the rate limiter) and
+  shell-quote 1.12.0, both CRITICAL. The rest clear only with the
+  tailwindcss 4 rewrite; all five are frontend devDependencies, so they
+  join postcss and vite in the gate's reviewed allowlist. The gate passes.
+
+**Before deploying**, configure:
+- `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` (PDPA s.23),
+  `LEGAL_HOSTING_PROVIDER`, `LEGAL_HOSTING_REGION` and
+  `LEGAL_HOSTING_TRANSFER_BASIS` (ss.28–29: the safeguard for keeping data
+  with a host outside Thailand, as confirmed with the host and counsel), and
+  `LEGAL_OPERATOR_NAME` if the operator is not the default. Production
+  warns at boot while any of the five is empty, and the pages say "being
+  set up".
+- `STORAGE_ENCRYPTION_KEY` (keep a copy: nothing can read a file without
+  it), then run `npm run storage-encrypt -w backend` once to encrypt files
+  stored before it was set (`-- --dry-run` counts them first). It also
+  moves pre-v21.1 copies still in `dataset_versions.file_content` into
+  sealed storage and clears the column.
+- The first retention run, about a minute after the first boot, deletes
+  every saved dataset with no recorded activity (edit, version, analysis,
+  comment, activity-feed entry) in 365 days — including copies earlier
+  versions stored automatically. Take a backup first if you need one.
+- On a managed Postgres, `DATABASE_SSL_CA` or `DATABASE_SSL_VERIFY=1`.
+- Docker Compose: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `POSTGRES_PASSWORD`,
+  `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` have no defaults any more; an
+  existing `pg-data` volume needs its password changed once (README).
+- `*_RETENTION_DAYS`: leave the defaults unless the Privacy Notice changes
+  first — it states those periods. `TRAFFIC_LOG_RETENTION_DAYS` cannot go
+  below 90.
+- `LEGAL_VERSION` is `2026-10-10`. If the lawyer's review changes the
+  notices materially, bump it: signed-in users then accept the new text.
+
+## [21.29] — 2026-10-09 "Walkthrough"
+A 23 s looping walkthrough of the real app now opens the "How it works"
+section on `/welcome`. It shows tapping the corner-shop sample, the readout
+powering on, the margin-note findings, the Quality grade (A · 92/100), and
+the recommended bar chart. A guided cursor, framed close-ups and short
+English captions carry it, and the three step cards below light up as live
+chapter markers.
+
+It is built from real screens and real figures only. A truth pass on the
+real clock captures every still and number. A fake-clock pass replays the
+same API response to capture the app's real micro-animations: the count-up,
+the findings rising in, the grade ring drawing, and the bars growing. A gate
+proves every plate pixel is a captured pixel. The app's own UI is mostly Thai
+even in EN mode, and the video shows it as it is. The chrome bar says
+"walkthrough · real screens · sample data · figures unedited".
+- **Assets**: dab-walk.webm 1.33 MB / dab-walk.mp4 1.73 MB (23.000 s,
+  1600×900), plus a poster and a still. Nothing is fetched until the figure
+  is within 300 px of the viewport.
+- **Behaviour**:
+  - Plays when at least 50% visible and pauses below 25%.
+  - The hero video pauses while it plays, so two videos never run at once.
+  - It has a Pause/Play button, reachable by keyboard.
+  - Reduced motion and Save-Data get the still, also lazy. Below 900 px the
+    figure is hidden and nothing is downloaded.
+  - A screen-reader transcript is provided in EN and TH.
+- **Copy fixes** the video would otherwise contradict. "Up to 10MB" now
+  reads the real limit from `/api/health` (25 MB). "~10ms" became "back in
+  milliseconds".
+- **Source**: `tools/walkthrough/` holds the capture, compositor, render,
+  gate, seam, text-sharpness check and encode. The gate also fails if the
+  page's chapter times or transcript figures drift from the capture. It
+  re-encodes byte for byte. `.dockerignore` now excludes `tools/`.
+- **Tests**: four new browser tests cover lazy arming, the narrow-screen and
+  reduced-motion paths, and the hero/walkthrough hand-off.
+
+## [21.28] — 2026-10-09 "Night Audit"
+New hero background for `/welcome`: a 30 s seamless loop, all English,
+replacing the 8 s extruded DATA ANALYSIS clip. An after-hours ledger lies open
+on both sides of the headline. Its four steps play one at a time, and a step
+rail under the right page keeps the whole pipeline in view: the active step
+is lit, and each finished step rolls its number to a green check.
+- **01 PARSE.** Four messy rows type in. A reading line crosses
+  `Monthly sales report`, strikes it, tags it `SKIPPED — banner row` and files
+  it as a grey rule. On the right, the cell cloud settles into a grid under
+  `Date · Item · Qty · Sales` with `HEADER ✓`.
+- **02 CLEAN.** One row at a time:
+  - `14/01/2569` burns away and is set as 3D `2026-01-14`, its year counting
+    down 543 on odometer reels.
+  - `฿1,234.50` squeezes to `1234.50`.
+  - `(500)` folds into `-500`.
+  Each fix is echoed under its header word as three red-flagged cells flip to
+  green.
+- **03 CHART.** The grid topples into a bar chart over `Jan · Feb · Mar`.
+- **04 GRADE.** The bars curl into a double-ruled seal and a green B+
+  stamps into it. The clean column's margin rules turn green.
+
+The camera is one unbroken 10° orbit with a dolly-zoom, timed to each step's
+key moment. The scene uses the page's tokens and self-hosted IBM Plex faces,
+plus darkened amber and green shades for the extrusion walls and a navy lamp.
+The gutter behind the H1 stays dark by construction. A gate projects every
+mesh in all 900 frames and fails on any intrusion into the measured headline
+zones, any crop, or any token sliding under the console. Measured over every
+frame at 1024–2560 px, EN and TH, headline contrast stays above 15:1 (white)
+and 8:1 (amber).
+- **Assets**: dab-bg.webm 1.04 MB / dab-bg.mp4 1.84 MB, both 30.000 s
+  (were 260 / 787 KB at 8 s). The frame edge composites to exactly #0B1220.
+- **The poster no longer sits under the video.** At .66 opacity a 34% ghost
+  of the still showed through the moving camera.
+- **Shorter bottom fade.** The hero's fade into the next section now covers
+  only its last 150 px. It used to start at 60% of the stage, which dimmed the
+  step rail on wide screens.
+- **Narrow screens.** At 1280–1439 px the video width-fits frame x 60–1860,
+  top-anchored, instead of cover-cropping the outer digits. At 600–1279 px a
+  mask keeps only the calm centre, since cropped tokens read wrong ("B-" for
+  B+, "500" for -500).
+- **Bandwidth.** Each `<source>` now carries
+  `media="(min-width: 1280px) and (prefers-reduced-motion: no-preference)"`.
+  Below 1280 px only the near-still centre glow would show, so phones,
+  tablets and reduced-motion visitors never download the video. They see
+  poster.jpg. Reduced motion gets the new poster-still.jpg, the finished
+  frame: B+ in its seal, all four steps checked, and the video's .66 opacity
+  baked in.
+- **Source**: `tools/hero-bg/`, an offline three.js renderer (headless
+  Chromium, SwiftShader). Every window lives in one schedule. The kit has the
+  legibility, crop and console gate, a loop-seam check, and encode and
+  preview scripts. It is not an npm workspace, so the build, CI and quality
+  gates are untouched. It reproduces the shipped frames bit for bit on the
+  recorded Chromium build.
+- **Verified**: 246/246 integration tests, 27/27 browser tests (including
+  the /welcome CSP, font and reveal checks) and 32/32 frontend tests pass.
+
 ## [21.27] — 2026-09-26 "Router"
 react-router-dom 6.30 → 7.18, the last moderate advisory from the audit
 (open redirect via backslash in `<Link>`/`useNavigate`, GHSA-wrjc-x8rr-h8h6,

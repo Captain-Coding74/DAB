@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>DAB walkthrough compositor</title>
+<link rel="icon" href="data:,">
+<style>
+/* the page is a pure function of t: nothing may tween on its own */
+*{transition:none!important;animation:none!important}
+@font-face{font-family:"PlexSans";font-weight:600;src:url(fonts/plex-latin-600.woff2) format("woff2")}
+@font-face{font-family:"PlexMono";font-weight:400;src:url(fonts/plex-mono-400.woff2) format("woff2")}
+@font-face{font-family:"PlexMono";font-weight:500;src:url(fonts/plex-mono-500.woff2) format("woff2")}
+html,body{margin:0;background:#0B1220;overflow:hidden}
+#f{position:relative;width:1600px;height:900px;overflow:hidden;background:#0B1220}
+#plate,#ov,#scrim,#cap{position:absolute;left:0;top:0}
+#plate{display:block;width:1600px;height:900px}
+#ov{width:1600px;height:900px;overflow:visible}
+#scrim{top:650px;width:1600px;height:250px;opacity:0;
+  background:linear-gradient(to bottom,rgba(11,18,32,0) 0px,rgba(11,18,32,.60) 62px,rgba(11,18,32,.95) 110px,rgba(11,18,32,.97) 250px)}
+#cap{width:1600px;height:900px;pointer-events:none}
+#rule{position:absolute;left:64px;top:760px;width:3px;height:106px;opacity:0}
+#cap .ln{position:absolute;left:86px;max-width:1000px;white-space:nowrap;opacity:0;
+  text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased;font-kerning:normal}
+#eb{top:762px;font:500 17px/20px "PlexMono";letter-spacing:.22em;text-transform:uppercase;color:#F5A00B}
+#hl{top:790px;font:600 42px/46px "PlexSans";color:#E9EEF7;letter-spacing:-.005em}
+#sb{top:846px;font:400 21px/25px "PlexMono";color:#8C99B5}
+</style>
+</head><body>
+<div id="f">
+  <canvas id="plate" width="1600" height="900"></canvas>
+  <svg id="ov" width="1600" height="900" viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="scrim"></div>
+  <div id="cap">
+    <div id="rule"></div>
+    <div class="ln" id="eb"></div>
+    <div class="ln" id="hl"></div>
+    <div class="ln" id="sb"></div>
+  </div>
+</div>
+<script type="module" src="compositor.js"></script>
+</body></html>

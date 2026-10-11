@@ -45,6 +45,7 @@ import { computeStatsBundle, buildAnalysisPrompt, analysisResponse } from "./ser
 import { createAIClient } from "./services/aiClient.js";
 import { runAgent } from "./services/agent.js";
 import { mountAuthRoutes }   from "./routes/auth.js";
+import { mountAccountRoutes } from "./routes/account.js";
 import { mountExportRoutes } from "./routes/export.js";
 import { mountWorkspaceRoutes } from "./routes/workspaces.js";
 import { mountAnalysisRoutes }  from "./routes/analysis.js";
@@ -53,11 +54,14 @@ import { mountFixRoutes }       from "./routes/fixes.js";
 import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, TRUST_PROXY } from "./config.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
+import { SHARE_ROBOTS }         from "./services/shareView.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
 import { mountTelemetryRoutes } from "./routes/telemetry.js";
+import { mountLegalPages }      from "./legalPages.js";
 import { startScheduler }        from "./services/scheduler.js";
+import { trafficLog }            from "./services/trafficLog.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
 import { requestMetrics, metricsHandler, requireMetricsAccess, errorHandler } from "./middleware/monitoring.js";
 import { apiLimiter, analyzeLimiter, authLimiter, speedLimiter } from "./middleware/rateLimiter.js";
@@ -116,6 +120,10 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   app.use(httpLogger);
   app.use(requestMetrics);
+  // v21.30: the Computer-Related Crime Act s.26 traffic log — one middleware
+  // that records the listed events after a successful response
+  // (services/trafficLog.js), instead of a write in every route.
+  app.use(trafficLog());
 
   // v9 fix: apiLimiter was imported but never mounted in v7/v8, so general
   // API routes had NO rate limiting at all. Now every /api route gets the
@@ -137,17 +145,25 @@ export function createApp() {
      /app/frontend/dist, so the image served no UI at all and /api was the only
      thing answering. Default keeps the source-tree path for `npm run dev`. */
   const distPath = process.env.PUBLIC_DIR || path.join(__dirname, "../../frontend/dist");
+  // v21.30: /privacy, /terms, /storage, /contact, /licenses and /api/legal.
+  // Before static, so /privacy.html can never be served with raw placeholders.
+  mountLegalPages(app, distPath);
   app.use(express.static(distPath));
 
   const upload = multer({
     storage: multer.memoryStorage(),
+    // v21.30: browsers send the file name as UTF-8 with no charset; multer's
+    // latin1 default stored every Thai name as mojibake ("à¸£à¸²à¸¢…").
+    defParamCharset: "utf8",
     limits:  { fileSize: MAX_UPLOAD_BYTES },
     fileFilter: (_, file, cb) => /\.(csv|xlsx|xls)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("CSV/Excel only")),
   });
-  const uploadMulti = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
+  const uploadMulti = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
   // ── Auth routes → src/routes/auth.js (v12) ───────────────
   mountAuthRoutes(app);
+  // ── Account rights: data export + deletion → routes/account.js (v21.30) ──
+  mountAccountRoutes(app);
 
   // ── Workspaces → routes/workspaces.js (v16) ───────────────
   mountWorkspaceRoutes(app);
@@ -211,8 +227,13 @@ export function createApp() {
   app.get("/welcome", (_, res) => sendOrFallback(res, "landing.html", () => res.redirect("/")));
 
   // Serve React for all non-API routes (SPA fallback)
-  app.get(/^(?!\/api).*/, (_, res) => sendOrFallback(res, "index.html",
-    () => res.status(200).send("Frontend not built. Run: npm run build -w frontend")));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    // v21.30: a /share/<token> document is a bearer link — keep it out of
+    // search indexes (SharePage adds the matching <meta name="robots">).
+    if (/^\/share\//i.test(req.path)) res.set("X-Robots-Tag", SHARE_ROBOTS);
+    sendOrFallback(res, "index.html",
+      () => res.status(200).send("Frontend not built. Run: npm run build -w frontend"));
+  });
 
   app.use(errorHandler);
 

@@ -23,6 +23,8 @@
  * out of storage; the parser handles the rest.
  */
 
+import { isSealed } from "./storageCrypto.js";
+
 const SAMPLE_BYTES = 8 * 1024;
 
 /** Control characters that appear in real text files. */
@@ -85,7 +87,10 @@ export function verifyFileMagic(buf, name) {
   if (isXlsxName) return isZip(buf);                     // .xlsx must be a real ZIP container
   if (isXlsName)  return isZip(buf) || isOle(buf);       // .xls: legacy OLE, or xlsx mislabelled
   // .csv / .tsv / anything text: refuse known binaries, then require text.
-  if (isZip(buf) || isOle(buf) || isElf(buf) || isPE(buf)) return false;
+  // v21.30: and the stored-object magic ("DABENC1", storageCrypto.js) — a
+  // text file that began with it would read back as a sealed object and fail
+  // to open (or be skipped by storage-encrypt as "already encrypted").
+  if (isZip(buf) || isOle(buf) || isElf(buf) || isPE(buf) || isSealed(buf)) return false;
   return looksLikeText(buf);
 }
 

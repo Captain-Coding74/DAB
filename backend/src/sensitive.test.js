@@ -10,13 +10,18 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   isThaiCitizenId,
   classifySensitiveColumns,
   maskValue,
   maskRows,
   maskColAnalysis,
+  guardParsed,
+  S26_KINDS,
 } from "./services/sensitive.js";
+import { isPaymentCard } from "./services/sensitivePatterns.js";
+import { parseFileStreaming } from "./services/streaming.js";
 
 /** Compute the mod-11 check digit for 12 leading digits. */
 function checkDigit(d12) {
@@ -185,7 +190,7 @@ describe("maskValue — what a masked value looks like", () => {
   });
 });
 
-describe("maskRows — strict is for the AI", () => {
+describe("maskRows — the view a user keeps", () => {
   const id = makeCitizenId();
   const headers = ["เลขประจำตัว", "ชื่อ", "บัตรประชาชน", "เบอร์โทร", "วันเกิด", "คะแนน"];
   const detections = [
@@ -207,19 +212,23 @@ describe("maskRows — strict is for the AI", () => {
     assert.equal(out[0][5], "87");
   });
 
-  test("strict masks every identifier, student-id included", () => {
-    const out = maskRows(headers, rows, detections, { strict: true });
-    assert.equal(out[0][0], "xxxxx", "the AI never needs a student id");
-    assert.equal(out[0][1], "ส***");
-    assert.equal(out[0][2], `${id[0]}-xxxx-xxxxx-xx-${id.slice(11)}`);
-    assert.equal(out[0][3], "08xxxxxx78");
-    assert.equal(out[0][4], "2010-xx-xx");
-    assert.equal(out[0][5], "87", "the actual data still flows");
+  test("v21.30: direct identifiers are masked, s.26 values stay readable", () => {
+    const h = ["email", "card", "acct", "passport", "addr", "line", "diagnosis"];
+    const det = ["email", "card", "bank-account", "passport", "address", "social-id", "health"]
+      .map((kind, index) => ({ index, col: h[index], kind, confidence: "medium" }));
+    const [out] = maskRows(h, [[
+      "somchai@example.co.th", "4111 1111 1111 1111", "123-4-56789-0", "AA1234567",
+      "99 ถนนสุขุมวิท กรุงเทพฯ", "somchai.line", "เบาหวาน",
+    ]], det);
+    assert.deepEqual(out, [
+      "s***@example.co.th", "xxxx xxxx xxxx 1111", "xxx-x-xx789-0", "AAxxxxxxx",
+      "9***", "s***", "เบาหวาน",
+    ]);
   });
 
   test("inputs are never mutated, and the output is new arrays", () => {
     const before = JSON.stringify(rows);
-    const out = maskRows(headers, rows, detections, { strict: true });
+    const out = maskRows(headers, rows, detections);
     assert.equal(JSON.stringify(rows), before, "rows untouched");
     assert.notEqual(out, rows);
     assert.notEqual(out[0], rows[0]);
@@ -323,4 +332,168 @@ describe("roll-number detection (v21.24)", () => {
     const det = classifySensitiveColumns(["ลำดับ"], [["25"], ["18"], ["22"], ["9"]]);
     assert.equal(det.length, 0);   // not a 1..N sequence — values disagree with the header
   });
+});
+
+// ── v21.30: the PDPA kinds beyond the School Edition five ─────────────────
+
+/** A valid card number: 15 digits + the Luhn check digit (fresh every run). */
+function makeCard(prefix = "4") {
+  const d = [...prefix].map(Number);
+  while (d.length < 15) d.push(Math.floor(Math.random() * 10));
+  const sum = d.reduce((acc, x, i) => {
+    // positions counted from the right once the check digit is appended
+    const fromRight = d.length - i;
+    let v = x;
+    if (fromRight % 2 === 1) { v *= 2; if (v > 9) v -= 9; }
+    return acc + v;
+  }, 0);
+  return d.join("") + ((10 - (sum % 10)) % 10);
+}
+
+describe("v21.30 detection — values where values are distinctive", () => {
+  test("Luhn: generated cards pass, an off-by-one check digit fails", () => {
+    for (let i = 0; i < 20; i++) {
+      const c = makeCard();
+      assert.equal(isPaymentCard(c), true, `${c} should pass`);
+      assert.equal(isPaymentCard(c.slice(0, 15) + ((Number(c[15]) + 1) % 10)), false);
+    }
+    assert.equal(isPaymentCard("4111-1111-1111-1111"), true, "dashes allowed");
+    assert.equal(isPaymentCard("0000000000000000"), false, "repeated filler is not a card");
+    assert.equal(isPaymentCard("411111111111"), false, "12 digits is too short");
+  });
+
+  test("a card column is flagged by its values whatever the header", () => {
+    const rows = Array.from({ length: 8 }, () => [makeCard(), "10"]);
+    assert.deepEqual(classifySensitiveColumns(["ref", "qty"], rows),
+      [{ index: 0, col: "ref", kind: "card", confidence: "high" }]);
+  });
+
+  test("random 16-digit order numbers do not pass the majority", () => {
+    // Luhn passes 1 in 10 by chance — the majority rule is what holds.
+    const rows = Array.from({ length: 30 }, (_, i) => [String(4000000000000000 + i * 7919)]);
+    assert.deepEqual(classifySensitiveColumns(["order_no"], rows), []);
+  });
+
+  test("an email column is flagged by its values whatever the header", () => {
+    const rows = ["a@x.co", "b.c@mail.example.com", "", "ก@โดเมน.ไทย"].map((v) => [v]);
+    assert.equal(classifySensitiveColumns(["contact"], rows)[0]?.kind, "email");
+  });
+});
+
+describe("v21.30 detection — headers, Thai and English", () => {
+  const kindOf = (h, rows = []) => classifySensitiveColumns([h], rows)[0]?.kind;
+  const CASES = {
+    "email":        ["อีเมล", "E-mail", "customer_email", "อีเมล์ลูกค้า"],
+    "card":         ["เลขบัตรเครดิต", "credit_card", "Card No."],
+    "bank-account": ["เลขที่บัญชี", "เลขบัญชีธนาคาร", "bank_account", "Account Number", "พร้อมเพย์"],
+    "passport":     ["เลขหนังสือเดินทาง", "พาสปอร์ต", "passport_no"],
+    "address":      ["ที่อยู่", "ที่อยู่จัดส่ง", "รหัสไปรษณีย์", "address", "Street", "zip_code"],
+    "social-id":    ["ไอดีไลน์", "ไลน์", "line_id", "LINE ID", "customer_line_id", "Facebook", "IG"],
+    "health":       ["โรคประจำตัว", "การวินิจฉัย", "อาการ", "กรุ๊ปเลือด", "แพ้ยา", "diagnosis", "medical_history", "blood_type"],
+    "religion":     ["ศาสนา", "religion"],
+    "ethnicity":    ["เชื้อชาติ", "ethnicity", "Race"],
+    "disability":   ["ความพิการ", "ประเภทความพิการ", "disability"],
+    "criminal":     ["ประวัติอาชญากรรม", "คดีอาญา", "criminal_record"],
+    "sexual-orientation": ["รสนิยมทางเพศ", "sexual_orientation"],
+    "political":    ["พรรคการเมือง", "ความคิดเห็นทางการเมือง", "political_view"],
+    "trade-union":  ["สมาชิกสหภาพแรงงาน", "trade_union"],
+    "biometric":    ["ลายนิ้วมือ", "ข้อมูลใบหน้า", "fingerprint", "face_id", "DNA"],
+  };
+  for (const [kind, headers] of Object.entries(CASES)) {
+    test(`${kind}: ${headers.join(" · ")}`, () => {
+      for (const h of headers) assert.equal(kindOf(h), kind, `"${h}"`);
+    });
+  }
+
+  test("s.26 kinds are exactly the nine PDPA categories", () => {
+    assert.deepEqual([...S26_KINDS].sort(), ["biometric", "criminal", "disability", "ethnicity", "health",
+      "political", "religion", "sexual-orientation", "trade-union"]);
+  });
+
+  test("Thai near-misses with no word spacing stay unflagged", () => {
+    // "ยา" alone is NOT a pattern (ยาว, พยาบาล); "ไลน์" only whole or with id;
+    // สัญชาติ is nationality, not race; การรักษาลูกค้า is customer retention.
+    for (const h of ["ความยาว", "ช่องทางออนไลน์", "สัญชาติ", "การรักษาลูกค้า", "ปุ๋ยชีวภาพ", "ยอดขาย",
+      "deadline", "online_sales", "product_line", "is_disabled", "race_id", "zipper_size", "เพศ", "party_size"]) {
+      assert.equal(kindOf(h), undefined, `"${h}" must not be flagged`);
+    }
+  });
+
+  test("specific beats general: card before citizen-id, email before address", () => {
+    assert.equal(kindOf("เลขบัตรเครดิต"), "card");
+    assert.equal(kindOf("email address"), "email");
+    assert.equal(kindOf("ชื่อโรค"), "health", "a disease name is health data, not a person's name");
+  });
+
+  test("shape-corroborated header kinds reach high confidence", () => {
+    const d = classifySensitiveColumns(["เลขที่บัญชี", "passport"],
+      [["123-4-56789-0", "AA1234567"], ["9876543210", "AB7654321"]]);
+    assert.deepEqual(d.map((x) => x.confidence), ["high", "high"]);
+  });
+});
+
+describe("v21.30 masking — what a masked value looks like", () => {
+  test("email keeps the first character and the domain", () => {
+    assert.equal(maskValue("somchai@example.co.th", "email"), "s***@example.co.th");
+    assert.equal(maskValue("not-an-email", "email"), "n***");
+  });
+
+  test("card and bank account keep the last four digits only", () => {
+    assert.equal(maskValue("4111111111111111", "card"), "xxxxxxxxxxxx1111");
+    assert.equal(maskValue("123-4-56789-0", "bank-account"), "xxx-x-xx789-0");
+    assert.equal(maskValue("12345", "bank-account"), "xxxxx", "too short to be what we expected");
+  });
+
+  test("passport keeps the first two characters", () => {
+    assert.equal(maskValue("AA1234567", "passport"), "AAxxxxxxx");
+  });
+
+  test("address and social id are first character + ***", () => {
+    assert.equal(maskValue("99 ถนนสุขุมวิท", "address"), "9***");
+    assert.equal(maskValue("somchai.line", "social-id"), "s***");
+  });
+
+  test("s.26 values are the owner's own view — readable, but flagged", () => {
+    for (const kind of S26_KINDS) assert.equal(maskValue("เบาหวาน", kind), "เบาหวาน");
+    const [col] = maskColAnalysis(
+      [{ col: "โรคประจำตัว", type: "text", top: [{ value: "เบาหวาน", count: 3 }] }],
+      [{ index: 0, col: "โรคประจำตัว", kind: "health", confidence: "medium" }]);
+    assert.equal(col.sensitive, "health", "flagged so AI payloads and share pages leave it out");
+    assert.equal(col.top[0].value, "เบาหวาน");
+  });
+
+  test("a numeric card column loses its aggregates and trend at the parse boundary", () => {
+    const parsed = guardParsed({
+      headers: ["card"], headRows: Array.from({ length: 5 }, () => [makeCard()]), sampleRows: [],
+      colAnalysis: [{ col: "card", type: "numeric", min: 4e15, max: 4.9e15, avg: 4.5e15, iqr: 1e14, trend: { n: 5 } }],
+    });
+    const c = parsed.colAnalysis[0];
+    assert.equal(c.sensitive, "card");
+    for (const k of ["min", "max", "avg", "iqr", "trend"]) assert.equal(c[k], null, k);
+  });
+});
+
+/* The release must not start masking columns of the files users already
+   know. Detections on every bundled sample file are pinned to exactly what
+   v21.29 found — a new pattern that fires on a demo file fails here. */
+describe("v21.30: the bundled sample files gain no new detections", () => {
+  const SCHOOL = [["เลขประจำตัว", "student-id"], ["บัตรประชาชน", "citizen-id"],
+    ["ชื่อ-สกุล", "name"], ["ชื่อเล่น", "name"], ["วันเกิด", "dob"]];
+  const EXPECTED = {
+    "big_sales.csv": [], "classroom.csv": SCHOOL, "classroom.xlsx": SCHOOL,
+    "inventory.csv": [], "sales.csv": [], "thai_shop.csv": [], "traffic.csv": [],
+  };
+  const dir = new URL("../sample-data/", import.meta.url);
+
+  test("the pinned list covers every data file in sample-data/", () => {
+    const files = readdirSync(dir).filter((f) => /\.(csv|xlsx)$/.test(f)).sort();
+    assert.deepEqual(files, Object.keys(EXPECTED).sort());
+  });
+
+  for (const [file, expected] of Object.entries(EXPECTED)) {
+    test(file, async () => {
+      const parsed = await parseFileStreaming(readFileSync(new URL(file, dir)), file);
+      assert.deepEqual(parsed.sensitive.map((d) => [d.col, d.kind]), expected);
+    });
+  }
 });

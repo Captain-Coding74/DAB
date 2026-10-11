@@ -40,6 +40,12 @@ describe("verifyFileMagic — .csv", () => {
     const junk = Buffer.from(Array.from({ length: 512 }, (_, i) => (i * 37) & 0xFF));
     assert.equal(verifyFileMagic(junk, "noise.csv"), false);
   });
+  // v21.30: the sealed-object marker (storageCrypto.js) — stored unencrypted, such a
+  // file would read back as an encrypted object and could never be opened.
+  test("rejects a text file that starts with the stored-object marker DABENC1", () => {
+    assert.equal(verifyFileMagic(Buffer.from("DABENC1,score\na,1\n"), "x.csv"), false);
+    assert.equal(verifyFileMagic(Buffer.from("name,DABENC1\na,1\n"), "x.csv"), true, "only the leading bytes matter");
+  });
   test("accepts a UTF-8 CSV with Thai text", () => {
     assert.equal(verifyFileMagic(CSV, "sales.csv"), true);
   });

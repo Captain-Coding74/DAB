@@ -5,8 +5,8 @@
 ## Context
 
 The deep-dive agent answers open questions ("which column is most worrying?").
-The tempting design is to give it the dataset and let it look. Datasets are up
-to 10 MB and may contain personal data.
+The tempting design is to give it the dataset and let it look. Uploads are
+capped at 25 MB by default (`MAX_UPLOAD_MB`) and may contain personal data.
 
 ## Decision
 
@@ -27,3 +27,23 @@ iteration cap are unit-tested against a scripted fake — no API key required.
   three weirdest records"). Accepted; that's what the dataset preview is for.
 - Bounded cost: a hard iteration cap (5 rounds) makes a runaway tool loop
   impossible.
+
+## v21.30 update (2026-10-10)
+
+This record was read more broadly than it was true. It holds for the agent,
+but it was quoted as "the AI never sees raw rows", and that was not so:
+
+- **The main Analyze prompt carried raw rows.** Until v21.30,
+  `services/analysisPipeline.js` added five randomly sampled rows to every
+  analysis prompt (identifier columns strict-masked, but every other cell
+  verbatim). From v21.30 the prompt carries **no** rows: Analyze, Chat, the
+  agent and Fix-suggest send no raw rows at all.
+- **Statistics include real values.** The most-frequent-values tables are
+  cell values, not aggregates. From v21.30 everything sent to the AI leaves
+  out columns detected as personal data, apart from each column's name and
+  detected kind.
+- **AI Edit is the one row-level exception** (ADR-0009), and from v21.30 it
+  runs only after the user confirms a dialog saying rows will be sent.
+
+The upload cap above said 10 MB; the code's default is 25 MB (`MAX_UPLOAD_MB`,
+`backend/src/config.js`). Corrected in place.

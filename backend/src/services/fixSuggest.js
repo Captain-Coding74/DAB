@@ -23,6 +23,7 @@
  * worse than one that was never clever.
  */
 import { OPERATIONS } from "./dataFixes.js";
+import { aiSafeColumns } from "./aiSafe.js";
 import { serviceLogger } from "../logger.js";
 
 const log = serviceLogger("fix-suggest");
@@ -115,7 +116,7 @@ export function validateSuggestions(raw, headers) {
     const params = {};
     if (spec.needs.includes("column")) {
       const col = s?.params?.column ?? s?.column;
-      if (!col || !cols.has(col)) { log.debug({ op, col }, "dropped: unknown column"); continue; }
+      if (!col || !cols.has(col)) { log.debug({ op }, "dropped: unknown column"); continue; }   // v21.30: no column names in logs
       params.column = col;
     }
 
@@ -133,8 +134,10 @@ export function validateSuggestions(raw, headers) {
 
 function buildPrompt({ headers, colAnalysis, totalRows, dupeCount }) {
   // Statistics only. No rows, no cell values beyond the frequency tables that
-  // were already computed — ADR-0006.
-  const summary = colAnalysis.map((c) => ({
+  // were already computed — ADR-0006. v21.30: and nothing but the name and
+  // kind of a detected personal-data column (the aiSafe view) — not even a
+  // "missing: 0" that would be a guess. The rule floor still covers it.
+  const summary = aiSafeColumns(colAnalysis).map((c) => c.sensitive ? { column: c.col, personalData: c.sensitive } : ({
     column: c.col,
     type: c.type,
     missing: c.missing ?? c.missingCount ?? 0,
@@ -204,7 +207,9 @@ export async function suggestFixes(ai, { headers, colAnalysis, totalRows, dupeCo
     }
     return { suggestions: clean, source: "ai" };
   } catch (err) {
-    log.warn({ err: err.message }, "AI suggest failed — using deterministic rules");
+    // v21.30: the error's name only — a JSON.parse message quotes the model's
+    // reply, which names the user's columns.
+    log.warn({ err: err.name }, "AI suggest failed — using deterministic rules");
     return fallback();
   }
 }

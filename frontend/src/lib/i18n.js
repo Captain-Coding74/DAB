@@ -26,6 +26,7 @@ export const STRINGS = {
   "nav.analyze":        { en: "Analyze",            th: "วิเคราะห์" },
   "nav.history":        { en: "History",            th: "ประวัติ" },
   "nav.workspace":      { en: "Workspace",          th: "พื้นที่ทำงาน" },
+  "nav.account":        { en: "Account",            th: "บัญชี" },
   "nav.signIn":         { en: "Sign in",            th: "เข้าสู่ระบบ" },
   "nav.signOut":        { en: "Sign out",           th: "ออกจากระบบ" },
   "nav.whyDab":         { en: "Why DAB ↗",          th: "ทำไมต้อง DAB ↗" },
@@ -37,6 +38,7 @@ export const STRINGS = {
   // Format names, not words — identical in both languages by design.
   "upload.hint":        { en: "CSV / Excel",        th: "CSV / Excel", sameInBoth: true },
   "upload.trySample":   { en: "Try a sample file",  th: "ลองไฟล์ตัวอย่าง" },
+  "upload.howWeHandle": { en: "How we handle your file", th: "เราจัดการไฟล์ของคุณอย่างไร" },
 
   // ── the readout strip ──
   "stat.rows":          { en: "ROWS",               th: "แถว" },
@@ -53,6 +55,33 @@ export const STRINGS = {
                           th: "หรือพิมพ์คำถามเอง เช่น หาสินค้าขายดี 5 อันดับแรก" },
   "analyze.working":    { en: "Analyzing…",         th: "กำลังวิเคราะห์…" },
 
+  // ── AI privacy switches (v21.30) ──
+  "ai.noAi":            { en: "Statistics only — don't send to AI", th: "สถิติล้วน — ไม่ส่งข้อมูลให้ AI" },
+  "ai.noAiHint":        { en: "Nothing from this file goes to the AI provider. You still get every statistic.",
+                          th: "ไม่มีข้อมูลจากไฟล์นี้ถูกส่งไปยังผู้ให้บริการ AI และยังได้ผลสถิติครบทุกอย่าง" },
+  "ai.offReport":       { en: "Statistics only: nothing from this data was sent to the AI provider, so there is no AI report. Insights, quality, charts and correlations are all complete.",
+                          th: "โหมดสถิติล้วน: ไม่มีข้อมูลชุดนี้ถูกส่งไปยังผู้ให้บริการ AI จึงไม่มีบทวิเคราะห์ AI — insights คุณภาพ กราฟ และ correlation ยังครบถ้วน" },
+  "ai.offFeature":      { en: "AI is off for this data, so chat and the deep-dive agent are unavailable.",
+                          th: "ปิด AI สำหรับข้อมูลชุดนี้ จึงใช้แชทถาม-ตอบและ agent เจาะลึกไม่ได้" },
+  "ai.switchTitle":     { en: "AI for this dataset", th: "AI สำหรับชุดข้อมูลนี้" },
+  "ai.switchHelp":      { en: "When off, nothing from this dataset is sent to the AI provider.",
+                          th: "เมื่อปิด จะไม่มีข้อมูลใดจากชุดข้อมูลนี้ถูกส่งไปยังผู้ให้บริการ AI" },
+  "ai.switchOwnerOnly": { en: "Only the dataset owner can change this.", th: "เฉพาะเจ้าของชุดข้อมูลเท่านั้นที่เปลี่ยนได้" },
+  "ai.on":              { en: "On",                 th: "เปิด" },
+  "ai.off":             { en: "Off",                th: "ปิด" },
+
+  // ── AI edit: the claim (the confirmation's strings: lib/strings/aiEdit.js) ──
+  "aiEdit.intro":       { en: "Type an instruction and the AI proposes cell-by-cell edits for you to check before confirming (up to {max} rows).",
+                          th: "พิมพ์คำสั่ง แล้ว AI จะเสนอการแก้ทีละช่องให้ตรวจก่อนยืนยัน (สูงสุด {max} แถว)" },
+  "aiEdit.notSent":     { en: "Columns detected as personal data (such as names, phone numbers, emails, addresses and health data) are not sent to the AI.",
+                          th: "คอลัมน์ที่ตรวจพบว่าเป็นข้อมูลส่วนบุคคล (เช่น ชื่อ เบอร์โทร อีเมล ที่อยู่ ข้อมูลสุขภาพ) จะไม่ถูกส่งให้ AI" },
+  "aiEdit.off":         { en: "AI is off for this data, so AI edit is unavailable.",
+                          th: "ปิด AI สำหรับข้อมูลชุดนี้ จึงใช้การแก้ไขด้วย AI ไม่ได้" },
+  "aiEdit.tooMany":     { en: "This dataset has {rows} rows; AI edit works on up to {max}. Use the suggested fixes instead.",
+                          th: "ชุดข้อมูลนี้มี {rows} แถว แต่การแก้ไขด้วย AI รองรับสูงสุด {max} แถว — ใช้ข้อเสนอการแก้ไขแทน" },
+  "aiEdit.nothingToSend":{ en: "Every column was detected as personal data, so there is nothing the AI may edit.",
+                          th: "ทุกคอลัมน์ถูกตรวจพบว่าเป็นข้อมูลส่วนบุคคล จึงไม่มีคอลัมน์ใดที่ AI แก้ไขได้" },
+
   // ── inference panel ──
   "inf.eyebrow":        { en: "Inferential statistics", th: "การทดสอบสมมติฐาน" },
   "inf.title":          { en: "Is this difference real?", th: "ข้อมูลนี้ต่างกันจริงหรือไม่" },
@@ -68,14 +97,76 @@ export const STRINGS = {
   "inf.value":          { en: "Value",              th: "ค่า" },
   "inf.meaning":        { en: "Meaning",            th: "ความหมาย" },
 
-  // ── auth ──
+  // ── saving a dataset — opt-in (v21.30) ──
+  "save.action":        { en: "Save dataset",       th: "บันทึกชุดข้อมูล" },   // the dialog's own strings: lib/strings/save.js
+  "save.done":          { en: "Dataset saved",      th: "บันทึกชุดข้อมูลแล้ว" },
+  "save.needFixes":     { en: "Fixes are saved as new versions of a saved dataset — save it first.",
+                          th: "การแก้ไขจะบันทึกเป็นเวอร์ชันใหม่ของชุดข้อมูล จึงต้องบันทึกชุดข้อมูลก่อน" },
+  "save.signedOut":     { en: "Sign in for the AI report, history, and the option to save.",
+                          th: "เข้าสู่ระบบเพื่อรับรายงานจาก AI ดูประวัติ และเลือกบันทึกข้อมูลได้" },
+  "save.noFile":        { en: "Analyse your own file to save it.",
+                          th: "วิเคราะห์ไฟล์ของคุณเองก่อน จึงจะบันทึกได้" },
+
+  // ── auth labels shared by the sign-in and account pages ──
   "auth.username":      { en: "Username",           th: "ชื่อผู้ใช้" },
   "auth.password":      { en: "Password",           th: "รหัสผ่าน" },
-  "auth.email":         { en: "Email (optional)",   th: "อีเมล (ไม่บังคับ)" },
-  "auth.signIn":        { en: "Sign in",            th: "เข้าสู่ระบบ" },
-  "auth.register":      { en: "Create account",     th: "สมัครสมาชิก" },
-  "auth.toRegister":    { en: "No account yet? Create one", th: "ยังไม่มีบัญชี? สมัครเลย" },
-  "auth.toSignIn":      { en: "Already have an account? Sign in", th: "มีบัญชีแล้ว? เข้าสู่ระบบ" },
+
+  /* v21.30: the strings of screens that load lazily — the account page,
+     sign-in and sign-up with the click-wrap boxes, the re-accept dialog, the
+     Save-dataset dialog and the AI-edit confirmation — live in string packs
+     under lib/strings/ (see addStrings below). */
+
+  // ── privacy notes (v21.30) — public claims: each must stay literally true ──
+  /* Kinds are listed, not "all personal data": student IDs are detected but
+     deliberately left readable for the teacher (sensitive.js maskValue). */
+  "columns.pdpaNotice": {
+    en: "Detected Thai IDs, phone numbers, names, birth dates, emails and card or bank numbers are masked in these column statistics, and the values of every column detected as personal data are left out of what the AI sees. Your original file is not changed — it is stored only if you save the dataset.",
+    th: "เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล และเลขบัตรเครดิต/เดบิตหรือเลขบัญชีธนาคารที่ระบบตรวจพบจะถูกปิดบังในสถิติรายคอลัมน์นี้ และค่าในทุกคอลัมน์ที่ตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะไม่ถูกส่งให้ AI ไฟล์ต้นฉบับของคุณไม่ถูกแก้ไข — และจะถูกเก็บไว้ก็ต่อเมื่อคุณบันทึกชุดข้อมูลเท่านั้น" },
+  // The share page shows the same panel to someone who is not the owner.
+  "columns.pdpaNoticeShared": {
+    en: "Detected personal data (e.g. Thai ID, phone, name, birth date, email, card or bank number) is masked or hidden in this shared report.",
+    th: "ข้อมูลส่วนบุคคลที่ระบบตรวจพบ (เช่น เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล เลขบัตรเครดิต/เดบิต หรือเลขบัญชีธนาคาร) ถูกปิดบังหรือซ่อนไว้ในรายงานที่แชร์นี้" },
+  "classReport.privacy": {
+    en: "Computed on DAB's server from your file, for you only — students' names are shown in full here, for the teacher, but none of this is sent to the AI or included in share links.",
+    th: "คำนวณบนเซิร์ฟเวอร์ของ DAB จากไฟล์ของคุณ แสดงให้คุณเห็นเท่านั้น — รายงานนี้แสดงชื่อนักเรียนเต็มสำหรับครู แต่ไม่ส่งให้ AI และไม่รวมอยู่ในลิงก์แชร์" },
+  "workspace.schedulesSoon": { en: "Scheduled reports — coming soon", th: "รายงานตามกำหนดเวลา — เปิดให้ใช้เร็ว ๆ นี้" },
+
+  // ── AI label (v21.30) — must equal backend/src/services/aiLabel.js (i18n.test.js checks) ──
+  "ai.label": {
+    en: "AI-generated — may be wrong. Check it before you rely on it.",
+    th: "สร้างโดย AI — อาจผิดพลาดได้ โปรดตรวจสอบก่อนนำไปใช้" },
+
+  // ── share links (v21.30) — the dialog is the only way to make one ──
+  "share.button":       { en: "Share",              th: "แชร์" },
+  "share.dialogTitle":  { en: "Share this report",  th: "แชร์รายงานนี้" },
+  /* Load-bearing: "anyone with the link" and "until it expires". Only the
+     VALUES of detected personal-data columns are withheld — their names stay
+     on the page, so the sentence says values, not columns. */
+  "share.warning": {
+    en: "Anyone with the link can see this report — the AI text, column names, statistics and chart — until it expires. Values in columns detected as personal data are hidden.",
+    th: "ทุกคนที่มีลิงก์จะเห็นรายงานนี้ได้ ทั้งข้อความจาก AI ชื่อคอลัมน์ สถิติ และกราฟ จนกว่าลิงก์จะหมดอายุ ค่าในคอลัมน์ที่ระบบตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะถูกซ่อนไว้" },
+  "share.titleLabel":   { en: "Title shown on the page", th: "ชื่อที่แสดงบนหน้ารายงาน" },
+  "share.defaultTitle": { en: "Analysis report",    th: "รายงานผลการวิเคราะห์" },
+  "share.expiry":       { en: "Link expires after", th: "ลิงก์หมดอายุหลังจาก" },
+  "share.day":          { en: "day",                th: "วัน" },
+  "share.days":         { en: "days",               th: "วัน" },
+  "share.password":     { en: "Password (optional)", th: "รหัสผ่าน (ไม่บังคับ)" },
+  "share.passwordHint": { en: "Viewers must enter it before the report opens.",
+                          th: "ผู้ชมต้องใส่รหัสผ่านนี้ก่อนจึงจะเปิดรายงานได้" },
+  "share.create":       { en: "Create link and copy", th: "สร้างลิงก์และคัดลอก" },
+  "share.copied":       { en: "Link created and copied to the clipboard.", th: "สร้างลิงก์และคัดลอกไปยังคลิปบอร์ดแล้ว" },
+  "share.copyManually": { en: "Link created. Copy it from the box below.", th: "สร้างลิงก์แล้ว คัดลอกจากช่องด้านล่างได้เลย" },
+  "share.linkLabel":    { en: "Share link",         th: "ลิงก์สำหรับแชร์" },
+  "share.expiresOn":    { en: "This link expires on", th: "ลิงก์นี้จะหมดอายุในวันที่" },
+  "share.reportPage":   { en: "Report this page",   th: "แจ้งปัญหาหน้านี้" },
+
+  // ── legal links — shared by every page that links the notices ──
+  "legal.privacy":      { en: "Privacy",            th: "ความเป็นส่วนตัว" },
+  "legal.terms":        { en: "Terms",              th: "ข้อกำหนดการใช้งาน" },
+  "legal.storage":      { en: "Storage",            th: "การจัดเก็บในเบราว์เซอร์" },
+  "legal.contact":      { en: "Contact",            th: "ติดต่อ" },
+  "legal.licences":     { en: "Licences",           th: "สัญญาอนุญาต" },
+  "legal.nav":          { en: "Legal",              th: "ข้อมูลทางกฎหมาย" },
 
   // ── common ──
   "common.cancel":      { en: "Cancel",             th: "ยกเลิก" },
@@ -84,6 +175,21 @@ export const STRINGS = {
   "common.error":       { en: "Something went wrong", th: "เกิดข้อผิดพลาด" },
   "common.retry":       { en: "Try again",          th: "ลองใหม่" },
 };
+
+/**
+ * String packs (v21.30). The privacy release added about a hundred strings,
+ * most of them for screens that load lazily, and every one of them used to
+ * ride in the first-paint bundle (perf:bundle's initial-payload budget).
+ * A pack is a module under lib/strings/ that a lazy screen imports: it calls
+ * addStrings() at import time, so its keys exist before that screen first
+ * renders, and the bytes travel in that screen's chunk. A pack must not
+ * redefine a key — i18n.test.js loads every pack and fails on a collision,
+ * because a later definition would silently replace the earlier one.
+ */
+export function addStrings(pack) {
+  Object.assign(STRINGS, pack);
+  return pack;
+}
 
 /* ── the tiny store ───────────────────────────────────────
    useSyncExternalStore rather than context: language is read by leaf
@@ -117,6 +223,9 @@ if (typeof document !== "undefined") document.documentElement.lang = current;
 
 const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const snapshot = () => current;
+
+/** The language in use right now, for code outside React (lib/api.js). */
+export const currentLang = () => current;
 
 /** Translate one key. Falls back to English, then to the key itself. */
 export function t(key, lang = current) {

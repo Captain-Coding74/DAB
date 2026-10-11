@@ -114,7 +114,11 @@ async function launchBrowser() {
     const { default: sparticuz } = await import("@sparticuz/chromium");
     return await chromium.launch({
       executablePath: await sparticuz.executablePath(),
-      args: sparticuz.args,
+      /* Not --single-process: that Lambda flag puts every context in one
+         process, and closing any context then takes the whole browser down
+         ("Target page, context or browser has been closed") — this suite
+         opens and closes several. */
+      args: sparticuz.args.filter((a) => a !== "--single-process"),
       headless: true,
     });
   } catch (err) {
@@ -402,12 +406,165 @@ describe("Critical flow: the public landing page", () => {
       }
       window.scrollTo(0, document.body.scrollHeight);
     });
+    /* A software-rendered browser (the bundled Chromium) can paint slower
+       than the walk scrolls, so an element can pass through the viewport
+       between two IntersectionObserver checks. Bring any such element into
+       view on its own — still landing.js revealing it on scroll — before
+       counting. */
+    await page.evaluate(async () => {
+      for (const el of document.querySelectorAll(".rv")) {
+        if (getComputedStyle(el).opacity !== "0") continue;
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        await new Promise(r => setTimeout(r, 250));
+      }
+    });
     await page.waitForTimeout(900);
 
     const hidden = await page.evaluate(() =>
       [...document.querySelectorAll(".rv")]
         .filter(el => getComputedStyle(el).opacity === "0").length);
     assert.equal(hidden, 0, `${hidden} reveal elements still invisible after scrolling the whole page — landing.js did not run`);
+  });
+
+  /* The #how walkthrough. Each test gets its own context: the shared page has
+     already fetched the media in the test above, and a media-cache hit fires
+     no request event, so a shared page would see nothing either way. */
+  async function walkPage(options) {
+    const ctx = await browser.newContext(options);
+    const p = await ctx.newPage();
+    p.on("console", m => { if (m.type() === "error") suite.consoleErrors.push({ test: currentTest, text: m.text().slice(0, 200) }); });
+    p.on("pageerror", e => { suite.consoleErrors.push({ test: currentTest, text: `uncaught: ${e.message}`.slice(0, 200) }); });
+    const reqs = [];
+    p.on("request", (r) => { if (/dab-walk[.-]/.test(r.url())) reqs.push(r.url()); });   // video, poster or still
+    await p.goto(`${BASE}/welcome`, { waitUntil: "load" });
+    return { ctx, p, reqs };
+  }
+  // Scroll instantly (the page sets scroll-behavior: smooth) to `top`, or so
+  // that #walk sits `walkGap` px below the viewport; let two frames pass so
+  // IntersectionObserver callbacks have run; return #walk's gap below the fold.
+  const scrollPage = (p, { top = null, walkGap = 0 }) => p.evaluate(async ([top, walkGap]) => {
+    const walkTop = () => document.getElementById("walk").getBoundingClientRect().top;
+    window.scrollTo({ top: top ?? window.scrollY + walkTop() - window.innerHeight - walkGap, behavior: "instant" });
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return Math.round(walkTop() - window.innerHeight);
+  }, [top, walkGap]);
+  const scrollWholePage = async (p) => {
+    const [h, vh] = await p.evaluate(() => [document.documentElement.scrollHeight, window.innerHeight]);
+    for (let y = 0; y <= h; y += vh / 2) { await scrollPage(p, { top: y }); await p.waitForTimeout(60); }
+  };
+  const VIDEO_OR_POSTER = /dab-walk\.(webm|mp4)|dab-walk-poster/;
+
+  btest("the walkthrough video is not fetched until #walk is within 300 px", async () => {
+    // #walk ships with no <source>, no poster and no autoplay; landing.js arms
+    // it 300 px out. A regression here would put ~2 MB on every page load.
+    // It measures #walk itself (the observed element), with a lower bound too:
+    // the 50 px scan lands inside (250, 300] at the step that arms it.
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 1440, height: 900 } });
+    try {
+      await p.waitForTimeout(500);
+      assert.deepEqual(reqs, [], `walkthrough fetched at page load: ${reqs.join(", ")}`);
+      let gapAtFirst = null;
+      for (let y = 0; y < 10_000 && gapAtFirst === null; y += 50) {
+        const gap = await scrollPage(p, { top: y });
+        if (gap <= 400) await p.waitForTimeout(150);              // near the margin: give the fetch time to show
+        if (reqs.length) gapAtFirst = gap;
+      }
+      assert.ok(gapAtFirst !== null, "the walkthrough never armed after scrolling to #walk");
+      assert.ok(gapAtFirst <= 300 && gapAtFirst > 240,
+        `walkthrough first fetched with #walk ${gapAtFirst} px below the viewport; expected within (240, 300]`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("below 900 px the walkthrough fetches nothing, even after a full scroll", async () => {
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 899, height: 800 } });
+    try {
+      await scrollWholePage(p);
+      await p.waitForTimeout(200);
+      assert.equal(await p.evaluate(() => getComputedStyle(document.getElementById("walk")).display), "none");
+      assert.deepEqual(reqs, [], `walkthrough media fetched at 899 px: ${reqs.join(", ")}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("reduced motion gets the still, fetched only near #walk, and never the video", async () => {
+    const { ctx, p, reqs } = await walkPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
+    try {
+      await p.waitForTimeout(300);
+      assert.deepEqual(reqs, [], `fetched at page load under reduced motion: ${reqs.join(", ")}`);
+      await scrollPage(p, { walkGap: 450 });
+      await p.waitForTimeout(150);
+      assert.deepEqual(reqs, [], `fetched with #walk still 450 px below the viewport: ${reqs.join(", ")}`);
+      const still = p.waitForRequest(/dab-walk-still\.jpg/, { timeout: 5_000 });
+      await scrollPage(p, { walkGap: 200 });
+      await still;
+      await scrollWholePage(p);
+      await p.waitForTimeout(200);
+      const shown = await p.evaluate(() => {
+        const w = document.getElementById("walk");
+        return {
+          still: w.classList.contains("walk--still"),
+          bg: getComputedStyle(w.querySelector(".walk-stage")).backgroundImage,
+          video: getComputedStyle(w.querySelector("video")).display,
+          btn: getComputedStyle(document.getElementById("walkBtn")).display,
+        };
+      });
+      assert.ok(shown.still && /dab-walk-still\.jpg/.test(shown.bg), `the still is not shown: ${JSON.stringify(shown)}`);
+      assert.equal(shown.video, "none", "the video element is hidden");
+      assert.equal(shown.btn, "none", "the Pause/Play button is hidden");
+      const media = reqs.filter(u => VIDEO_OR_POSTER.test(u));
+      assert.deepEqual(media, [], `video or poster fetched under reduced motion: ${media.join(", ")}`);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  btest("the walkthrough and the hero video take turns, never both playing", async () => {
+    // The hero has a source only at >= 1280 px with motion, so 1440x900.
+    const { ctx, p } = await walkPage({ viewport: { width: 1440, height: 900 }, reducedMotion: "no-preference" });
+    try {
+      const state = () => p.evaluate(() => {
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        return { walk: !w.paused, walkT: +w.currentTime.toFixed(2), hero: !h.paused, heroT: +h.currentTime.toFixed(2),
+                 heroSrc: !!h.currentSrc, now: [...document.querySelectorAll("#how .step")].map(s => s.classList.contains("now")),
+                 both: window.__bothPlaying };
+      });
+      const until = (fn, arg) => p.waitForFunction(fn, arg, { timeout: 10_000 }).catch(() => {});   // the asserts below explain a timeout
+      await p.evaluate(() => {          // samples every 50 ms for the whole test
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        window.__bothPlaying = 0;
+        setInterval(() => { if (!w.paused && !h.paused) window.__bothPlaying++; }, 50);
+      });
+      await until(() => { const h = document.querySelector(".hero-bg video"); return !h.paused && h.currentTime > 0.2; });
+      let s = await state();
+      assert.ok(s.heroSrc && s.hero, `the hero should be playing at the top first: ${JSON.stringify(s)}`);
+
+      await p.evaluate(() => document.getElementById("walk").scrollIntoView({ block: "center", behavior: "instant" }));
+      await until(() => {
+        const w = document.querySelector("#walk video");
+        return !w.paused && w.currentTime > 1.6 && document.querySelector("#how .step").classList.contains("now");
+      });
+      s = await state();
+      assert.ok(s.walk && s.walkT >= 1.5, `the walkthrough should be playing with #walk centred: ${JSON.stringify(s)}`);
+      assert.ok(!s.hero, `the hero should be paused while the walkthrough plays: ${JSON.stringify(s)}`);
+      assert.deepEqual(s.now, [true, false, false], "step 01 is the lit chapter early in the film");
+
+      await scrollPage(p, { top: 0 });
+      const heroT = s.heroT;
+      await until((t) => {
+        const w = document.querySelector("#walk video"), h = document.querySelector(".hero-bg video");
+        return w.paused && !h.paused && h.currentTime !== t;
+      }, heroT);
+      s = await state();
+      assert.ok(!s.walk, `the walkthrough should pause back at the top: ${JSON.stringify(s)}`);
+      assert.ok(s.hero && s.heroT !== heroT, `the hero should resume back at the top: ${JSON.stringify(s)}`);
+      assert.deepEqual(s.now, [false, false, false], "the chapter rail goes dark when the film pauses");
+      assert.equal(s.both, 0, "the two videos were sampled playing at the same time");
+    } finally {
+      await ctx.close();
+    }
   });
 
   btest("has a skip link and a main landmark", async () => {
@@ -418,6 +575,35 @@ describe("Critical flow: the public landing page", () => {
     await page.keyboard.press("Tab");                 // first tab stop must reveal it
     assert.ok(await skip.isVisible(), "skip link does not appear on focus");
   });
+});
+
+describe("Critical flow: the legal pages (v21.30)", () => {
+  // /privacy and /terms are server documents (backend/src/legalPages.js), not
+  // SPA routes. They promise "no third-party scripts" and carry their own
+  // small script (legal.js, the language toggle) — so the same three checks
+  // as the landing page: nothing external, no CSP violation, a clean console.
+  for (const path of ["/privacy", "/terms"]) {
+    btest(`${path}: no console errors, no CSP violations, no third-party requests`, async () => {
+      const external = [], errors = [];
+      const onReq = (r) => { const url = r.url(); if (!url.startsWith(BASE) && !url.startsWith("data:")) external.push(url); };
+      const onMsg = (m) => { if (m.type() === "error" || /Content Security Policy/i.test(m.text())) errors.push(m.text()); };
+      const onErr = (e) => errors.push(`uncaught: ${e.message}`);
+      page.on("request", onReq); page.on("console", onMsg); page.on("pageerror", onErr);
+      try {
+        await page.goto(`${BASE}${path}`, { waitUntil: "load" });
+        await page.evaluate(() => document.fonts.ready);
+        // legal.js really ran: the TH toggle switches the document language.
+        await page.locator('[data-set-lang="th"]').click();
+        await page.waitForFunction(() => document.body.dataset.lang === "th");
+        await page.waitForTimeout(300);
+      } finally {
+        page.off("request", onReq); page.off("console", onMsg); page.off("pageerror", onErr);
+      }
+      assert.deepEqual(external, [], `${path} made third-party requests: ${external.join(", ")}`);
+      assert.deepEqual(errors, [], `${path} console errors or CSP violations:\n${errors.join("\n")}`);
+      assert.equal(await page.locator("h1").count(), 1);
+    });
+  }
 });
 
 describe("Critical flow: dark mode", () => {
@@ -446,7 +632,12 @@ describe("Critical flow: auth", () => {
     // its placeholder rather than input[type=text] (which wouldn't match).
     await page.getByPlaceholder("your_username").fill(username);
     await page.locator('input[type="password"]').first().fill("Test1234!");
-    await page.getByRole("button", { name: "สมัครสมาชิก" }).last().click();
+    // v21.30: "Create account" stays disabled until both click-wrap boxes are ticked.
+    const submit = page.getByRole("button", { name: "สมัครสมาชิก" }).last();
+    assert.ok(await submit.isDisabled(), "sign-up is blocked until the Terms and age boxes are ticked");
+    await page.locator('input[name="acceptTerms"]').check();
+    await page.locator('input[name="ageConfirmed"]').check();
+    await submit.click();
 
     await page.getByText(username).waitFor({ timeout: 20_000 });
     assert.ok(await page.getByText(username).isVisible(), "registered user shown in nav");
@@ -474,5 +665,150 @@ describe("Critical flow: auth", () => {
     await page.getByText(/ตรวจแล้ว \d+ ขั้น/).waitFor({ timeout: 30_000 });
     const steps = await page.getByText(/ตรวจแล้ว \d+ ขั้น/).textContent();
     assert.match(steps, /ตรวจแล้ว [1-9]/, "agent ran at least one tool check");
+  });
+});
+
+
+/* v21.30 — the privacy controls, driven like a user would. These follow the
+   auth flow above: the same signed-in page, with the uploaded file's
+   analysis on screen. */
+describe("Critical flow: privacy controls (v21.30)", () => {
+  btest("Save dataset asks first, then stores the file", async () => {
+    await page.getByRole("tab", { name: "analysis" }).click();
+    const save = page.getByRole("button", { name: "บันทึกชุดข้อมูล", exact: true });
+    await save.waitFor({ timeout: 10_000 });
+    await save.click();
+    const dialog = page.getByRole("dialog", { name: "บันทึกชุดข้อมูลนี้หรือไม่" });
+    await dialog.waitFor({ timeout: 10_000 });
+    assert.match(await dialog.textContent(), /365/, "the dialog says how long the file is kept");
+    await dialog.getByRole("button", { name: "บันทึก", exact: true }).click();
+    await dialog.waitFor({ state: "detached", timeout: 15_000 });
+    // Saved: the action is gone and the owner's AI switch appears.
+    await page.getByText("AI สำหรับชุดข้อมูลนี้").waitFor({ timeout: 15_000 });
+    assert.equal(await save.count(), 0, "a saved result no longer offers Save");
+  });
+
+  btest("AI edit sends nothing until the confirmation dialog's Send", async () => {
+    const sends = [];
+    // The confirmation is what is under test. The AI mock cannot produce a
+    // table, so the send itself is answered here — after recording it.
+    await page.route("**/api/fixes/*/ai-edit", async (route) => {
+      sends.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ applied: false, instruction: "trim", changes: [], changeCount: 0, rows: [], headers: [], protectedColumns: [], sensitiveColumns: [] }) });
+    });
+    try {
+      await page.getByRole("tab", { name: "quality" }).click();
+      const box = page.getByPlaceholder(/แปลงคอลัมน์วันที่/);
+      await box.waitFor({ timeout: 15_000 });   // the fixes panel loads with the tab
+      await box.fill("ตัดช่องว่างหน้าหลังทุกช่อง");
+      await page.getByRole("button", { name: "ให้ AI เสนอการแก้ไข" }).click();
+      const dialog = page.getByRole("dialog", { name: "ส่งข้อมูลเหล่านี้ให้ AI หรือไม่" });
+      await dialog.waitFor({ timeout: 10_000 });
+      assert.match(await dialog.textContent(), /Anthropic/, "the dialog names the recipient");
+      assert.equal(sends.length, 0, "opening the dialog sent nothing");
+      await dialog.getByRole("button", { name: "ส่ง", exact: true }).click();
+      await page.getByText("รายการเปลี่ยนแปลงที่เสนอ").waitFor({ timeout: 15_000 });
+      assert.equal(sends.length, 1, "one send, after the click");
+      assert.equal(sends[0].confirmSend, true);
+    } finally {
+      await page.unroute("**/api/fixes/*/ai-edit");
+    }
+  });
+
+  btest("a share link is made only through the dialog, with a warning and an expiry", async () => {
+    await page.getByRole("tab", { name: "analysis" }).click();
+    await page.getByRole("button", { name: "แชร์", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "แชร์รายงานนี้" });
+    await dialog.waitFor({ timeout: 10_000 });
+    assert.match(await dialog.textContent(), /ทุกคนที่มีลิงก์/, "says who can see it");
+    assert.equal(await dialog.locator("#share-title").inputValue(), "รายงานผลการวิเคราะห์", "generic title, not the file name");
+    assert.equal(await dialog.locator("#share-expiry").inputValue(), "30", "30 days by default");
+    await dialog.locator("#share-expiry").selectOption("7");
+    await dialog.getByRole("button", { name: "สร้างลิงก์และคัดลอก" }).click();
+    const link = await dialog.locator("#share-url");
+    await link.waitFor({ timeout: 15_000 });
+    const url = await link.inputValue();
+    assert.match(url, /\/share\/[^/]+$/);
+    await dialog.getByRole("button", { name: "ปิด", exact: true }).click();
+
+    // The public page: no file name, a way to report it, kept out of search.
+    await page.goto(url, { waitUntil: "load" });
+    await page.getByRole("link", { name: "แจ้งปัญหาหน้านี้" }).waitFor({ timeout: 15_000 });
+    assert.equal(await page.locator('meta[name="robots"][content*="noindex"]').count(), 1);
+    assert.ok(!(await page.content()).includes("browser-e2e"), "the file name is not on the public page");
+  });
+
+  /* v21.30: the notices say a stored file is kept until you delete it and
+     that revoking a link deletes it — /account is where both happen. */
+  btest("/account lists the stored file and the share link, and deletes each", async () => {
+    await page.goto(`${BASE}/account`, { waitUntil: "load" });
+    const links = page.getByRole("region", { name: "ลิงก์แชร์" });
+    const row = links.getByRole("listitem").first();
+    await row.waitFor({ timeout: 15_000 });
+    await row.getByRole("button", { name: "ยกเลิกลิงก์" }).click();
+    await row.getByRole("button", { name: "ยืนยันลบถาวร" }).click();
+    await links.getByText("คุณยังไม่มีลิงก์แชร์").waitFor({ timeout: 15_000 });
+
+    const files = page.getByRole("region", { name: "ไฟล์ที่จัดเก็บไว้" });
+    const file = files.getByRole("listitem").filter({ hasText: "browser-e2e.csv" });
+    await file.waitFor({ timeout: 15_000 });
+    await file.getByRole("button", { name: "ลบ", exact: true }).click();
+    await file.getByRole("button", { name: "ยืนยันลบถาวร" }).click();
+    await file.waitFor({ state: "detached", timeout: 15_000 });
+    await page.goto(BASE, { waitUntil: "load" });
+  });
+
+  // v21.30: a "Statistics only" result lost its Share and export buttons.
+  btest("a Statistics-only result can still be shared and exported", async () => {
+    await page.locator("#fileIn").setInputFiles({
+      name: "stats-only.csv", mimeType: "text/csv",
+      buffer: Buffer.from("สินค้า,ยอดขาย\nน้ำปลา,120\nข้าวสาร,450\nน้ำตาล,80\n"),
+    });
+    await page.getByText("พร้อมตรวจ").waitFor({ timeout: 10_000 });
+    await page.getByRole("checkbox", { name: /สถิติล้วน/ }).check();
+    await page.getByRole("button", { name: "วิเคราะห์ไฟล์" }).click();
+    await page.getByText(/โหมดสถิติล้วน/).waitFor({ timeout: 30_000 });
+    assert.equal(await page.getByRole("button", { name: "แชร์", exact: true }).count(), 1, "Share is offered");
+    assert.equal(await page.getByRole("button", { name: "PDF" }).count(), 1, "PDF export is offered");
+    assert.equal(await page.getByRole("button", { name: "Excel" }).count(), 1, "Excel export is offered");
+  });
+
+  btest("after a Terms/Privacy update, the app asks to accept before going on", async () => {
+    // Pretend the account accepted an older version: /api/auth/me reports it.
+    await page.route("**/api/auth/me", async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      await route.fulfill({ response: res, json: { ...body, legal: { ...body.legal, accepted: "2000-01-01" } } });
+    });
+    try {
+      await page.goto(BASE, { waitUntil: "load" });
+      const dialog = page.getByRole("dialog", { name: "เราได้ปรับปรุงข้อกำหนดการใช้งานและประกาศความเป็นส่วนตัว" });
+      await dialog.waitFor({ timeout: 15_000 });
+      await page.keyboard.press("Escape");
+      assert.ok(await dialog.isVisible(), "Esc does not dismiss it");
+      const accept = dialog.getByRole("button", { name: "ยอมรับและใช้งานต่อ" });
+      assert.ok(await accept.isDisabled(), "Accept waits for the box");
+      // v21.30: nothing behind the dialog can act — no palette, and Tab
+      // stays inside it (the disabled Accept button used to let focus out).
+      await page.keyboard.press("Control+k");
+      assert.equal(await page.getByRole("dialog", { name: "Command palette" }).count(), 0, "Ctrl+K opens nothing");
+      await dialog.getByRole("button", { name: "ออกจากระบบ" }).focus();
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press("Tab");
+        assert.ok(await dialog.evaluate((d) => d.contains(document.activeElement)), `Tab ${i + 1} left the dialog`);
+      }
+      // Declining stays possible: /account (download, delete) is open behind the gate.
+      await dialog.getByRole("link", { name: "หน้าบัญชีของคุณ" }).click();
+      await dialog.waitFor({ state: "detached", timeout: 15_000 });
+      await page.getByRole("button", { name: "ลบบัญชีของฉันถาวร" }).waitFor({ timeout: 15_000 });
+      await page.goto(BASE, { waitUntil: "load" });
+      await dialog.waitFor({ timeout: 15_000 });
+      await dialog.locator('input[name="acceptTerms"]').check();
+      await accept.click();
+      await dialog.waitFor({ state: "detached", timeout: 15_000 });
+    } finally {
+      await page.unroute("**/api/auth/me");
+    }
   });
 });

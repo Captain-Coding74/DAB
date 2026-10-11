@@ -7,6 +7,12 @@ import { requireAuth } from "../auth.js";
 import { cache } from "../services/cache.js";
 import { pageParams } from "../pagination.js";
 
+/* v21.30: analyses no longer store the client IP, and older rows were cleared
+   by migration — but a response must not depend on that. Stripped here,
+   explicitly, so neither a stray old row nor a cached entry written before
+   the migration can hand an IP address back to the client. */
+const withoutIp = ({ ip_address: _ip, ...rest }) => rest;
+
 export function mountHistoryRoutes(app) {
   // ── History ───────────────────────────────────────────────
   app.get("/api/history", requireAuth, async (req, res, next) => {
@@ -21,7 +27,7 @@ export function mountHistoryRoutes(app) {
         cached = { items, total };
         await cache.set(ck, cached, 30);
       }
-      res.set("X-Total-Count", cached.total).json(cached.items);
+      res.set("X-Total-Count", cached.total).json(cached.items.map(withoutIp));
     } catch (err) { next(err); }
   });
 
@@ -35,12 +41,13 @@ export function mountHistoryRoutes(app) {
       const ck  = `user:${req.user.userId}:analysis:${req.params.id}`;
       let rec   = await cache.get(ck);
       if (!rec) { rec = await R.getAnalysis(req.params.id, req.user.userId); if (rec) await cache.set(ck, rec, 120); }
-      rec ? res.json(rec) : res.status(404).json({ error: "Not found" });
+      rec ? res.json(withoutIp(rec)) : res.status(404).json({ error: "Not found" });
     } catch (err) { next(err); }
   });
 
   app.delete("/api/history/:id", requireAuth, async (req, res, next) => {
     try {
+      // v21.30: deletes the analysis WITH its chat, share links and comments.
       await R.deleteAnalysis(req.params.id, req.user.userId);
       await cache.del(`user:${req.user.userId}:analysis:${req.params.id}`);
       await cache.delPattern(`user:${req.user.userId}:history:`);

@@ -8,3 +8,5 @@ coverage
 .git
 .github
 *.log
+# the offline media kits (tools/hero-bg, tools/walkthrough) are never part of the image
+tools

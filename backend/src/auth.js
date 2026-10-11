@@ -57,24 +57,54 @@ export function refreshExpiresAt() {
   return d.toISOString();
 }
 
+// ── Erased accounts (v21.30) ─────────────────────────────
+/* An access token stays valid until it expires (ACCESS_TTL) and the
+   middleware below never looks the user up. After an account is erased
+   (DELETE /api/auth/me), a token still open in another tab could otherwise
+   write new rows under the erased id — an analysis, a chat message — that
+   nothing would ever delete. The id is marked here from the moment erasure
+   starts until every token it could have been issued has expired, and both
+   middlewares treat it as no token at all. In-process only: an erasure run
+   from the operator CLI cannot reach a running server, and there the
+   remaining window is the token's own 15 minutes. */
+const ACCESS_TTL_MS = 15 * 60 * 1000;
+const erased = new Map();   // userId → time after which no token for it is still valid
+
+export function markErased(userId, now = Date.now()) {
+  for (const [id, until] of erased) if (until <= now) erased.delete(id);
+  erased.set(userId, now + ACCESS_TTL_MS);
+}
+/** Undo markErased when erasure failed part-way, so the user can sign in and run it again. */
+export function clearErased(userId) { erased.delete(userId); }
+/** Also checked by POST /api/auth/refresh: an erased id gets no new access token. */
+export const isErased = (userId, now = Date.now()) => (erased.get(userId) ?? 0) > now;
+
 // ── Middleware ────────────────────────────────────────────
 /** Require valid access token → req.user */
 export function requireAuth(req, res, next) {
   const token = extractToken(req);
   if (!token) return res.status(401).json({ error: "No token provided" });
+  let user;
   try {
-    req.user = verifyAccess(token);
-    next();
+    user = verifyAccess(token);
   } catch (err) {
     const msg = err.name === "TokenExpiredError" ? "Token expired" : "Invalid token";
-    res.status(401).json({ error: msg, code: err.name });
+    return res.status(401).json({ error: msg, code: err.name });
   }
+  if (isErased(user.userId)) return res.status(401).json({ error: "Account deleted" });
+  req.user = user;
+  next();
 }
 
 /** Attach req.user if valid token, but don't block */
 export function optionalAuth(req, _, next) {
   const token = extractToken(req);
-  if (token) { try { req.user = verifyAccess(token); } catch {} }
+  if (token) {
+    try {
+      const user = verifyAccess(token);
+      if (!isErased(user.userId)) req.user = user;
+    } catch {}
+  }
   next();
 }
 

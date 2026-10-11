@@ -4,7 +4,10 @@
  */
 import { query } from "./pool.js";
 import { isUniqueViolation } from "./repository.js";
+import { deleteDatasetCascade } from "./cascade.js";
 import crypto from "crypto";
+
+const sha256 = (buf) => crypto.createHash("sha256").update(buf).digest("hex");
 
 const uuid = () => crypto.randomUUID();
 const now  = () => new Date().toISOString();
@@ -41,7 +44,7 @@ export async function deleteFolder(id, ownerId) {
 }
 
 // ── Datasets — Create with first version ────────────────────
-export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes }) {
+export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes, schoolAttestedAt, aiEnabled = true }) {
   // The caller may supply the id so the storage key it already wrote points
   // at the same dataset; otherwise generate one as before.
   const datasetId = providedId || uuid();
@@ -58,10 +61,11 @@ export async function createDataset({ datasetId: providedId, workspaceId, ownerI
     [versionId, datasetId, fileName, fileContent ?? '', storageKey||null, storageSha256||null, fileType, totalRows, totalCols, JSON.stringify(colAnalysis), qualityScore||null, ownerId, sizeBytes||0, t]
   );
 
+  // v21.30: saved_on_request — the user asked for this copy (migrate.js).
   await query(
-    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t]
+    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at,school_attested_at,ai_enabled,saved_on_request)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,1)`,
+    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t, schoolAttestedAt||null, aiEnabled ? 1 : 0]
   );
 
   return { id: datasetId, versionId };
@@ -212,29 +216,38 @@ export async function toggleStar(id, starred) {
   await query(`UPDATE datasets SET is_starred=$1 WHERE id=$2`, [starred ? 1 : 0, id]);
 }
 
+/* v21.30: the owner's AI switch (services/aiGate.js reads it). 0/1 like
+   is_starred, so the same column works on SQLite and Postgres. */
+export async function setDatasetAiEnabled(id, enabled) {
+  await query(`UPDATE datasets SET ai_enabled=$1 WHERE id=$2`, [enabled ? 1 : 0, id]);
+}
+
 export async function trashDataset(id) {
   await query(`UPDATE datasets SET is_trashed=1, trashed_at=$1 WHERE id=$2`, [now(), id]);
 }
 
-export async function restoreDataset(id) {
-  await query(`UPDATE datasets SET is_trashed=0, trashed_at=NULL WHERE id=$1`, [id]);
+/* v21.30: "use" for the inactivity rule in services/retention.js — opening
+   or analysing a dataset changes no column updated_at tracks. */
+export async function touchDataset(id) {
+  await query(`UPDATE datasets SET last_used_at=$1 WHERE id=$2`, [now(), id]);
 }
 
-export async function permanentlyDeleteDataset(id) {
-  // Remove the stored objects FIRST — "permanently delete" must not leave the
-  // user's file bytes on disk/S3 forever. storage.remove is idempotent, so a
-  // version without a key (legacy file_content rows) is a no-op.
-  const versions = await query(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1 AND storage_key IS NOT NULL`, [id]);
-  if (versions.length) {
-    const storage = await import("../services/storage.js");
-    for (const v of versions) await storage.remove(v.storage_key);
-  }
-  await query(`DELETE FROM dataset_versions WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM dataset_tags WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM comments WHERE dataset_id=$1`, [id]);
-  await query(`DELETE FROM datasets WHERE id=$1`, [id]);
+/* v21.30: a class roster added as a new version carries a fresh attestation. */
+export async function markSchoolAttested(id, at) {
+  await query(`UPDATE datasets SET school_attested_at=$1 WHERE id=$2`, [at, id]);
 }
+
+/* v21.30: restoring is use — without it the next nightly run could delete,
+   as inactive, a dataset its owner had just taken back out of the Trash. */
+export async function restoreDataset(id) {
+  await query(`UPDATE datasets SET is_trashed=0, trashed_at=NULL, last_used_at=$1 WHERE id=$2`, [now(), id]);
+}
+
+/* v21.30: permanent delete is the full cascade (db/cascade.js). It used to
+   stop at versions, tags, permissions and comments, leaving every analysis
+   made from the file — filename, top values, AI report — plus its chat,
+   share links and activity rows behind. */
+export const permanentlyDeleteDataset = deleteDatasetCascade;
 
 export async function emptyTrash(ownerId) {
   const trashed = await query(`SELECT id FROM datasets WHERE owner_id=$1 AND is_trashed=1`, [ownerId]);
@@ -266,8 +279,9 @@ export async function shareDataset(datasetId, userId, role, invitedBy) {
     [uuid(), datasetId, userId, role, invitedBy, now()]
   );
 }
+/* v21.30: no email — a collaborator sees who else has access by username only. */
 export async function getDatasetCollaborators(datasetId) {
-  return query(`SELECT u.id,u.username,u.email,u.avatar_url,dp.role,dp.created_at FROM dataset_permissions dp JOIN users u ON u.id=dp.user_id WHERE dp.dataset_id=$1 ORDER BY dp.created_at`, [datasetId]);
+  return query(`SELECT u.id,u.username,u.avatar_url,dp.role,dp.created_at FROM dataset_permissions dp JOIN users u ON u.id=dp.user_id WHERE dp.dataset_id=$1 ORDER BY dp.created_at`, [datasetId]);
 }
 export async function removeCollaborator(datasetId, userId) {
   await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1 AND user_id=$2`, [datasetId, userId]);
@@ -308,19 +322,32 @@ export async function getVersionBytes(version) {
 
   if (version.storage_key) {
     const storage = await import("../services/storage.js");
+    let bytes;
     try {
-      return await storage.get(version.storage_key);
+      bytes = await storage.get(version.storage_key);
     } catch (err) {
+      // v21.30: an object that is there but cannot be decrypted is not "gone" —
+      // a wrong or missing STORAGE_ENCRYPTION_KEY must surface as itself.
+      if (/^STORAGE_/.test(err.code || "")) throw err;
       // The object is gone (pruned volume, restored DB without its bucket, a
       // key written under a different DATA_DIR). Fall back to the legacy
       // column when the row still has one rather than 500-ing the request —
       // for CSV that content is intact, and for xlsx nothing was recoverable
       // anyway. Callers get bytes or a clear error, never a crash.
       if (version.file_content) return Buffer.from(version.file_content, "utf-8");
-      const e = new Error(`stored object missing for version ${version.id}: ${version.storage_key}`);
+      // No key in the message: keys written before v21.30 end in the user's filename.
+      const e = new Error(`stored object missing for version ${version.id}`);
       e.status = 410;   // Gone — the row exists, the bytes do not
       throw e;
     }
+    /* v21.30: the bytes must be the file this row recorded. Telling sealed
+       from legacy objects by their magic alone let a plaintext object swapped
+       into storage pass as the user's file; GCM guards only sealed bytes.
+       storage_sha256 is the hash of the plaintext, written with every object. */
+    if (version.storage_sha256 && sha256(bytes) !== version.storage_sha256) {
+      throw Object.assign(new Error(`stored object for version ${version.id} does not match its recorded hash`), { code: "STORAGE_INTEGRITY_FAILED" });
+    }
+    return bytes;
   }
 
   return Buffer.from(version.file_content || "", "utf-8");

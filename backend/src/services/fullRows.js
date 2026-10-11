@@ -27,15 +27,16 @@
 import { parse } from "csv-parse/sync";
 import ExcelJS from "exceljs";
 import { assertInflatable } from "./zipGuard.js";
-import { cleanCell, decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
+import { cleanCell, decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders, CSV_OPTIONS, csvClientError } from "./normalize.js";
 
 function parseAllRows(buffer, fileName) {
   if (!/\.(csv|tsv|txt)$/i.test(fileName || "")) return { headers: null, rows: null };
 
   const { text } = decodeSmart(buffer);
   const delimiter = sniffDelimiter(text);
-  const records = parse(text, { bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter })
-    .map((r) => r.map(cleanCell));
+  let records;
+  try { records = parse(text, { ...CSV_OPTIONS, delimiter }).map((r) => r.map(cleanCell)); }
+  catch (err) { throw csvClientError(err); }
   if (!records.length) return { headers: [], rows: [] };
 
   const hIdx    = detectHeaderRow(records.slice(0, 10));

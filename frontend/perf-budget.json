@@ -1,8 +1,8 @@
 {
-  "_comment": "v14 frontend performance budgets. `bundle` = regression ratchet, machine-local, recalibrate via perf:bundle --update. `render` = ABSOLUTE UX targets gated by scripts/perf-render.mjs in a real headless Chromium (lcpMs 2500 = Web Vitals 'good').",
+  "_comment": "v14 frontend performance budgets. `bundle` = regression ratchet, machine-local, recalibrate via perf:bundle --update. `render` = ABSOLUTE UX targets gated by scripts/perf-render.mjs in a real headless Chromium (lcpMs 2500 = Web Vitals 'good'). v21.30 review fixes: totalGzipKb 244 -> 247, raised by hand for code that has to exist — the /account page's stored-file and share-link lists with their deletes (the notices promise both; +1.8 kB, all in the lazy AccountPage chunk), the re-accept gate's focus and shortcut guards, and Share/export on statistics-only results. Measured 246.4. initialGzipKb stays 101 (measured 100.9): nothing new was added to the first paint but guards and two corrected strings. Not via --update, which would also move the other budgets.",
   "bundle": {
     "initialGzipKb": 101,
-    "totalGzipKb": 244,
+    "totalGzipKb": 247,
     "fontsGzipKb": 339
   },
   "render": {

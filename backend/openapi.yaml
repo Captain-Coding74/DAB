@@ -56,6 +56,18 @@ components:
           description: Opaque refresh token (expires in 7d)
         username:
           type: string
+        legal: { $ref: "#/components/schemas/LegalStatus" }
+
+    LegalStatus:
+      type: object
+      description: >
+        v21.30 click-wrap. `current` is the version of the Terms of Service
+        and Privacy Notice in force; `accepted` is the one this user agreed
+        to (null for an account from before click-wrap). When they differ
+        the app asks the user to accept again (POST /api/auth/accept-terms).
+      properties:
+        accepted: { type: string, nullable: true, example: "2026-10-10" }
+        current:  { type: string, example: "2026-10-10" }
 
     ColStat:
       type: object
@@ -186,19 +198,27 @@ paths:
           application/json:
             schema:
               type: object
-              required: [username, password]
+              required: [username, password, acceptTerms, ageConfirmed]
               properties:
                 username: { type: string, minLength: 3, example: captain }
                 password: { type: string, minLength: 6, example: secret123 }
                 email:    { type: string, format: email, example: captain@example.com }
+                acceptTerms:
+                  type: boolean
+                  description: Agrees to the Terms of Service and has read the Privacy Notice (true or "true")
+                  example: true
+                ageConfirmed:
+                  type: boolean
+                  description: At least 18 years old, and if under 20 a parent or guardian agrees (true or "true")
+                  example: true
       responses:
         "201":
-          description: User created
+          description: User created; the accepted version, time and IP are recorded
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TokenPair" }
         "400":
-          description: Validation error or username taken
+          description: Validation error, username taken, or `TERMS_REQUIRED` (a box not ticked)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -302,6 +322,86 @@ paths:
                       total:      { type: integer }
                       total_rows: { type: integer }
                       avg_ms:     { type: number }
+                  legal: { $ref: "#/components/schemas/LegalStatus" }
+    delete:
+      tags: [Auth]
+      summary: Delete my account (v21.30)
+      description: |
+        Erases the signed-in account and everything it owns, immediately:
+        saved files and datasets, analyses, chat, share links, comments,
+        notifications and memberships. Owned workspaces pass to the
+        earliest-joined remaining admin, else member, else are deleted. Kept:
+        traffic-log rows until their 90-day retention ends, and a
+        privacy-request log entry holding only sha256(user id) for 3 years.
+        Rate-limited (10 per 15 minutes, shared with the export).
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "200": { description: Account erased }
+        "400": { description: "`PASSWORD_REQUIRED` — no password in the body" }
+        "401": { description: Not signed in }
+        "403": { description: "`WRONG_PASSWORD` — the password does not match" }
+        "429": { description: Too many account requests }
+
+  /api/auth/accept-terms:
+    post:
+      tags: [Auth]
+      summary: Accept the current Terms of Service and Privacy Notice (v21.30)
+      description: >
+        Records the version, the time and the IP. `version` must be the
+        current one (LegalStatus.current) — a client still showing an older
+        text gets a 400.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string, example: "2026-10-10" }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  legal:   { $ref: "#/components/schemas/LegalStatus" }
+        "400": { description: "`TERMS_REQUIRED` — not the current version (the body carries `current`)" }
+        "401": { description: Not signed in }
+
+  /api/auth/me/export:
+    get:
+      tags: [Auth]
+      summary: Download everything DAB holds about me (v21.30)
+      description: |
+        A JSON attachment, `dab-export-<username>-<yyyy-mm-dd>.json`: profile
+        (no password hash), workspaces and roles, owned datasets with version
+        metadata and each original file's download path
+        (`GET /api/datasets/{id}/versions/{versionId}/download`, owner only),
+        analyses, chat, share links (no tokens or passwords), comments,
+        mentions, notifications, activity, audit log, telemetry, sessions and
+        privacy requests. Logged in the privacy-request log. Rate-limited.
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: The export
+          content:
+            application/json:
+              schema: { type: object }
+        "429": { description: Too many account requests }
 
   # ── Analyze ──────────────────────────────────────────────
   /api/analyze:
@@ -318,6 +418,22 @@ paths:
         Response additionally includes `insights[]` and `sampleRows[]` (v9).
 
         Authentication is **optional** — if provided, the result is saved to history.
+        v21.30: the saved record keeps no IP address, and the uploaded file
+        itself is NOT stored — saving it is a separate, explicit
+        `POST /api/datasets` (which, for a file detected as a class roster,
+        requires `schoolAuthority=1` or answers 400 `SCHOOL_AUTHORITY_REQUIRED`).
+        That save may name the analysis on screen (`analysisId`, the caller's
+        own): it is linked to the new dataset, and a statistics-only analysis
+        (or `noAi=1`) creates the dataset with its AI switch OFF.
+
+        v21.30: `datasetId` and `workspaceId`, when sent, must be a dataset the
+        caller can access and a workspace they belong to — otherwise 403.
+
+        v21.30: the AI receives statistics only — never raw rows, and never the
+        values of columns detected as personal data (only their name and kind).
+        Send `noAi` to skip the AI entirely for this upload: the response has
+        `analysis: null`, `aiDisabled: true`, and chat/agent on the saved
+        analysis answer 403 `AI_DISABLED`.
       security: [{ BearerAuth: [] }]
       requestBody:
         required: true
@@ -335,6 +451,16 @@ paths:
                   type: string
                   default: สรุปภาพรวมข้อมูลทั้งหมด
                   description: Question to ask the AI about the data
+                noAi:
+                  type: string
+                  enum: ["1", "true"]
+                  description: "Statistics only — don't send anything from this file to the AI (signed-in uploads)"
+                datasetId:
+                  type: string
+                  description: Link the saved analysis to this dataset (one the caller can access)
+                workspaceId:
+                  type: string
+                  description: Workspace the saved analysis belongs to (one the caller is a member of)
       responses:
         "200":
           description: Analysis complete
@@ -343,6 +469,8 @@ paths:
               schema: { $ref: "#/components/schemas/AnalyzeResponse" }
         "400":
           description: No file, wrong format, or empty data
+        "403":
+          description: "`datasetId` or `workspaceId` names one the caller cannot access (v21.30)"
         "429":
           description: Rate limit exceeded (30 req / 15 min)
         "500":
@@ -420,6 +548,7 @@ paths:
     get:
       tags: [History]
       summary: Get a single analysis record (full)
+      description: v21.30 — never includes `ip_address`.
       security: [{ BearerAuth: [] }]
       parameters:
         - name: id
@@ -435,6 +564,10 @@ paths:
     delete:
       tags: [History]
       summary: Delete an analysis record
+      description: |
+        v21.30 — deletes the analysis together with its chat messages, share
+        links, comments (with their mentions) and the notifications that link
+        to it.
       security: [{ BearerAuth: [] }]
       parameters:
         - name: id
@@ -454,6 +587,13 @@ paths:
         v21 — for password-protected shares, send the password in the
         `X-Share-Password` header. (The `?password=` query parameter was
         removed in v21 — query-string secrets leak into logs and proxies.)
+
+        v21.30 — every response carries `X-Robots-Tag: noindex, nofollow`.
+        The payload has no `file_name`, and a column detected as personal
+        data (`sensitive` set) keeps only its name, kind and counts — no
+        top values, min/max or other value fields. Links always expire
+        (1, 7, 30 or 90 days, chosen when the link is made); an expired or
+        revoked link answers 404.
       parameters:
         - name: token
           in: path
@@ -486,3 +626,27 @@ paths:
                   db:      { type: string, example: sqlite, description: Active DB backend (postgres | sqlite) }
                   cache:   { type: string, example: memory, description: Active cache backend (redis | memory) }
                   ts:      { type: string, format: date-time }
+
+  /api/legal:
+    get:
+      tags: [System]
+      summary: Legal document version and operator contact details (v21.30)
+      description: |
+        The version shared by the Terms of Service and the Privacy Notice, and
+        the operator details the legal pages print (/privacy, /terms, /storage,
+        /contact, /licenses). Values come from LEGAL_* environment variables;
+        an unset one is an empty string.
+      responses:
+        "200":
+          description: Current legal version and operator identity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:         { type: string, example: "2026-10-10" }
+                  operatorName:    { type: string }
+                  contactEmail:    { type: string, description: Empty until LEGAL_CONTACT_EMAIL is set }
+                  postalAddress:   { type: string, description: Empty until LEGAL_POSTAL_ADDRESS is set }
+                  hostingProvider: { type: string }
+                  hostingRegion:   { type: string }

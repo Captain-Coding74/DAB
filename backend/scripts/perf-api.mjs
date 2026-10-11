@@ -102,7 +102,7 @@ async function bootServer(port) {
   const reg = await fetch(`${base}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: `perf_${Date.now()}`, password: "perfbench123" }),
+    body: JSON.stringify({ username: `perf_${Date.now()}`, password: "perfbench123", acceptTerms: true, ageConfirmed: true }),
   });
   if (!reg.ok) {
     console.error(`✗ register failed (HTTP ${reg.status}) — cannot benchmark authenticated routes.`);

@@ -28,7 +28,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 
 const RANK = { public: 0, any: 1, viewer: 2, editor: 3, owner: 4 };
 
@@ -48,6 +48,7 @@ const ROUTES = [
   { m: "post",   path: "/api/fixes/:id/preview",               min: "viewer", body: { op: "drop-duplicates" } },
   { m: "post",   path: "/api/fixes/:id/suggest",               min: "viewer", body: {} },
   { m: "post",   path: "/api/datasets/:id/analyze",            min: "viewer", body: {} },
+  { m: "get",    path: "/api/fixes/:id/ai-edit/scope",         min: "viewer" },
 
   // ── write ──
   { m: "patch",  path: "/api/datasets/:id/rename",             min: "editor", body: { name: "x" } },
@@ -57,7 +58,7 @@ const ROUTES = [
   { m: "post",   path: "/api/fixes/:id/apply",                 min: "editor", body: { op: "drop-duplicates" } },
   /* ai-edit is a PREVIEW — it returns a diff and writes nothing, so read
      access is enough. Only /ai-edit/apply stores a new version. */
-  { m: "post",   path: "/api/fixes/:id/ai-edit",               min: "viewer", body: { instruction: "trim" } },
+  { m: "post",   path: "/api/fixes/:id/ai-edit",               min: "viewer", body: { instruction: "trim", confirmSend: true } },
   { m: "post",   path: "/api/fixes/:id/ai-edit/apply",         min: "editor", body: { rows: [["1", "2"]], instruction: "x" } },
 
   // ── owner only ──
@@ -65,6 +66,11 @@ const ROUTES = [
   { m: "post",   path: "/api/datasets/:id/share",              min: "owner", body: { username: "__other__", role: "viewer" } },
   { m: "delete", path: "/api/datasets/:id/permanent",          min: "owner" },
   { m: "delete", path: "/api/datasets/:id/collaborators/:userId", min: "owner" },
+  /* v21.30: the AI switch — the owner answers for the data, so an editor
+     cannot switch AI back on (or off) for everyone. */
+  { m: "patch",  path: "/api/datasets/:id/ai",                 min: "owner", body: { aiEnabled: false } },
+  /* v21.30: the original file, for the account export's download links. */
+  { m: "get",    path: "/api/datasets/:id/versions/:versionId/download", min: "owner" },
 
   // ── the rest, classified after the coverage check flagged them ──
   { m: "patch",  path: "/api/datasets/:id/star",               min: "editor", body: { starred: true } },
@@ -84,7 +90,7 @@ describe("permission matrix", () => {
     app = await buildApp();
 
     const reg = async (u) =>
-      (await request(app).post("/api/auth/register").send({ username: u, password: "password123" })).body;
+      (await request(app).post("/api/auth/register").send({ username: u, password: "password123", ...TERMS })).body;
 
     /* Unique per run. Fixed names made the suite pass once and fail forever
        after: the second run found pm_owner already registered, got no token
@@ -179,5 +185,76 @@ describe("permission matrix", () => {
 
     assert.deepEqual(missing, [],
       `these routes resolve a dataset but are not in the permission matrix:\n  ${missing.join("\n  ")}`);
+  });
+});
+
+/* v21.30: the collection routes are scoped by WORKSPACE, not by a dataset id,
+   so the matrix above (which skips paths without :id) never probed them. A
+   collaborator on one dataset learns its workspace_id from GET
+   /api/datasets/:id; listing that workspace, or filing a new dataset into it
+   or into someone else's folder, must still need membership. */
+describe("workspace-scoped dataset routes", () => {
+  let app, member, stranger, wsId, folderId, sharedId;
+  const csv = () => Buffer.from("a,b\nx,1\ny,2\n");
+
+  before(async () => {
+    process.env.RATE_LIMIT_MAX = "1000";
+    app = await buildApp();
+    const u = Date.now().toString(36);
+    const reg = async (name) => (await request(app).post("/api/auth/register")
+      .send({ username: name, password: "password123", ...TERMS })).body;
+    member = await reg(`ws_m_${u}`);
+    stranger = await reg(`ws_s_${u}`);
+    const auth = (who) => ({ Authorization: `Bearer ${who.accessToken}` });
+    wsId = (await request(app).post("/api/workspaces").set(auth(member)).send({ name: `ws ${u}` })).body.id;
+    folderId = (await request(app).post("/api/datasets/folders").set(auth(member)).send({ name: "private", workspaceId: wsId })).body.id;
+    const up = await request(app).post("/api/datasets").set(auth(member))
+      .field("workspaceId", wsId).field("description", "counselling notes, private").attach("file", csv(), "roster.csv");
+    assert.equal(up.status, 201, JSON.stringify(up.body));
+    sharedId = up.body.id;
+    // The stranger is a collaborator on this ONE dataset, which tells them the workspace id.
+    await request(app).post(`/api/datasets/${sharedId}/share`).set(auth(member)).send({ username: `ws_s_${u}`, role: "viewer" });
+  });
+
+  after(async () => { await closeApp(); });
+
+  const as = (who, r) => r.set("Authorization", `Bearer ${who.accessToken}`);
+
+  test("a collaborator sees the workspace id but cannot list the workspace", async () => {
+    const one = await as(stranger, request(app).get(`/api/datasets/${sharedId}`));
+    assert.equal(one.status, 200);
+    assert.equal(one.body.workspace_id, wsId);
+    const list = await as(stranger, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(list.status, 403, JSON.stringify(list.body).slice(0, 120));
+    assert.ok(!JSON.stringify(list.body).includes("counselling"));
+  });
+
+  test("a member still lists it", async () => {
+    const list = await as(member, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(list.status, 200);
+    assert.ok(list.body.some((d) => d.id === sharedId));
+  });
+
+  test("a non-member cannot file a dataset into the workspace, single or multi", async () => {
+    const one = await as(stranger, request(app).post("/api/datasets")).field("workspaceId", wsId).attach("file", csv(), "x.csv");
+    assert.equal(one.status, 403);
+    const multi = await as(stranger, request(app).post("/api/datasets/multi")).field("workspaceId", wsId).attach("files", csv(), "x.csv");
+    assert.equal(multi.status, 403);
+    const listed = await as(member, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(listed.body.length, 1, "nothing was stored by the refused uploads");
+  });
+
+  test("nor into, or move a dataset into, someone else's folder", async () => {
+    const one = await as(stranger, request(app).post("/api/datasets")).field("folderId", folderId).attach("file", csv(), "x.csv");
+    assert.equal(one.status, 403);
+    const own = await as(stranger, request(app).post("/api/datasets")).attach("file", csv(), "mine.csv");
+    assert.equal(own.status, 201);
+    const move = await as(stranger, request(app).patch(`/api/datasets/${own.body.id}/move`)).send({ folderId });
+    assert.equal(move.status, 403);
+  });
+
+  test("a member files into the workspace and its folder", async () => {
+    const r = await as(member, request(app).post("/api/datasets")).field("workspaceId", wsId).field("folderId", folderId).attach("file", csv(), "y.csv");
+    assert.equal(r.status, 201, JSON.stringify(r.body).slice(0, 120));
   });
 });

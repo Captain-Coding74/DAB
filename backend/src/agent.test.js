@@ -152,3 +152,45 @@ describe("the agent trail is honest and bounded", () => {
     assert.ok(JSON.stringify(steps).length < 10000, "the trail must stay small");
   });
 });
+
+/* v21.30: the tools answer from the aiSafe view. get_column_detail returned
+   the stored column object whole, so asking about customer_email handed the
+   model the most common addresses — and old analyses carry no `sensitive`
+   flag for the new kinds, so the header must be enough. */
+describe("the tools never return a detected column's values", () => {
+  const PII_STATS = {
+    colAnalysis: [
+      { col: "customer_email", type: "text", count: 12, missing: 0, missingPct: "0.0", unique: 4,
+        top: [{ value: "user0@example.com", count: 3, pct: "25.0" }] },
+      { col: "diagnosis", type: "text", count: 12, missing: 0, missingPct: "0.0", unique: 2,
+        top: [{ value: "diabetes type 1", count: 8, pct: "66.7" }] },
+      { col: "amount", type: "numeric", count: 12, missing: 0, missingPct: "0.0", avg: 138.5 },
+    ],
+    corr: { strong: [{ col1: "amount", col2: "diagnosis", r: 0.91 }] },
+    forecasts: [{ col: "diagnosis", slope: 1, r2: 0.9, forecast: [] }],
+  };
+
+  test("get_column_detail on a detected column: its name and kind only", () => {
+    assert.deepEqual(runTool("get_column_detail", { column: "customer_email" }, PII_STATS),
+      { col: "customer_email", sensitive: "email" });
+    assert.equal(runTool("get_column_detail", { column: "amount" }, PII_STATS).avg, 138.5, "other columns keep their stats");
+  });
+
+  test("list_columns names the kind; correlations and forecasts naming it are gone", () => {
+    assert.equal(runTool("list_columns", {}, PII_STATS)[1].sensitive, "health");
+    assert.ok(runTool("get_correlations", {}, PII_STATS).note);
+    assert.ok(runTool("get_forecasts", {}, PII_STATS).note);
+  });
+
+  test("a full agent run sends no detected value in any tool result", async () => {
+    const client = makeClient([
+      toolMsg("get_column_detail", { column: "customer_email" }, "t1"),
+      toolMsg("get_column_detail", { column: "diagnosis" }, "t2"),
+      toolMsg("get_correlations", {}, "t3"),
+      textMsg("done"),
+    ]);
+    await runAgent({ client, statsJson: PII_STATS, analysisText: "x", question: "q" });
+    const sent = JSON.stringify(client.calls.map((c) => c.messages));
+    for (const leak of ["@example.com", "user0", "diabetes"]) assert.ok(!sent.includes(leak), `leaked: ${leak}`);
+  });
+});

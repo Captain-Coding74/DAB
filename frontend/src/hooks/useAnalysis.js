@@ -9,6 +9,8 @@ import { useState, useCallback, useRef } from "react";
 import { useAppStore } from "../store";
 import { apiFetch, getJSON, postJSON } from "../lib/api";
 import { startSpan } from "../lib/perf";
+import { saveDataset, analyzeForm } from "../lib/saveDataset";
+import { t } from "../lib/i18n";
 
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
 
@@ -81,38 +83,34 @@ export function useAnalysis() {
     return true;
   }, [toast, setCurrentAnalysis]);
 
-  const analyze = useCallback(async (question) => {
+  /* v21.30: `noAi` is the per-upload "Statistics only" choice. Sent as a
+     form field; the server skips the AI call and marks the saved analysis so
+     chat and the agent refuse it. Kept on the in-memory analysis (never in
+     storage) so a re-analysis of the saved copy honours it too. */
+  const analyze = useCallback(async (question, { noAi = false } = {}) => {
     if (!file || inFlightRef.current) return;
     inFlightRef.current = true;
     const runId = ++runRef.current;
+    // A result on screen is always this file's (selectFile clears it), so a
+    // dataset it was saved as stays linked — offering Save again would store
+    // a duplicate copy of the same file.
+    const savedAs = useAppStore.getState().currentAnalysis?.datasetId ?? null;
     setLoading(true);
     const endSpan = startSpan("analyze");   // v13: measure what the USER waits for
-    const fd = new FormData();
-    fd.append("file", file, file.name);
-    fd.append("question", question);
+    // The dataset it was saved as goes along, so its AI switch applies (lib/saveDataset.js).
+    const fd = analyzeForm(file, question, { noAi, datasetId: savedAs });
     try {
       const res  = await apiFetch("/api/analyze", { method: "POST", headers: {}, body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const perceivedMs = endSpan();
       if (runId !== runRef.current) return;   // superseded — a newer file/run owns the state now
-/* School edition: the สถิติ tab's hypothesis tests need a STORED
-         dataset (they run on every row server-side), but nothing in the UI
-         ever created one — a.datasetId was read in exactly one place and set
-         in zero, so the whole inference panel was unreachable. For a
-         signed-in user, store the same file as a dataset and light the tab
-         up; failure is non-fatal (the tab just stays gated). */
-      let datasetId = data.datasetId ?? null;
-      if (!datasetId && useAppStore.getState().accessToken) {
-        try {
-          const dsFd = new FormData();
-          dsFd.append("file", file, file.name);
-          const dsRes = await apiFetch("/api/datasets", { method: "POST", headers: {}, body: dsFd });
-          if (dsRes.ok) datasetId = (await dsRes.json()).id ?? null;
-        } catch { /* สถิติ tab stays gated — not worth failing the analysis */ }
-      }
-      if (runId !== runRef.current) return;   // re-check: the store call awaited
-      setCurrentAnalysis({ ...data, datasetId, fileName: file.name, perceivedMs });
+      /* v21.30: analyze stores the analysis record and nothing else. This
+         used to POST the same File to /api/datasets straight after, for
+         every signed-in user, so the hypothesis tests had a stored copy —
+         keeping the original file indefinitely without asking. Storing it is
+         now the user's explicit "Save dataset" (saveCurrentDataset below). */
+      setCurrentAnalysis({ ...data, datasetId: data.datasetId ?? savedAs, fileName: file.name, perceivedMs, noAi });
       toast("วิเคราะห์เสร็จแล้ว! ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
@@ -152,15 +150,38 @@ export function useAnalysis() {
     setLoading(true);
     const endSpan = startSpan("analyze");
     try {
-      const data = await postJSON(`/api/datasets/${datasetId}/analyze`, { question: question || "" });
+      const noAi = !!currentAnalysis?.noAi;   // a stats-only upload stays stats-only after a fix
+      const data = await postJSON(`/api/datasets/${datasetId}/analyze`, { question: question || "", noAi });
       const perceivedMs = endSpan();
       if (runId !== runRef.current) return;
-      setCurrentAnalysis({ ...data, datasetId, fileName: currentAnalysis?.fileName, perceivedMs });
+      setCurrentAnalysis({ ...data, datasetId, fileName: currentAnalysis?.fileName, perceivedMs, noAi });
       toast("วิเคราะห์เวอร์ชันล่าสุดแล้ว ✓");
       return data;
     } catch (err) { endSpan(); if (runId === runRef.current) toast(friendlyError(err), "error"); }
     finally { inFlightRef.current = false; setLoading(false); }
   }, [toast, setCurrentAnalysis, currentAnalysis]);
+
+  /* v21.30: "Save dataset" — the only path that stores the original file,
+     reached through components/dashboard/SaveDatasetDialog.jsx.
+     Resolves the server's answer so the dialog can react to its code. The
+     dataset id joins the result on screen only if the user has not moved on
+     to another file meanwhile (same generation guard as analyze). */
+  const saveCurrentDataset = useCallback(async ({ schoolAuthority = false } = {}) => {
+    if (!file) return { ok: false };
+    const runId = runRef.current;
+    const shown = useAppStore.getState().currentAnalysis;
+    try {
+      // The analysis on screen is linked to the dataset, and a Statistics-only
+      // upload saves a dataset with AI off (lib/saveDataset.js saveForm).
+      const r = await saveDataset(file, { schoolAuthority, analysisId: shown?.savedId, noAi: !!shown?.noAi });
+      const cur = useAppStore.getState().currentAnalysis;
+      if (r.ok && cur && runId === runRef.current) {
+        setCurrentAnalysis({ ...cur, datasetId: r.id });
+        toast(t("save.done"));
+      }
+      return r;
+    } catch (err) { return { ok: false, error: friendlyError(err) }; }
+  }, [file, toast, setCurrentAnalysis]);
 
   const exportReport = useCallback(async (format, question) => {
     if (!file) return;
@@ -183,14 +204,23 @@ export function useAnalysis() {
     finally { setExporting(null); }
   }, [file, currentAnalysis, toast]);
 
-  const shareReport = useCallback(async () => {
-    if (!currentAnalysis?.savedId) { toast("กรุณา login ก่อน share", "error"); return; }
+  /* v21.30: called by ShareDialog (dashboard/tabs.jsx) only. The one-click
+     version sent { title: file.name } with no expiry, so every link was
+     public forever under the uploaded file's name. The dialog supplies a
+     generic title, a required expiry and an optional password. Returns
+     { url, copied } so the dialog can show the link when the clipboard is
+     unavailable (plain-http origin, permission denied) instead of claiming
+     it was copied. */
+  const shareReport = useCallback(async ({ title, password, expiresInDays }) => {
+    if (!currentAnalysis?.savedId) { toast("กรุณา login ก่อน share", "error"); return null; }
     try {
-      const data = await postJSON(`/api/analyses/${currentAnalysis.savedId}/share`, { title: file?.name });
-      await navigator.clipboard.writeText(data.shareUrl);
-      toast("Copy link แล้ว! 🔗");
-    } catch (err) { toast(friendlyError(err), "error"); }
-  }, [currentAnalysis, file, toast]);
+      const data = await postJSON(`/api/analyses/${currentAnalysis.savedId}/share`,
+        { title, password: password || undefined, expiresInDays });
+      let copied = false;
+      try { await navigator.clipboard.writeText(data.shareUrl); copied = true; } catch { /* shown in the dialog */ }
+      return { url: data.shareUrl, copied };
+    } catch (err) { toast(friendlyError(err), "error"); return null; }
+  }, [currentAnalysis, toast]);
 
-  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport };
+  return { file, loading, exporting, analysis: currentAnalysis, selectFile, analyze, analyzeStored, runDemo, saveCurrentDataset, exportReport, shareReport };
 }

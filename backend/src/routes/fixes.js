@@ -22,16 +22,17 @@ import { serviceLogger } from "../logger.js";
 import { parseAllRowsAny } from "../services/fullRows.js";
 import { applyFix, OPERATIONS } from "../services/dataFixes.js";
 import { suggestFixes } from "../services/fixSuggest.js";
-import { aiEditRows, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
+import { aiEditRows, aiEditScope, detectSensitiveColumns, MAX_AI_EDIT_ROWS } from "../services/aiEdit.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
 import { classifySensitiveColumns, maskRows } from "../services/sensitive.js";
+import { AI_DISABLED, flagOn, aiEnabledRow } from "../services/aiGate.js";
 
 /* The parse used here (parseAllRowsAny) is RAW — the parse-boundary guard
    does not run on it, because fixes need the true bytes to rewrite. That
    makes THIS file responsible for the same masking every other surface gets:
    any rows serialised into a response pass through maskForClient first
-   (non-strict: citizen ids and phones x'd; scores, names and student ids
-   stay readable for the teacher, same tier as the dataset preview). */
+   (direct identifiers x'd; scores, names and student ids stay readable for
+   the teacher, same tier as the dataset preview). */
 function maskForClient(headers, allRows, rowsToSend) {
   const det = classifySensitiveColumns(headers, allRows);
   return det.length ? maskRows(headers, rowsToSend, det) : rowsToSend;
@@ -73,8 +74,11 @@ export function mountFixRoutes(app, { ai } = {}) {
 
       /* suggest calls the model too — same daily budget as every other AI
          entry point. Exhausted → the deterministic rule fallback still works,
-         so degrade instead of failing. */
-      const budget = await tryConsumeAI();
+         so degrade instead of failing. v21.30: the same floor answers when the
+         owner switched AI off for this dataset, or the caller asked for
+         statistics only (noAi) — decided before any budget is reserved. */
+      const aiDisabled = !ctx.aiEnabled || flagOn(req.body?.noAi);
+      const budget = aiDisabled ? { allowed: false } : await tryConsumeAI();
       const { suggestions, source } = await suggestFixes(budget.allowed ? ai : null, {
         headers: parsed.headers,
         colAnalysis: parsed.colAnalysis,
@@ -84,7 +88,7 @@ export function mountFixRoutes(app, { ai } = {}) {
 
       log.info({ datasetId: req.params.id, count: suggestions.length, source }, "fixes suggested");
       res.json({
-        suggestions, source,
+        suggestions, source, aiDisabled,
         note: "ยังไม่มีอะไรถูกแก้ — กด preview เพื่อดูผลก่อน",
         noteEn: "Nothing has been changed. Preview a suggestion to see its effect.",
       });
@@ -112,6 +116,17 @@ export function mountFixRoutes(app, { ai } = {}) {
   });
 
   /**
+   * What an AI edit WOULD send (v21.30) — for the confirmation dialog the UI
+   * shows before anything leaves. Pure: no model call, no budget.
+   */
+  app.get("/api/fixes/:id/ai-edit/scope", requireAuth, async (req, res, next) => {
+    try {
+      const ctx = await load(req, res); if (!ctx) return;
+      res.json({ ...aiEditScope(ctx.headers, ctx.rows), aiEnabled: ctx.aiEnabled });
+    } catch (err) { next(err); }
+  });
+
+  /**
    * Free-text AI edit — the model rewrites actual cell values.
    *
    * This is the one place raw rows leave the server (see the header of
@@ -123,7 +138,21 @@ export function mountFixRoutes(app, { ai } = {}) {
   app.post("/api/fixes/:id/ai-edit", analyzeLimiter(), speedLimiter(), requireAuth, async (req, res, next) => {
     try {
       const ctx = await load(req, res); if (!ctx) return;
-      const { instruction } = req.body || {};
+      const { instruction, confirmSend } = req.body || {};
+
+      /* v21.30, both before the budget: the owner's AI switch, then explicit
+         consent. Raw rows only leave after the user has seen what goes (the
+         scope rides along with the refusal for clients that skipped
+         GET /scope) and pressed Send — the API cannot be talked past that. */
+      if (!ctx.aiEnabled) return res.status(403).json(AI_DISABLED);
+      if (confirmSend !== true) {
+        return res.status(400).json({
+          error: "ต้องยืนยันก่อนส่งข้อมูลให้ AI",
+          errorEn: "rows are only sent to the AI after explicit confirmation (confirmSend: true)",
+          code: "AI_EDIT_CONFIRM_REQUIRED",
+          ...aiEditScope(ctx.headers, ctx.rows),
+        });
+      }
 
       // ai-edit invokes the model — it must draw from the same daily budget as
       // every other AI entry point, not sneak past it.
@@ -146,8 +175,8 @@ export function mountFixRoutes(app, { ai } = {}) {
         headers: ctx.headers,
         sensitiveColumns: detectSensitiveColumns(ctx.headers),
         protectedColumns: result.protectedColumns || [],
-        warningTh: "ค่าดิบ (ยกเว้นคอลัมน์ข้อมูลส่วนบุคคล ซึ่งไม่ถูกส่ง) ถูกส่งไปยัง AI — ตรวจสอบรายการเปลี่ยนแปลงก่อนยืนยัน",
-        warningEn: "Raw values were sent to the AI — except identifier columns, which never leave the server. Review every change before confirming.",
+        warningTh: "ค่าดิบของคอลัมน์ที่ไม่ได้ตรวจพบว่าเป็นข้อมูลส่วนบุคคลถูกส่งไปยัง AI (Anthropic สหรัฐอเมริกา) — ตรวจสอบรายการเปลี่ยนแปลงก่อนยืนยัน",
+        warningEn: "Raw values of the columns not detected as personal data were sent to the AI (Anthropic, USA). Detected personal-data columns were left out. Review every change before confirming.",
         maxRows: MAX_AI_EDIT_ROWS,
       });
     } catch (err) { next(err); }
@@ -322,7 +351,7 @@ async function load(req, res, needsWrite = false) {
     });
     return null;
   }
-  return { rows, headers, version: ds.version };
+  return { rows, headers, version: ds.version, aiEnabled: aiEnabledRow(ds) };
 }
 
 /**

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Storage notice · การจัดเก็บในเบราว์เซอร์ — Data Analysis Bot</title>
+<meta name="description" content="Data Analysis Bot sets no cookies. The six localStorage entries it keeps in your browser, what each is for, and how to clear them.">
+<link rel="stylesheet" href="/legal.css">
+</head>
+<body data-lang="en">
+<a class="skip" href="#main"><span lang="en">Skip to main content</span><span lang="th">ข้ามไปเนื้อหาหลัก</span></a>
+<header class="bar"><div class="wrap bar-in">
+  <a class="stamp" href="/welcome" aria-label="DAB">DAB</a>
+  <a class="bar-title" href="/welcome">Data Analysis Bot</a>
+  <span class="lang" role="group" aria-label="Language · ภาษา"><a href="?lang=en" data-set-lang="en" hreflang="en">EN</a><a href="?lang=th" data-set-lang="th" hreflang="th">TH</a></span>
+  <a class="bar-cta" href="/"><span lang="en">Open the app</span><span lang="th">เปิดแอป</span></a>
+</div></header>
+
+<main id="main" class="wrap doc">
+<p class="eyebrow"><span lang="en">Data Analysis Bot · Legal</span><span lang="th">Data Analysis Bot · ข้อมูลทางกฎหมาย</span></p>
+<h1><span lang="en">Storage notice</span><span lang="th">ประกาศการจัดเก็บข้อมูลในเบราว์เซอร์</span></h1>
+<p class="meta"><span lang="en">Version {{LEGAL_VERSION}} · Effective {{LEGAL_VERSION}} · Published in English and Thai. If the two differ, the Thai version prevails.</span><span lang="th">ฉบับวันที่ {{LEGAL_VERSION}} · มีผลใช้บังคับตั้งแต่ {{LEGAL_VERSION}} · จัดทำเป็นภาษาไทยและภาษาอังกฤษ หากสองฉบับขัดหรือแย้งกัน ให้ถือฉบับภาษาไทยเป็นหลัก</span></p>
+<p class="lead"><span lang="en">DAB sets <strong>no cookies</strong>. It uses no analytics, advertising or tracking tools, and loads no third-party scripts, fonts or other resources — everything comes from DAB's own server.</span><span lang="th">DAB <strong>ไม่ใช้คุกกี้</strong> ไม่ใช้เครื่องมือวิเคราะห์พฤติกรรมผู้ใช้ โฆษณา หรือการติดตามใด ๆ และไม่โหลดสคริปต์ ฟอนต์ หรือทรัพยากรอื่นจากบุคคลที่สาม — ทุกอย่างมาจากเซิร์ฟเวอร์ของ DAB เอง</span></p>
+
+<nav class="toc" aria-labelledby="toc-h">
+  <h2 id="toc-h"><span lang="en">Contents</span><span lang="th">สารบัญ</span></h2>
+  <ol lang="en"><li><a href="#keys">What DAB keeps in your browser</a></li><li><a href="#clear">How to clear it</a></li><li><a href="#none">What DAB does not use</a></li></ol>
+  <ol lang="th"><li><a href="#keys">สิ่งที่ DAB เก็บไว้ในเบราว์เซอร์</a></li><li><a href="#clear">วิธีล้างข้อมูล</a></li><li><a href="#none">สิ่งที่ DAB ไม่ใช้</a></li></ol>
+</nav>
+
+<section id="keys">
+<div lang="en">
+<h2>1. What DAB keeps in your browser</h2>
+<p>The app keeps six small entries in your browser's <strong>localStorage</strong>. The two session tokens are sent to DAB's server when you use your account; the other entries never leave your device.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Key</th><th>Purpose</th><th>Contents</th><th>Lifetime</th><th>Type</th></tr></thead>
+<tbody>
+<tr><td><code>dab_at</code></td><td>Keeps you signed in</td><td>Access token: a signed code holding your user id and username</td><td>Removed when you sign out; the token stops working 15 minutes after it is issued</td><td>Necessary</td></tr>
+<tr><td><code>dab_rt</code></td><td>Renews your session without asking for your password again</td><td>Refresh token</td><td>Removed when you sign out; stops working after 7 days and is replaced each time it is used</td><td>Necessary</td></tr>
+<tr><td><code>dab_user</code></td><td>Shows who is signed in</td><td>Your username</td><td>Removed when you sign out</td><td>Necessary</td></tr>
+<tr><td><code>dab_dark</code></td><td>Remembers light or dark mode in the app</td><td><code>1</code> (dark) or <code>0</code> (light)</td><td>Until you clear it</td><td>Preference</td></tr>
+<tr><td><code>dab_landing_lang</code></td><td>Remembers English or Thai, on these pages and in the app</td><td><code>en</code> or <code>th</code></td><td>Until you clear it</td><td>Preference</td></tr>
+<tr><td><code>dab_tour_done</code></td><td>Remembers that the app tour has been shown, so it does not open again</td><td><code>1</code></td><td>Until you clear it</td><td>Preference</td></tr>
+</tbody></table></div>
+<p><strong>Necessary</strong> entries are needed for the signed-in service you ask for. <strong>Preference</strong> entries only remember your theme and language once you pick them, and that the tour has been shown.</p>
+</div>
+<div lang="th">
+<h2>1. สิ่งที่ DAB เก็บไว้ในเบราว์เซอร์</h2>
+<p>แอปเก็บรายการขนาดเล็ก 6 รายการไว้ใน <strong>localStorage</strong> ของเบราว์เซอร์ โทเค็นเซสชันสองรายการจะถูกส่งไปยังเซิร์ฟเวอร์ของ DAB เมื่อคุณใช้งานบัญชี ส่วนรายการอื่นไม่เคยออกจากอุปกรณ์ของคุณ</p>
+<div class="table-wrap"><table>
+<thead><tr><th>คีย์</th><th>ใช้เพื่อ</th><th>ข้อมูลที่เก็บ</th><th>อายุการเก็บ</th><th>ประเภท</th></tr></thead>
+<tbody>
+<tr><td><code>dab_at</code></td><td>ทำให้คุณอยู่ในระบบ</td><td>Access token: รหัสที่ลงลายมือชื่อแล้ว ซึ่งมีรหัสผู้ใช้และชื่อผู้ใช้ของคุณ</td><td>ถูกลบเมื่อคุณออกจากระบบ และโทเค็นใช้ไม่ได้หลังออกให้ 15 นาที</td><td>จำเป็น</td></tr>
+<tr><td><code>dab_rt</code></td><td>ต่ออายุเซสชันโดยไม่ต้องใส่รหัสผ่านใหม่</td><td>Refresh token</td><td>ถูกลบเมื่อคุณออกจากระบบ ใช้ไม่ได้หลัง 7 วัน และถูกแทนที่ทุกครั้งที่ใช้</td><td>จำเป็น</td></tr>
+<tr><td><code>dab_user</code></td><td>แสดงว่าใครเข้าสู่ระบบอยู่</td><td>ชื่อผู้ใช้ของคุณ</td><td>ถูกลบเมื่อคุณออกจากระบบ</td><td>จำเป็น</td></tr>
+<tr><td><code>dab_dark</code></td><td>จดจำโหมดสว่างหรือมืดในแอป</td><td><code>1</code> (มืด) หรือ <code>0</code> (สว่าง)</td><td>จนกว่าคุณจะล้าง</td><td>ค่าที่ตั้งไว้</td></tr>
+<tr><td><code>dab_landing_lang</code></td><td>จดจำภาษาอังกฤษหรือไทย ทั้งในหน้าเหล่านี้และในแอป</td><td><code>en</code> หรือ <code>th</code></td><td>จนกว่าคุณจะล้าง</td><td>ค่าที่ตั้งไว้</td></tr>
+<tr><td><code>dab_tour_done</code></td><td>จดจำว่าแสดงทัวร์แนะนำแอปแล้ว เพื่อไม่ให้เปิดขึ้นอีก</td><td><code>1</code></td><td>จนกว่าคุณจะล้าง</td><td>ค่าที่ตั้งไว้</td></tr>
+</tbody></table></div>
+<p>รายการ<strong>จำเป็น</strong>ใช้สำหรับบริการแบบเข้าสู่ระบบที่คุณขอ ส่วนรายการ<strong>ค่าที่ตั้งไว้</strong>มีไว้จดจำธีมและภาษาเมื่อคุณเลือก และจดจำว่าแสดงทัวร์แนะนำแล้วเท่านั้น</p>
+</div>
+</section>
+
+<section id="clear">
+<div lang="en">
+<h2>2. How to clear it</h2>
+<ul>
+<li>Signing out removes <code>dab_at</code>, <code>dab_rt</code> and <code>dab_user</code>.</li>
+<li>To remove everything, clear this site's data in your browser. In most browsers, open the site information (the icon next to the address bar) and choose to delete cookies and site data. This also resets your theme, language and tour.</li>
+<li>In a private or incognito window, all of them are removed when you close the window.</li>
+</ul>
+</div>
+<div lang="th">
+<h2>2. วิธีล้างข้อมูล</h2>
+<ul>
+<li>การออกจากระบบจะลบ <code>dab_at</code>, <code>dab_rt</code> และ <code>dab_user</code></li>
+<li>หากต้องการลบทั้งหมด ให้ล้างข้อมูลของเว็บไซต์นี้ในเบราว์เซอร์ ในเบราว์เซอร์ส่วนใหญ่ ให้เปิดข้อมูลเว็บไซต์ (ไอคอนข้างแถบที่อยู่) แล้วเลือกลบคุกกี้และข้อมูลเว็บไซต์ การล้างข้อมูลจะรีเซ็ตธีม ภาษา และทัวร์แนะนำด้วย</li>
+<li>ในหน้าต่างส่วนตัว (private หรือ incognito) รายการทั้งหมดจะถูกลบเมื่อคุณปิดหน้าต่าง</li>
+</ul>
+</div>
+</section>
+
+<section id="none">
+<div lang="en">
+<h2>3. What DAB does not use</h2>
+<p>No cookies, no analytics or statistics services, no advertising or social-media pixels, no fingerprinting, and no content from other websites. If that ever changes, we will update this notice first and ask for your consent where the law requires it. How DAB handles the rest of your data is in the <a href="/privacy">Privacy Notice</a>.</p>
+</div>
+<div lang="th">
+<h2>3. สิ่งที่ DAB ไม่ใช้</h2>
+<p>ไม่มีคุกกี้ ไม่มีบริการวิเคราะห์หรือเก็บสถิติผู้ใช้ ไม่มีพิกเซลโฆษณาหรือโซเชียลมีเดีย ไม่มีการระบุตัวตนด้วยลักษณะเฉพาะของอุปกรณ์ (fingerprinting) และไม่มีเนื้อหาจากเว็บไซต์อื่น หากมีการเปลี่ยนแปลง เราจะปรับปรุงประกาศนี้ก่อน และขอความยินยอมจากคุณในกรณีที่กฎหมายกำหนด ดูวิธีที่ DAB จัดการข้อมูลส่วนอื่นของคุณได้ใน<a href="/privacy">ประกาศความเป็นส่วนตัว</a></p>
+</div>
+</section>
+</main>
+
+<footer class="foot"><div class="wrap">
+  <nav aria-label="Legal · กฎหมาย">
+    <a href="/privacy"><span lang="en">Privacy</span><span lang="th">ความเป็นส่วนตัว</span></a>
+    <a href="/terms"><span lang="en">Terms</span><span lang="th">ข้อกำหนดการใช้งาน</span></a>
+    <a href="/storage" aria-current="page"><span lang="en">Storage</span><span lang="th">การจัดเก็บในเบราว์เซอร์</span></a>
+    <a href="/contact"><span lang="en">Contact</span><span lang="th">ติดต่อ</span></a>
+    <a href="/licenses"><span lang="en">Licences</span><span lang="th">สัญญาอนุญาต</span></a>
+    <a href="/welcome"><span lang="en">About DAB</span><span lang="th">เกี่ยวกับ DAB</span></a>
+    <a href="/"><span lang="en">Open the app</span><span lang="th">เปิดแอป</span></a>
+  </nav>
+  <p>DATA ANALYSIS BOT · AFTER-HOURS CONSOLE</p>
+</div></footer>
+<script src="/legal.js"></script>
+</body>
+</html>

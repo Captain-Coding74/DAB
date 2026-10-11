@@ -1,6 +1,6 @@
 # 📊 Data Analysis Bot v20.4 — After-Hours Console
 
-React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + scheduled reports + team workspaces — now parsing the files Thai shops *actually* export.
+React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + team workspaces — now parsing the files Thai shops *actually* export.
 
 ---
 
@@ -34,8 +34,25 @@ cd ../backend && npm start      # serves dist/ + API on :3000
 ### Docker
 ```bash
 cp .env.example .env
+# Required — compose refuses to start while any of these is blank:
+#   JWT_SECRET, JWT_REFRESH_SECRET   openssl rand -hex 32   (each)
+#   POSTGRES_PASSWORD                openssl rand -hex 24   (letters/digits: it goes into a URL)
+#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+# Recommended:
+#   STORAGE_ENCRYPTION_KEY           openssl rand -base64 32 (keep a copy somewhere safe)
+#   LEGAL_CONTACT_EMAIL, LEGAL_POSTAL_ADDRESS, LEGAL_HOSTING_PROVIDER, LEGAL_HOSTING_REGION,
+#   LEGAL_HOSTING_TRANSFER_BASIS
+#                                    printed on /privacy, /terms and /contact (PDPA s.23)
 docker compose up -d
 # http://localhost:3000
+```
+No secret in `docker-compose.yml` has a default (v21.30). Postgres and Redis are reachable only on the private compose network, and MinIO's API and console (9000/9001) listen on `127.0.0.1` only — use an SSH tunnel to reach them from elsewhere.
+
+**Upgrading a compose install from before v21.30:** its `pg-data` volume still has the old password `dab`, and Postgres only reads `POSTGRES_PASSWORD` when it creates the database. After setting the new value in `.env`, change it inside the database once, then start the rest:
+```bash
+docker compose up -d postgres
+docker compose exec postgres psql -U dab -c "ALTER USER dab PASSWORD '<your POSTGRES_PASSWORD>'"
+docker compose up -d
 ```
 
 ---
@@ -44,10 +61,10 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
-| **🛬 Public Landing (v20.4.1)** | Bilingual EN/TH landing page at `/welcome` — live-parse console hero that demos the messy-file layer on loop, EN default with persisted toggle. Also un-hardcoded `/api/health` version (a test was pinning the bug) |
+| **🛬 Public Landing (v20.4.1)** | Bilingual EN/TH landing page at `/welcome` — a scripted parse-console hero that demos the messy-file layer on loop (labelled as an illustration since v21.30; the real engine output is the Findings section), EN default with persisted toggle. Also un-hardcoded `/api/health` version (a test was pinning the bug) |
 | **🌒 After-Hours Console (v20.4)** | The Ledger evolves: navy ink console by default, amber instrument accent, severity-colored margin rules per finding, and a 6-rule motion system (readout count-up, insight stagger, ring-draw + grade stamping, reduced-motion respected). Browser suite upgraded to guard the demo-tap flow — was silently stale since v20.1 |
 | **🛡️ Launch Safety (v20.3)** | AI prose is the signed-in tier: anonymous uploads get the full instant Insights Engine, zero Anthropic calls. Global `AI_DAILY_BUDGET` caps the daily bill with graceful stats-only degradation. Fixed a dead-since-v16 import bug in stored-dataset re-analysis (first test to ever hit it) |
-| **📡 Upload Telemetry (v20.2)** | Privacy-safe usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). No filenames, no raw column names, no cell values — enforced by tests. `npm run telemetry` prints the "which vertical showed up" report |
+| **📡 Upload Telemetry (v20.2)** | Usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). The **telemetry table** holds no filenames, no raw column names, no cell values — enforced by tests. Rows carry the user id for signed-in uploads. That is a promise about telemetry only: signed-in analyses are kept in History with their filename and column names (see [Privacy](#privacy)). `npm run telemetry` prints the "which vertical showed up" report |
 | **⚡ Instant Demo (v20.1)** | Public no-auth landing demo: tap a sample → full Insights Engine results with zero AI calls, cached in-process. The messy Thai sample doubles as a live v20 showcase, and the AI-report slot becomes the conversion CTA |
 | **🧹 Messy File Layer (v20)** | TIS-620/UTF-16 encoding detection, delimiter sniffing (`;` tab `\|`), banner-row/header detection, Thai numbers (`฿1,234.50`, `(500)`, `๑๒๓`), พ.ศ. → ค.ศ. dates (`14 ม.ค. 2569`), date columns no longer masquerade as numeric. 45 new tests |
 | **React Dashboard** | Vite + Tailwind + Recharts |
@@ -59,9 +76,9 @@ docker compose up -d
 | **🌙 Dark Mode (v9)** | Class-based Tailwind dark theme across every screen, charts included (was a dead toggle before v9) |
 | **🛡️ Security (v9)** | helmet CSP headers, global API rate limiting (was imported-but-unused), rate-limited exports, share passwords via header, JWT fail-fast in prod, file-type filter on dataset uploads |
 | **Multi-file** | Upload up to 10 files as one dataset |
-| **Shareable Reports** | Public links, password-protect, expiry |
+| **Shareable Reports** | Public links made from a warning dialog: expiry required (1, 7, 30 or 90 days), optional password, generic title (never the file name), `noindex`, personal-data column values withheld; revoking (on `/account`) deletes the link |
 | **Custom Branding** | Per-workspace color, logo, name |
-| **Scheduled Reports** | Cron-based PDF/Excel delivery |
+| **Scheduled Reports** | Coming soon — switched off in v21.30. The runner was a stub that never sent anything, so creating a schedule now answers `501 FEATURE_UNAVAILABLE` and stored schedules (with their recipient addresses) were purged |
 | **Team Workspaces** | Owner / Admin / Member roles |
 | **PostgreSQL + SQLite** | Unified pool, zero-config local dev |
 | **Redis + Memory Cache** | Profile, history, analysis caching |
@@ -72,6 +89,18 @@ docker compose up -d
 | **Monitoring** | `/api/metrics` — p50/p95/p99. Open in dev; in production needs `METRICS_TOKEN` (scraper bearer) or a `TELEMETRY_ADMINS` user |
 | **Docker + CI/CD** | unit → integration → build → deploy |
 | **99 checks** | 35 unit + 35 integration + 29 live smoketest, all green |
+
+---
+
+## Privacy
+
+What DAB does with data is set out in its public notices, served by the app itself:
+
+- `/privacy` — Privacy Notice: what is collected, what the AI sees, how long things are kept, and how to use your rights
+- `/terms` — Terms of Service
+- [`docs/privacy/README.md`](docs/privacy/README.md) — the operator's back-office privacy documents: records of processing (as controller and as processor), legitimate-interest assessments, the retention schedule, the breach plan, the data-request procedure, the vendor register, the DPO assessment, the evidence behind each public claim, and the owner's to-do list. Drafts for review by a Thai data-protection lawyer, not legal advice
+
+In short: try mode (signed out) reads a file in memory and stores none of its contents. Signed in, analyses go to History, and the original file is stored only when the user presses Save (the copies versions before 21.30 stored automatically are listed on `/account`, marked as such, and can be deleted there). The AI (Anthropic's Claude API) gets the question, column names and statistics, not raw rows — the one exception is an AI Edit the user explicitly confirms — and nothing from columns detected as personal data beyond their name and kind. Users can download their data, delete each stored file or share link, or delete their account at `/account`. The notices name the operator from `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS`; set them in production.
 
 ---
 
@@ -98,7 +127,7 @@ dab-v9/
 │   │   │   ├── insights.js            ← v9 deterministic insights (+tests)
 │   │   │   ├── qualityScore.js        ← 0-100 quality scorer
 │   │   │   ├── promptSuggestions.js   ← Smart prompts + auto charts
-│   │   │   └── scheduler.js           ← Cron report runner
+│   │   │   └── scheduler.js           ← Housekeeping cron (token prune)
 │   │   └── middleware/
 │   │       ├── rateLimiter.js         ← Per-user limits
 │   │       └── monitoring.js          ← Metrics + errors
@@ -112,7 +141,7 @@ dab-v9/
 │       │   ├── charts/                ← AutoChart, CorrelationHeatmap
 │       │   ├── dashboard/             ← Main analysis view
 │       │   ├── chat/                  ← AI chat panel
-│       │   └── workspace/             ← Teams, branding, schedules
+│       │   └── workspace/             ← Teams, branding
 │       └── pages/
 │           ├── AuthPage.jsx
 │           ├── HistoryPage.jsx
@@ -151,8 +180,8 @@ npm run benchmark          # perf: 100 / 1k / 10k rows
 | PATCH | /api/workspaces/:id/branding | Update branding |
 | POST | /api/workspaces/:id/members | Invite member |
 | DELETE | /api/workspaces/:id/members/:uid | Remove member |
-| GET | /api/workspaces/:id/schedules | List schedules |
-| POST | /api/workspaces/:id/schedules | Create schedule |
+| GET | /api/workspaces/:id/schedules | List schedules (always empty — coming soon) |
+| POST | /api/workspaces/:id/schedules | 501 `FEATURE_UNAVAILABLE` (coming soon) |
 | DELETE | /api/workspaces/:id/schedules/:id | Delete schedule |
 | POST | /api/analyses/:id/chat | AI chat message |
 | GET | /api/analyses/:id/chat | Chat history |
@@ -173,7 +202,7 @@ npm run benchmark          # perf: 100 / 1k / 10k rows
 
 ### 🛡️ Security
 - `helmet` with a CSP tuned for the SPA + Swagger UI (verified swagger-ui-express 5.x uses no inline scripts)
-- Share passwords sent via `X-Share-Password` header instead of query string (query still works for old links) — keeps passwords out of access logs, proxies, and browser history
+- Share passwords sent via `X-Share-Password` header instead of query string (the query parameter was removed in v21) — keeps passwords out of access logs, proxies, and browser history. Since v21.30 share tokens are redacted from request logs too
 - JWT secrets: server refuses to boot in production without real `JWT_SECRET` / `JWT_REFRESH_SECRET` (previously fell back silently to known dev strings)
 - `express.json` body limit set explicitly (1 MB)
 
@@ -250,7 +279,7 @@ flowchart LR
   S --> R[(SQLite / PostgreSQL)]
   S --> C[(Redis / memory cache)]
   S --> A[Anthropic API]
-  S --> W[Scheduler · node-cron]
+  S --> W[Housekeeping · node-cron]
 ```
 
 ---
@@ -548,6 +577,9 @@ This is an npm **workspaces** monorepo. Run `npm install` **once at the root** �
 
 1. `cp .env.example .env` — set **real** `JWT_SECRET` / `JWT_REFRESH_SECRET` (`openssl rand -hex 32` each) and `ANTHROPIC_API_KEY`. The app refuses to boot in production without the secrets, and refuses `AI_MOCK=1`.
 2. Set `AI_DAILY_BUDGET` (default 300). This is the hard ceiling on your daily Anthropic bill: anonymous visitors **never** trigger AI calls (they get the instant Insights Engine on their own files), signed-in users share the daily pool, and when it runs out the product degrades to stats-only instead of going down.
-3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml`; leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
+3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml` (set `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` in `.env` first — there are no defaults); leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
+   - Set `STORAGE_ENCRYPTION_KEY` (`openssl rand -base64 32`, and keep a copy) so saved files are encrypted at rest; files saved before it was set are encrypted in place with `npm run storage-encrypt -w backend` (try `-- --dry-run` first), which also moves any pre-v21.1 copy still held in the database (`dataset_versions.file_content`) into sealed storage and clears the column.
+   - On a managed Postgres, set `DATABASE_SSL_CA` (your provider's CA certificate) or `DATABASE_SSL_VERIFY=1` so the database's TLS certificate is verified. Production logs a warning at boot while either protection is off.
+   - Set `LEGAL_CONTACT_EMAIL`, `LEGAL_POSTAL_ADDRESS`, `LEGAL_HOSTING_PROVIDER`, `LEGAL_HOSTING_REGION` and `LEGAL_HOSTING_TRANSFER_BASIS` (and `LEGAL_OPERATOR_NAME` if the operator is not the default): the Privacy Notice must name a way to reach you (PDPA s.23) and the safeguard for keeping data with a host outside Thailand (ss.28–29), and production warns at boot while any of them is empty. Leave the `*_RETENTION_DAYS` settings at their defaults unless you change the Privacy Notice first — the notice states those periods. The owner's full list is in [`docs/privacy/README.md`](docs/privacy/README.md).
 4. Put TLS in front (Caddy: two lines, or your PaaS does it). Rate limits, helmet, and upload caps are already on.
 5. Watch what arrives: `npm run telemetry -w backend` — the segment table is the vertical decision.

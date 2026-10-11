@@ -27,6 +27,35 @@
  *     (margin rule in detectHeaderRow) — clean files must be untouched.
  */
 
+import { CsvError } from "csv-parse";
+
+// ── CSV options and errors (v21.30) ─────────────────────────
+/**
+ * The csv-parse options of BOTH parsers (streaming.js for stats, fullRows.js
+ * for fixes and AI edit), in one place so they cannot drift. relax_quotes
+ * keeps a quote inside an unquoted field as text — `Nattida "Ploy" R.`, a
+ * 12" pipe — as Excel does; hand-made Thai CSVs carry them often, and every
+ * such file used to fail the upload with a 500.
+ */
+export const CSV_OPTIONS = Object.freeze({ bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true });
+
+/**
+ * csv-parse's errors quote the cell they stopped at, in `message` and in
+ * `field`; unrecognised, one became a 500 whose full detail went to the error
+ * log — a value from the user's file, in a log the Privacy Notice says never
+ * holds one. A CSV error becomes a 400 that names only the line and the
+ * parser's code. Anything else is returned unchanged.
+ */
+export function csvClientError(err) {
+  if (!(err instanceof CsvError)) return err;   // codes vary (CSV_QUOTE_NOT_CLOSED, INVALID_OPENING_QUOTE); the class does not
+  const at = Number.isInteger(err.lines) ? err.lines : null;
+  const e = new Error(`อ่านไฟล์ CSV ไม่ได้${at ? ` ที่บรรทัด ${at}` : ""} — ตรวจเครื่องหมายคำพูด (") ในไฟล์ ` +
+    `(the CSV could not be read${at ? ` at line ${at}` : ""}: check its quote marks; ${err.code})`);
+  e.status = 400;
+  e.code = "CSV_PARSE_ERROR";
+  return e;
+}
+
 // ── Invisible-character cleanup ─────────────────────────────
 /** Trim + strip zero-width chars (U+200B/C/D, stray BOM) + NBSP→space. */
 export function cleanCell(v) {

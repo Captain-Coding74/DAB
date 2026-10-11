@@ -12,7 +12,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 
 let agent, token, otherToken, datasetId;
 const user  = { username: `owner_${Date.now()}`,  password: "Test1234!" };
@@ -23,8 +23,8 @@ const upload = (name = "d.csv") => ({ field: "file", buf: Buffer.from(CSV), name
 
 before(async () => {
   agent = request(await buildApp());
-  token      = (await agent.post("/api/auth/register").send(user)).body.accessToken;
-  otherToken = (await agent.post("/api/auth/register").send(other)).body.accessToken;
+  token      = (await agent.post("/api/auth/register").send({ ...user, ...TERMS })).body.accessToken;
+  otherToken = (await agent.post("/api/auth/register").send({ ...other, ...TERMS })).body.accessToken;
 });
 after(async () => { await closeApp(); });
 
@@ -435,30 +435,88 @@ describe("Data fix routes (v21.3)", () => {
   });
 });
 
-describe("Scheduled reports respect dataset access", () => {
-  test("you cannot schedule a report against a dataset you cannot read", async () => {
-    // The WORKSPACE role was checked but the DATASET was not, so anyone could
-    // create a workspace they own and schedule a recurring report against
-    // someone else's private dataset, delivered to any address. The scheduler
-    // is a stub today, which is why this would have shipped unnoticed and gone
-    // live the day email delivery landed.
-    const up = await auth(agent.post("/api/datasets"))
-      .attach("file", Buffer.from("secret,value\n1,2\n3,4\n"), "private.csv");
-    assert.equal(up.status, 201);
+describe("Scheduled reports are off (v21.30)", () => {
+  // The runner was a stub that sent nothing, yet the form collected recipient
+  // email addresses and the scheduler logged them every minute. The feature is
+  // "coming soon": nothing can be created, and stored rows are purged.
+  let wsId;
 
-    const ws = await auth(agent.post("/api/workspaces"), otherToken).send({ name: "outsider ws" });
+  test("setup: a workspace the caller owns", async () => {
+    const ws = await auth(agent.post("/api/workspaces")).send({ name: "schedules off" });
     assert.equal(ws.status, 201);
-
-    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`), otherToken)
-      .send({ name: "exfil", datasetId: up.body.id, cronExpr: "0 9 * * *", recipients: ["x@y.com"] });
-    assert.equal(res.status, 403, "must not schedule against another user's dataset");
+    wsId = ws.body.id;
   });
 
-  test("a schedule with no dataset attached is still allowed", async () => {
-    const ws = await auth(agent.post("/api/workspaces")).send({ name: "mine" });
-    const res = await auth(agent.post(`/api/workspaces/${ws.body.id}/schedules`))
-      .send({ name: "plain", cronExpr: "0 9 * * *", recipients: ["me@x.com"] });
-    assert.equal(res.status, 201);
+  test("creating a schedule answers 501 FEATURE_UNAVAILABLE and stores nothing", async () => {
+    const res = await auth(agent.post(`/api/workspaces/${wsId}/schedules`))
+      .send({ name: "weekly", cronExpr: "0 9 * * 1", recipients: ["someone@example.com"] });
+    assert.equal(res.status, 501);
+    assert.equal(res.body.code, "FEATURE_UNAVAILABLE");
+    assert.match(res.body.error, /not available yet/);
+    const { query } = await import("./db/pool.js");
+    const rows = await query(`SELECT COUNT(*) AS n FROM scheduled_reports`);
+    assert.equal(Number(rows[0].n), 0, "no schedule (and no recipient address) was written");
+  });
+
+  test("editing a schedule answers 501 too", async () => {
+    for (const verb of ["put", "patch"]) {
+      const res = await auth(agent[verb](`/api/workspaces/${wsId}/schedules/any-id`)).send({ recipients: ["x@example.com"] });
+      assert.equal(res.status, 501, verb);
+      assert.equal(res.body.code, "FEATURE_UNAVAILABLE", verb);
+    }
+  });
+
+  test("it is still behind sign-in", async () => {
+    const res = await agent.post(`/api/workspaces/${wsId}/schedules`).send({ name: "x" });
+    assert.equal(res.status, 401);
+  });
+
+  test("listing answers an empty array for members and 403 for outsiders", async () => {
+    const mine = await auth(agent.get(`/api/workspaces/${wsId}/schedules`));
+    assert.equal(mine.status, 200);
+    assert.deepEqual(mine.body, []);
+    const theirs = await auth(agent.get(`/api/workspaces/${wsId}/schedules`), otherToken);
+    assert.equal(theirs.status, 403);
+  });
+
+  test("migrate() purges schedules stored before v21.30, recipients included", async () => {
+    const { query } = await import("./db/pool.js");
+    const { migrate } = await import("./db/migrate.js");
+    await query(
+      `INSERT INTO scheduled_reports (id,workspace_id,user_id,name,prompt,cron_expr,recipients,format,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [`legacy-${Date.now()}`, wsId, "legacy-user", "old weekly", "สรุปภาพรวม", "0 9 * * 1", JSON.stringify(["old@example.com"]), "pdf", new Date().toISOString()]);
+    await migrate();
+    const rows = await query(`SELECT COUNT(*) AS n FROM scheduled_reports`);
+    assert.equal(Number(rows[0].n), 0);
+    await migrate();   // idempotent: a second boot finds nothing and does not throw
+  });
+
+  test("the scheduler no longer runs reports or logs recipients", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./services/scheduler.js", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /recipients|ScheduledReport|scheduled_reports/, "no report runner left in the scheduler");
+    const repo = await import("./db/repository.js");
+    for (const gone of ["createScheduledReport", "getScheduledReports", "getDueScheduledReports", "updateScheduledRun"]) {
+      assert.equal(repo[gone], undefined, `${gone} should be gone`);
+    }
+  });
+});
+
+describe("The class report stays UI-only (v21.30 banner claim)", () => {
+  // ClassReport.jsx tells the teacher it is "not sent to the AI and not
+  // included in share links". Share pages render only the saved stats_json,
+  // so the claim holds exactly as long as the report never lands there.
+  test("returned to the uploader, not saved with the analysis", async () => {
+    const { readFileSync } = await import("node:fs");
+    const buf = readFileSync(new URL("../sample-data/classroom.csv", import.meta.url));
+    const res = await auth(agent.post("/api/analyze")).attach("file", buf, "classroom.csv");
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.ok(res.body.classReport?.students?.length, "the teacher sees the class report");
+    assert.ok(res.body.savedId, "a signed-in analysis is saved to History");
+    const { query } = await import("./db/pool.js");
+    const [row] = await query(`SELECT stats_json FROM analyses WHERE id=$1`, [res.body.savedId]);
+    assert.equal(JSON.parse(row.stats_json).classReport, undefined);
+    assert.doesNotMatch(row.stats_json, /"students"|"honorCount"/, "no class-report rows in saved stats");
   });
 });
 
@@ -588,6 +646,26 @@ describe("Collaboration routes (real router)", () => {
 
   test("collab endpoints require auth", async () => {
     assert.equal((await agent.get("/api/collab/notifications")).status, 401);
+  });
+});
+
+/* v21.30: a quote mark inside a cell used to be a 500 whose error log line
+   carried the cell's text — on every upload route, try mode included. */
+describe("Quote marks in an uploaded CSV (v21.30)", () => {
+  test("a nickname in quotes analyses fine, signed out and in", async () => {
+    const csv = Buffer.from('customer_name,customer_email,amount\nSomchai Kongkaew,s@example.com,100\nNattida "Ploy" Raksatham,ploy.r@example.com,200\n');
+    assert.equal((await agent.post("/api/analyze").attach("file", csv, "c.csv")).status, 200);
+    assert.equal((await auth(agent.post("/api/analyze")).attach("file", csv, "c.csv")).status, 200);
+  });
+
+  test("an unclosed quote is a 400 naming the line, on analyze and on save", async () => {
+    const csv = Buffer.from('name,amount\nSomchai,100\n"Nattida Raksatham,200\n');
+    for (const req of [agent.post("/api/analyze"), auth(agent.post("/api/datasets"))]) {
+      const res = await req.attach("file", csv, "c.csv");
+      assert.equal(res.status, 400, JSON.stringify(res.body).slice(0, 160));
+      assert.match(res.body.error, /line 3/);
+      assert.ok(!JSON.stringify(res.body).includes("Nattida"));
+    }
   });
 });
 
@@ -738,12 +816,153 @@ describe("Public landing page (v20.4.1)", () => {
     assert.equal(res.status, 200);
     assert.ok(res.text.includes("AFTER-HOURS CONSOLE"), "landing brand present");
     assert.ok(res.text.includes('id="langEn" class="on"'), "English is the default language");
-    assert.ok(res.text.includes("LIVE PARSE"), "signature console present");
+    // v21.30: the hero console is a scripted loop, so it is labelled as one.
+    assert.ok(res.text.includes("ILLUSTRATION"), "signature console present, labelled as an illustration");
+    assert.ok(!res.text.includes("LIVE PARSE"), "the scripted console is not called live");
+  });
+
+  test("v21.30: landing claims are scoped to what the app really does", async () => {
+    const res = await agent.get("/landing.js");
+    assert.equal(res.status, 200);
+    for (const gone of ["Privacy first", "ความเป็นส่วนตัวมาก่อน", "Every figure on this page",
+                        "ตัวเลขทุกตัวบนหน้านี้", "we genuinely want to see it", "sample files never stored"]) {
+      assert.ok(!res.text.includes(gone), `overstated claim still on the landing: ${gone}`);
+    }
+    assert.ok(res.text.includes("Privacy by default"), "the privacy card is present");
+    // >= 2, not === 2: footer links to the legal pages may add more.
+    assert.ok((res.text.match(/href="\/privacy"/g) || []).length >= 2, "both languages link the Privacy Notice");
+    assert.ok((res.text.match(/href="\/contact"/g) || []).length >= 2, "both languages point file reports at the contact page");
   });
 
   test("/api/health reports the real package version, not a hardcoded one", async () => {
     const res = await agent.get("/api/health");
     const pkg = JSON.parse((await import("node:fs")).readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(res.body.version, pkg.version, "health version === package.json version");
+  });
+});
+
+describe("Legal pages (v21.30)", () => {
+  const LEGAL_ENV = ["LEGAL_OPERATOR_NAME", "LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS",
+                     "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION", "LEGAL_HOSTING_TRANSFER_BASIS"];
+  /** Run fn with exactly these LEGAL_* values (a developer's .env must not leak in), then restore. */
+  async function withLegalEnv(values, fn) {
+    const saved = Object.fromEntries(LEGAL_ENV.map((k) => [k, process.env[k]]));
+    for (const k of LEGAL_ENV) { if (k in values) process.env[k] = values[k]; else delete process.env[k]; }
+    try { return await fn(); }
+    finally { for (const k of LEGAL_ENV) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } }
+  }
+
+  // Key headings in both languages — the Thai text is the one that prevails.
+  const PAGES = {
+    "/privacy":  ["Privacy Notice", "ประกาศความเป็นส่วนตัว", "AI analysis by Anthropic", "การวิเคราะห์ด้วย AI โดย Anthropic", "Your rights", "สิทธิของคุณ"],
+    "/terms":    ["Terms of Service", "ข้อกำหนดการใช้งาน", "Disclaimers and liability", "ข้อจำกัดความรับผิด", "the Thai version prevails", "ให้ถือฉบับภาษาไทยเป็นหลัก"],
+    "/storage":  ["Storage notice", "ประกาศการจัดเก็บข้อมูลในเบราว์เซอร์", "How to clear it", "วิธีล้างข้อมูล"],
+    "/contact":  ["Requests about your personal data", "คำขอเกี่ยวกับข้อมูลส่วนบุคคล", "Report a shared page", "แจ้งปัญหาหน้าที่แชร์"],
+    "/licenses": ["Third-party licences", "สัญญาอนุญาตของบุคคลที่สาม"],
+  };
+
+  test("every page is served, in both languages, with no unresolved placeholder", async () => {
+    await withLegalEnv({}, async () => {
+      for (const [url, headings] of Object.entries(PAGES)) {
+        const res = await agent.get(url);
+        assert.equal(res.status, 200, url);
+        assert.match(res.headers["content-type"], /text\/html/, url);
+        for (const h of headings) assert.ok(res.text.includes(h), `${url}: "${h}"`);
+        assert.ok(!res.text.includes("{{"), `${url} has an unresolved placeholder`);
+        assert.ok(res.text.includes('<body data-lang="en">'), `${url}: English is the default`);
+      }
+    });
+  });
+
+  test("operator details are filled in from the environment and HTML-escaped", async () => {
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "privacy@example.com", LEGAL_POSTAL_ADDRESS: '12 <b>Soi</b> & "Road"',
+                         LEGAL_HOSTING_PROVIDER: "Host <i>Co</i>", LEGAL_HOSTING_REGION: "Singapore",
+                         LEGAL_HOSTING_TRANSFER_BASIS: "the provider's DPA with standard contractual clauses" }, async () => {
+      const privacy = (await agent.get("/privacy")).text;
+      assert.ok(privacy.includes("the provider&#39;s DPA with standard contractual clauses"), "the transfer safeguard (v21.30)");
+      assert.ok((await agent.get("/terms")).text.includes("standard contractual clauses"));
+      assert.ok(privacy.includes('<a href="mailto:privacy@example.com">privacy@example.com</a>'));
+      assert.ok(privacy.includes("12 &lt;b&gt;Soi&lt;/b&gt; &amp; &quot;Road&quot;"));
+      assert.ok(!privacy.includes("<b>Soi</b>"), "address markup was injected");
+      assert.ok(privacy.includes("Host &lt;i&gt;Co&lt;/i&gt;") && privacy.includes("Singapore"));
+      assert.ok(privacy.includes("Phatcharaphong Siriphatcharakul"), "default operator name");
+      assert.ok(!privacy.includes("being set up"), "no fallback once everything is configured");
+      const { LEGAL_VERSION } = await import("./services/legal.js");
+      assert.ok(privacy.includes(`Version ${LEGAL_VERSION}`));
+      assert.ok((await agent.get("/contact")).text.includes("mailto:privacy@example.com"));
+    });
+  });
+
+  test("missing contact details show a visible notice, never an empty mailto", async () => {
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "" }, async () => {
+      for (const url of ["/privacy", "/terms", "/contact"]) {
+        const html = (await agent.get(url)).text;
+        assert.ok(!html.includes("mailto:"), `${url}: empty mailto`);
+        assert.ok(html.includes("Contact details are being set up"), `${url}: EN fallback`);
+        assert.ok(html.includes("กำลังตั้งค่าข้อมูลติดต่อ"), `${url}: TH fallback`);
+      }
+    });
+  });
+
+  test("?lang=th serves the Thai version without JavaScript", async () => {
+    const res = await agent.get("/terms?lang=th");
+    assert.ok(res.text.includes('<html lang="th">') && res.text.includes('<body data-lang="th">'));
+  });
+
+  test("the .html file names redirect, so raw templates are never served", async () => {
+    for (const name of ["privacy", "terms", "storage", "contact", "licenses"]) {
+      const res = await agent.get(`/${name}.html`);
+      assert.equal(res.status, 301, name);
+      assert.equal(res.headers.location, `/${name}`);
+    }
+  });
+
+  // v21.30: serve-static decodes and normalises paths the Express route did not.
+  test("…under every spelling static would resolve to the file", async () => {
+    for (const [url, page] of [["/privacy%2Ehtml", "privacy"], ["/contact%2ehtml", "contact"], ["//terms.html", "terms"],
+                               ["/x/../storage.html", "storage"], ["/%6Cicenses.html", "licenses"], ["/PRIVACY.HTML", "privacy"]]) {
+      const res = await agent.get(url);
+      assert.equal(res.status, 301, `${url} → ${res.status}`);
+      assert.equal(res.headers.location, `/${page}`);
+      assert.ok(!res.text.includes("{{"), url);
+    }
+  });
+
+  test("GET /api/legal returns legalInfo()", async () => {
+    const { legalInfo } = await import("./services/legal.js");
+    await withLegalEnv({ LEGAL_CONTACT_EMAIL: "a@b.th" }, async () => {
+      const res = await agent.get("/api/legal");
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, legalInfo());
+      assert.equal(res.body.contactEmail, "a@b.th");
+      assert.equal(res.body.postalAddress, "");
+    });
+  });
+
+  test("/licenses/*.txt are served from the build, as text, before the SPA fallback", async () => {
+    const notices = await agent.get("/licenses/third-party.txt");
+    assert.equal(notices.status, 200);
+    assert.match(notices.headers["content-type"], /^text\/plain; charset=utf-8/i);
+    assert.ok(notices.text.startsWith("Third-party notices\n"), "the generated notices, not index.html");
+    for (const pkg of ["express", "react", "exceljs"]) assert.match(notices.text, new RegExp(`^${pkg} +\\d`, "m"), pkg);
+    const ofl = await agent.get("/licenses/OFL-1.1-IBM-Plex.txt");
+    assert.equal(ofl.status, 200);
+    assert.match(ofl.headers["content-type"], /^text\/plain/);
+    assert.ok(ofl.text.includes("SIL OPEN FONT LICENSE Version 1.1") && ofl.text.includes("Copyright 2019 IBM Corp."));
+    const page = (await agent.get("/licenses")).text;
+    for (const h of ["IBM Plex Sans Thai", "DAB Render Sans Thai", "ฟอนต์ในวิดีโอหน้าแรก", 'href="/licenses/third-party.txt"']) {
+      assert.ok(page.includes(h), `/licenses: ${h}`);
+    }
+  });
+
+  test("the landing footer links all five legal pages, in both languages", async () => {
+    const html = (await agent.get("/welcome")).text;
+    for (const href of ["/privacy", "/terms", "/storage", "/contact", "/licenses"]) {
+      assert.ok(html.includes(`href="${href}"`), `landing footer links ${href}`);
+    }
+    const js = (await agent.get("/landing.js")).text;
+    for (const key of ["lgPrivacy", "lgTerms", "lgStorage", "lgContact", "lgLicences"]) {
+      assert.equal(js.split(`${key}:`).length - 1, 2, `${key} has a Thai and an English label`);
+    }
   });
 });

@@ -59,3 +59,18 @@ first two survivable and the third detectable.
   tests. This path exists for instructions the catalogue cannot express.
 - If DAB ever handles data under a consent form that forbids third-party
   processing, this endpoint must be disabled rather than explained away.
+
+## v21.30 update (2026-10-10)
+
+- **"That constraint has held everywhere" was overstated.** Until v21.30 the
+  main Analyze prompt included five randomly sampled raw rows (identifier
+  columns masked) — see the ADR-0006 update. From v21.30 it carries none, so
+  this endpoint is now genuinely the one place row-level data goes to the
+  model.
+- **AI Edit needs explicit confirmation.** It runs only after the user
+  confirms a dialog saying rows will be sent to the AI; a request without
+  that confirmation is refused with `AI_EDIT_CONFIRM_REQUIRED`. It sends at
+  most 300 rows, and only the columns not detected as personal data.
+- **The consent-form case now has a switch.** A per-upload "Statistics only"
+  choice and a per-dataset AI switch (owner only) make every AI feature,
+  this one included, refuse with `AI_DISABLED`.

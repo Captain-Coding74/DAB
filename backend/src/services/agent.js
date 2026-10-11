@@ -9,9 +9,17 @@
  *
  * Tools read from statsJson (persisted at analyze time). They never touch
  * raw file contents, so the agent is cheap, fast, and side-effect free.
+ *
+ * v21.30: and they read it through aiSafe.js. "Statistics only" was true but
+ * not enough — get_column_detail returned the stored column object whole,
+ * frequency table included, so asking about a customer_email column handed
+ * the model the most common email addresses. Every tool result is now built
+ * from the aiSafe view: a detected personal-data column answers with its
+ * name and kind only, and correlations/forecasts naming it are gone.
  */
 
 import { AI_MODEL } from "../config.js";
+import { aiSafeStats } from "./aiSafe.js";
 
 export const AGENT_TOOLS = [
   {
@@ -21,7 +29,7 @@ export const AGENT_TOOLS = [
   },
   {
     name: "get_column_detail",
-    description: "สถิติละเอียดของคอลัมน์เดียว: min/max/avg/median/stdDev/quartiles/outliers (numeric) หรือ unique/top values (text)",
+    description: "สถิติละเอียดของคอลัมน์เดียว: min/max/avg/median/stdDev/quartiles/outliers (numeric) หรือ unique/top values (text) — คอลัมน์ข้อมูลส่วนบุคคลที่ตรวจพบจะมีเฉพาะชื่อและประเภทข้อมูลส่วนบุคคล",
     input_schema: { type: "object", properties: { column: { type: "string", description: "ชื่อคอลัมน์ตามจริง" } }, required: ["column"] },
   },
   {
@@ -37,18 +45,20 @@ export const AGENT_TOOLS = [
 ];
 
 export function runTool(name, input, statsJson = {}) {
-  const cols = statsJson.colAnalysis || [];
+  const safe = aiSafeStats(statsJson);
+  const cols = safe.colAnalysis;
   switch (name) {
     case "list_columns":
-      return cols.map(c => ({ col: c.col, type: c.type, missing: c.missing, missingPct: c.missingPct }));
+      return cols.map(c => ({ col: c.col, type: c.type, missing: c.missing, missingPct: c.missingPct,
+                              ...(c.sensitive ? { sensitive: c.sensitive } : {}) }));
     case "get_column_detail": {
       const c = cols.find(x => x.col === input?.column);
       return c || { error: `ไม่พบคอลัมน์ "${input?.column}" — ใช้ list_columns ดูชื่อที่ถูกต้อง` };
     }
     case "get_correlations":
-      return statsJson.corr?.strong?.length ? statsJson.corr.strong : { note: "ไม่มีคู่ที่ |r| ≥ 0.7" };
+      return safe.corr?.strong?.length ? safe.corr.strong : { note: "ไม่มีคู่ที่ |r| ≥ 0.7" };
     case "get_forecasts":
-      return statsJson.forecasts?.length ? statsJson.forecasts : { note: "ไม่มีคอลัมน์ที่มีแนวโน้มเชิงเส้นพอ (R² ≥ 0.5)" };
+      return safe.forecasts.length ? safe.forecasts : { note: "ไม่มีคอลัมน์ที่มีแนวโน้มเชิงเส้นพอ (R² ≥ 0.5)" };
     default:
       return { error: `unknown tool: ${name}` };
   }

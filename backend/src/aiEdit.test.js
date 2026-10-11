@@ -14,7 +14,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  aiEditRows, validateEdit, diffRows, detectSensitiveColumns,
+  aiEditRows, aiEditScope, validateEdit, diffRows, detectSensitiveColumns,
   assertProtectedUnchanged, MAX_AI_EDIT_ROWS,
 } from "./services/aiEdit.js";
 import { AI_MODEL } from "./config.js";
@@ -252,5 +252,38 @@ describe("AI edit — assertProtectedUnchanged (the apply backstop)", () => {
     const v = assertProtectedUnchanged(PH, PR, edited);
     assert.equal(v.ok, true);
     assert.deepEqual(v.violations, []);
+  });
+});
+
+/* v21.30: every kind sensitive.js detects is left out — not only the five
+   School Edition identifiers — and the confirmation dialog's scope says so. */
+describe("AI edit — the v21.30 kinds are excluded too", () => {
+  const H2 = ["customer_email", "address", "line_id", "diagnosis", "amount", "note"];
+  const R2 = [
+    ["user0@example.com", "0 Sukhumvit Rd", "line_0", "diabetes type 1", "100", ""],
+    ["user1@example.com", "1 Silom Rd", "line_1", "asthma", "107", "ok"],
+  ];
+
+  test("email, address, LINE id and diagnosis values and headers never reach the model", async () => {
+    const { client, calls } = capturingAI(JSON.stringify([["100", "ok"], ["107", "ok"]]));
+    const r = await aiEditRows(client, { headers: H2, rows: R2, instruction: "เติมช่องว่างเป็น ok" });
+    assert.equal(r.ok, true);
+    const prompt = calls[0].messages[0].content;
+    for (const leak of [...H2.slice(0, 4), "@example.com", "Sukhumvit", "Silom", "line_0", "diabetes", "asthma"]) {
+      assert.ok(!prompt.includes(leak), `leaked: ${leak}`);
+    }
+    assert.ok(prompt.includes("amount") && prompt.includes("note"));
+  });
+
+  test("aiEditScope reports exactly what would be sent and what stays", () => {
+    assert.deepEqual(aiEditScope(H2, R2), {
+      rowCount: 2, maxRows: MAX_AI_EDIT_ROWS, tooMany: false,
+      sentColumns: ["amount", "note"],
+      protectedColumns: [
+        { col: "customer_email", kind: "email" }, { col: "address", kind: "address" },
+        { col: "line_id", kind: "social-id" }, { col: "diagnosis", kind: "health" },
+      ],
+      recipient: "Anthropic, PBC (USA)",
+    });
   });
 });

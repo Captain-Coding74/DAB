@@ -33,7 +33,7 @@ import { guardParsed } from "./sensitive.js";
 import { assertInflatable } from "./zipGuard.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
-         decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
+         decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders, CSV_OPTIONS, csvClientError } from "./normalize.js";
 
 const log = serviceLogger("streaming");
 
@@ -231,7 +231,7 @@ async function streamCSV(buffer) {
     let pairs = null;   // built once headers are known
     const readable = Readable.from(text);
 
-    const parser = parse({ bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter });
+    const parser = parse({ ...CSV_OPTIONS, delimiter });
 
     // Ingest one DATA row into stats.
     const ingest = (row) => {
@@ -295,7 +295,7 @@ async function streamCSV(buffer) {
                 normalization: { encoding, delimiter, skippedPreHeaderRows: skipped } });
     });
 
-    parser.on("error", reject);
+    parser.on("error", (err) => reject(csvClientError(err)));   // v21.30: never the cell text
     readable.pipe(parser);
   });
 }
@@ -419,7 +419,10 @@ export async function parseFileStreaming(buffer, originalName) {
   const ext  = originalName.split(".").pop().toLowerCase();
   const size = buffer.length;
   const mode = size >= STREAM_THRESHOLD ? "streaming" : "buffered-stream";
-  log.debug({ file: originalName, sizeKB: Math.round(size/1024), mode }, "Parsing file");
+  // v21.30: the extension, never the name — file names name people, classes
+  // and clients, and logs outlive the upload (privacy notice: no file names
+  // in logs).
+  log.debug({ ext, sizeKB: Math.round(size/1024), mode }, "Parsing file");
 
   /* Legacy .xls (Excel 97-2003) is an OLE compound document — exceljs only
      reads OOXML zips, so wb.xlsx.load() dies with an opaque "can't find end
@@ -440,10 +443,11 @@ export async function parseFileStreaming(buffer, originalName) {
     : await streamCSV(buffer);
   const ms     = Math.round(performance.now() - t0);
 
-  log.info({ file: originalName, rows: result.totalRows, ms, mode,
+  log.info({ ext, rows: result.totalRows, ms, mode,
              norm: result.normalization }, "File parsed");
   // School edition (v21.18): PDPA guard at the one place every file becomes
-  // data — citizen IDs/phones masked, ID-column aggregates nulled, and a
-  // `sensitive` list attached for the UI banner and the AI's strict pass.
+  // data — direct identifiers masked, ID-column aggregates nulled, and a
+  // `sensitive` list attached for the UI banner (v21.30: every AI payload
+  // drops the flagged columns' values — services/aiSafe.js).
   return guardParsed({ ...result, parseMs: ms });
 }

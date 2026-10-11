@@ -8,6 +8,7 @@ import { createRequire } from "module";
 import path from "path";
 import fs from "fs";
 import { serviceLogger } from "./logger.js";
+import { AI_LABEL, AI_GENERATED } from "./services/aiLabel.js";
 
 const log = serviceLogger("export");
 
@@ -107,6 +108,13 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
     doc.on("error", reject);
 
     setupFonts(doc);
+    /* v21.30: a PDF travels without the app around it, so AI text is marked
+       twice — a visible label (below) and a metadata flag a tool can read.
+       Only when there IS AI text: a statistics-only export makes no claim. */
+    if (aiAnalysis) {
+      doc.info.Subject  = `Contains AI-generated text (${AI_GENERATED})`;
+      doc.info.Keywords = AI_GENERATED;
+    }
 
     const isThai = (ch) => ch >= "฀" && ch <= "๿";
     /* Split a string into maximal Thai / non-Thai runs and draw each with the
@@ -256,6 +264,12 @@ export function generatePDF({ fileName, totalRows, headers, rows, colAnalysis, m
 
     // ── AI analysis
     sectionTitle("AI Analysis");
+    if (aiAnalysis) {
+      doc.fontSize(8.5).fillColor("#6b7280");
+      writeMixed(AI_LABEL.en, { x: 56, width: pageW - 12 });
+      writeMixed(AI_LABEL.th, { x: 56, width: pageW - 12 });
+      doc.fillColor(DGRAY).moveDown(0.4);
+    }
     doc.fontSize(9);
     writeMixed(aiAnalysis || "—", { x: 56, y: doc.y, width: pageW - 12, lineGap: 3 });
 
@@ -333,8 +347,15 @@ export async function generateExcel({ fileName, totalRows, headers, rows, colAna
     addSheet("Forecast", fcRows);
   }
 
-  // Sheet 6: AI analysis
-  addSheet("AI Analysis", [["AI Analysis"], [aiAnalysis || "—"]]);
+  // Sheet 6: AI analysis — v21.30: labelled above the text, and flagged in
+  // the workbook's keywords (File → Info → Properties), as the PDF is.
+  if (aiAnalysis) {
+    wb.keywords = AI_GENERATED;
+    wb.subject  = `Contains AI-generated text (${AI_GENERATED})`;
+    addSheet("AI Analysis", [["AI Analysis"], [AI_LABEL.en], [AI_LABEL.th], [aiAnalysis]]);
+  } else {
+    addSheet("AI Analysis", [["AI Analysis"], ["—"]]);
+  }
 
   const out = await wb.xlsx.writeBuffer();
   return Buffer.from(out);

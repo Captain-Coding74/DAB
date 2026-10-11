@@ -48,7 +48,11 @@ async function launchBrowser() {
     const { default: sparticuz } = await import("@sparticuz/chromium");
     return await chromium.launch({
       executablePath: await sparticuz.executablePath(),
-      args: sparticuz.args,
+      /* Not --single-process: that Lambda flag puts every context in one
+         process, and closing any context then takes the whole browser down
+         ("Target page, context or browser has been closed") — this suite
+         opens and closes several. */
+      args: sparticuz.args.filter((a) => a !== "--single-process"),
       headless: true,
     });
   } catch (err) {
@@ -89,7 +93,7 @@ before(async () => {
   username = `geo_${Date.now()}`;
   const reg = await fetch(`${BASE}/api/auth/register`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password: "geometry123" }),
+    body: JSON.stringify({ username, password: "geometry123", acceptTerms: true, ageConfirmed: true }),
   });
   assert.ok(reg.ok, "register failed");
   ({ accessToken: token, refreshToken } = await reg.json());

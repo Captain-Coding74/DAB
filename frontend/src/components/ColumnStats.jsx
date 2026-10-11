@@ -10,16 +10,23 @@
  */
 import React from "react";
 import { Badge, Card, Eyebrow } from "./ui";
+import { useLang } from "../lib/i18n";
 
-export function ColumnStatsPanel({ colAnalysis = [] }) {
+/** `shared`: rendered on the public share page, where the reader is not the
+ *  file's owner — "your original file" would be addressed to the wrong person. */
+export function ColumnStatsPanel({ colAnalysis = [], shared = false }) {
+  const { t } = useLang();
   return (
     <Card>
       <Eyebrow className="mb-3">สถิติรายคอลัมน์</Eyebrow>
       {/* School edition: the parse guard masked identifier columns (PDPA —
-          students are minors). Say so, or masked IDs read as corrupt data. */}
+          students are minors). Say so, or masked IDs read as corrupt data.
+          v21.30: the old line said "masked automatically (PDPA)" and nothing
+          about the AI or storage; it now says what is detected, that it stays
+          out of the AI's view, and that the original is kept only on Save. */}
       {colAnalysis.some(c => c.sensitive) && (
         <div className="mb-3 px-3 py-2 rounded-lg text-[11px] bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-          🔒 พบข้อมูลส่วนบุคคล — ปิดบังอัตโนมัติตาม PDPA (ไฟล์ต้นฉบับของคุณไม่ถูกแก้ไข) · Personal data detected — masked automatically
+          🔒 {t(shared ? "columns.pdpaNoticeShared" : "columns.pdpaNotice")}
         </div>
       )}
       <div className="space-y-3 max-h-[500px] overflow-y-auto scrollbar-hide">

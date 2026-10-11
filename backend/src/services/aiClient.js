@@ -19,6 +19,16 @@ const MOCK_TEXT =
   "3) ปัญหาที่พบ — ดูแท็บ insights\n" +
   "4) คำแนะนำ — ตรวจสอบคอลัมน์ที่มีค่าหายก่อนใช้งานจริง";
 
+/* v21.30 test seam: the stub keeps the last requests it was handed, so the
+   integration tests can assert what WOULD have reached the provider — the
+   privacy tests read every payload for raw rows and detected values. Bounded,
+   and the mock is refused in production, so no real user's data is held. */
+export const mockRequests = [];
+function remember(req) {
+  mockRequests.push(req);
+  if (mockRequests.length > 50) mockRequests.shift();
+}
+
 /** A minimal Anthropic-compatible stub: messages.create + messages.stream. */
 function createMockClient() {
   const mockMessage = (text = MOCK_TEXT) => ({
@@ -31,7 +41,9 @@ function createMockClient() {
     messages: {
       // Tool-use aware: if tools are offered, run exactly one check so the
       // agent's trail is exercised end-to-end, then answer on the next turn.
-      create: async ({ tools, messages }) => {
+      create: async (req) => {
+        remember(req);
+        const { tools, messages } = req;
         const alreadyUsedTool = messages?.some(m =>
           Array.isArray(m.content) && m.content.some(b => b.type === "tool_result"));
         if (tools?.length && !alreadyUsedTool) {
@@ -42,7 +54,8 @@ function createMockClient() {
         }
         return mockMessage("[MOCK] ตรวจคอลัมน์แล้ว — คำตอบเชิงลึกในโหมดทดสอบ");
       },
-      stream: (_opts) => {
+      stream: (opts) => {
+        remember(opts);
         const chunks = ["[MOCK] ", "กำลังตอบ", "แบบสตรีม", " ครับ"];
         const handlers = {};
         const p = (async () => {

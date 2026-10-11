@@ -21,12 +21,18 @@ export const useAppStore = create((set, get) => ({
     catch { localStorage.removeItem("dab_user"); return null; }
   })(),
 
-  login: ({ accessToken, refreshToken, username }) => {
+  login: ({ accessToken, refreshToken, username, legal }) => {
     localStorage.setItem("dab_at",   accessToken);
     localStorage.setItem("dab_rt",   refreshToken);
     localStorage.setItem("dab_user", JSON.stringify({ username }));
-    set({ accessToken, refreshToken, user: { username } });
+    set({ accessToken, refreshToken, user: { username }, legal: legal || null });
   },
+
+  /* v21.30: { accepted, current } Terms/Privacy versions from login or
+     /api/auth/me — memory only, never stored. null until known: on a
+     reload the legal gate (components/legal) asks /api/auth/me. */
+  legal: null,
+  setLegal: (legal) => set({ legal }),
 
   logout: () => {
     localStorage.removeItem("dab_at");
@@ -34,7 +40,7 @@ export const useAppStore = create((set, get) => ({
     localStorage.removeItem("dab_user");
     // v21.9: currentWorkspace is per-account too — leaving it set pins the
     // next sign-in to the previous user's workspace id (403s everywhere).
-    set({ accessToken: null, refreshToken: null, user: null, currentAnalysis: null, currentWorkspace: null });
+    set({ accessToken: null, refreshToken: null, user: null, currentAnalysis: null, currentWorkspace: null, legal: null });
   },
 
   refreshTokens: () => {

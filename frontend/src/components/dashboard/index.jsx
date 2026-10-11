@@ -9,6 +9,7 @@ import { Upload, MessageSquare } from "lucide-react";
 import { useAppStore } from "../../store";
 import { getJSON } from "../../lib/api";
 import { useAnalysis } from "../../hooks/useAnalysis";
+import { useLang } from "../../lib/i18n";
 import { Button, Card, Readout, Skeleton, Kbd } from "../ui";
 import Tour, { tourDone } from "../tour";
 import { makeSampleFile } from "../../lib/sampleData";
@@ -17,6 +18,9 @@ import { AgentPanel } from "./AgentPanel";
 import { AnalysisTab, InsightsTab, QualityTab, ForecastTab } from "./tabs";
 import { ColumnStatsPanel } from "../ColumnStats";
 import { ClassReportCard } from "./ClassReport";
+import { DatasetAiSwitch } from "./DatasetAiSwitch";
+import { NeedsSavedDataset } from "./SaveDataset";
+import { saveStatus, needsSchoolAttestation } from "../../lib/saveDataset";
 
 /* Mirrors MAX_UPLOAD_MB in backend/src/config.js. One constant here so the
    UI cannot advertise a limit the server would reject; /api/health also
@@ -27,6 +31,7 @@ const MAX_UPLOAD_MB = 25;
 const ChartsTab      = lazy(() => import("./tabs-charts").then(m => ({ default: m.ChartsTab })));
 const CorrelationTab = lazy(() => import("./tabs-charts").then(m => ({ default: m.CorrelationTab })));
 const InferencePanel  = lazy(() => import("../inference").then(m => ({ default: m.InferencePanel })));
+const SaveDatasetDialog = lazy(() => import("./SaveDatasetDialog"));   // v21.30: fetched on the first "Save dataset"
 
 const ChartFallback = () => (
   <Card><div className="space-y-3" aria-busy="true">
@@ -47,7 +52,8 @@ const TABS = ["analysis", "insights", "charts", "quality", "correlation", "ส�
 
 export default function Dashboard() {
   const accessToken = useAppStore(s => s.accessToken);
-  const { file, loading, exporting, analysis: a, selectFile, analyze, analyzeStored, runDemo, exportReport, shareReport } = useAnalysis();
+  const { t } = useLang();
+  const { file, loading, exporting, analysis: a, selectFile, analyze, analyzeStored, runDemo, saveCurrentDataset, exportReport, shareReport } = useAnalysis();
 
   // v20.1: first-10-seconds demo — sample catalogue for the empty state.
   const [samples, setSamples] = useState(null);
@@ -65,13 +71,25 @@ export default function Dashboard() {
   const [showChat,  setShowChat]  = useState(false);
   const [activeTab, setActiveTab] = useState("analysis");
   const [tourOpen,  setTourOpen]  = useState(false);
+  /* v21.30 AI switches. noAi: this upload only, starts unticked, never stored.
+     dsAi: the saved dataset's switch as DatasetAiSwitch last reported it. */
+  const [noAi,      setNoAi]      = useState(false);
+  const [dsAi,      setDsAi]      = useState(null);
+  useEffect(() => { setDsAi(null); }, [a?.datasetId]);
+  const aiOff = !!a?.aiDisabled || dsAi === false;
+  /* v21.30: the original file is stored only through "Save dataset" (opt-in,
+     with a notice). `save` travels to every feature that needs the stored
+     copy, so each can offer the action instead of failing. */
+  const [saveOpen,  setSaveOpen]  = useState(false);
+  useEffect(() => { setSaveOpen(false); }, [file]);
+  const save = { status: saveStatus({ signedIn: !!accessToken, file, analysis: a }), onSave: () => setSaveOpen(true) };
 
   const question = customPmt.trim() || prompt;
 
   // Command palette / shortcuts talk to the page over a tiny event bus.
   // Ref keeps the latest handlers without re-binding the listener each render.
   const busRef = useRef({});
-  useEffect(() => { busRef.current = { analyze, exportReport, selectFile }; });
+  useEffect(() => { busRef.current = { analyze: (q) => analyze(q, { noAi }), exportReport, selectFile }; });
   useEffect(() => {
     const onAction = (e) => {
       const f = busRef.current;
@@ -89,7 +107,7 @@ export default function Dashboard() {
   }, [question]);
 
   const onPick = (f) => { if (selectFile(f)) { setShowChat(false); } };
-  const runAnalyze = async () => { await analyze(question); setActiveTab("analysis"); };
+  const runAnalyze = async () => { await analyze(question, { noAi }); setActiveTab("analysis"); };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -110,11 +128,25 @@ export default function Dashboard() {
               <p className="num text-[10px] text-gray-400 dark:text-gray-500 mt-1">CSV / EXCEL</p>
               <input id="fileIn" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => onPick(e.target.files[0])}/>
             </div>
+            {/* v21.30: a plain <a> — /privacy is a server page, not a route here. */}
+            <a href="/privacy#uploads" className="mt-2 inline-block text-[11px] text-gray-500 dark:text-gray-400 underline underline-offset-2 hover:text-brand-500 transition-colors">
+              {t("upload.howWeHandle")}
+            </a>
             {file && (
               <div className="margin-rule mt-3 flex items-baseline justify-between gap-3">
                 <span className="num text-xs text-gray-800 dark:text-gray-100 truncate">{file.name}</span>
                 <span className="num text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{(file.size/1024).toFixed(1)} KB · พร้อมตรวจ</span>
               </div>
+            )}
+            {/* Signed-out uploads never reach the AI, so the choice only exists signed in. */}
+            {accessToken && (
+              <label className="mt-3 flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="checkbox" checked={noAi} onChange={e => setNoAi(e.target.checked)}
+                  aria-describedby="noAiHint" className="mt-0.5 accent-brand-500"/>
+                <span>{t("ai.noAi")}
+                  <span id="noAiHint" className="block text-[10px] text-gray-400 dark:text-gray-500">{t("ai.noAiHint")}</span>
+                </span>
+              </label>
             )}
           </Card>
 
@@ -241,23 +273,32 @@ export default function Dashboard() {
                 {activeTab === "analysis"    && <AnalysisTab a={a} canShare={!!accessToken} exporting={exporting} onShare={shareReport} onExport={(fmt) => exportReport(fmt, question)}/>}
                 {activeTab === "insights"    && <InsightsTab a={a}/>}
                 {activeTab === "charts"      && <Suspense fallback={<ChartFallback/>}><ChartsTab a={a}/></Suspense>}
-                {activeTab === "quality"     && <QualityTab a={a} onApplied={() => analyzeStored(a.datasetId, question)}/>}
+                {activeTab === "quality"     && <QualityTab a={a} aiOff={aiOff} save={save} onApplied={() => analyzeStored(a.datasetId, question)}/>}
                 {activeTab === "correlation" && <Suspense fallback={<ChartFallback/>}><CorrelationTab a={a}/></Suspense>}
                 {activeTab === "สถิติ"        && (<>
                   {a.classReport && <ClassReportCard report={a.classReport}/>}
                   {a.datasetId
                     ? <Suspense fallback={<ChartFallback/>}><InferencePanel datasetId={a.datasetId}/></Suspense>
-                    : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">การทดสอบสมมติฐาน (t-test, ANOVA, Cronbach) ต้องใช้ข้อมูลทุกแถว — เข้าสู่ระบบแล้ววิเคราะห์ไฟล์อีกครั้ง ระบบจะบันทึกชุดข้อมูลให้อัตโนมัติ</p></Card>}
+                    : <NeedsSavedDataset need="inf.needSaved" save={save}/>}
                 </>)}
                 {activeTab === "forecast"    && <ForecastTab a={a}/>}
-                {activeTab === "deep dive"   && (a.savedId
+                {activeTab === "deep dive"   && (a.savedId && aiOff
+                  ? <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">{t("ai.offFeature")}</p></Card>
+                  : a.savedId
                   ? <AgentPanel analysisId={a.savedId}/>
                   : <Card><p className="text-sm text-gray-500 dark:text-gray-400 margin-rule">เข้าสู่ระบบและบันทึกการวิเคราะห์ก่อน จึงจะเจาะลึกด้วย agent ได้</p></Card>)}
               </div>
 
               <div className="space-y-4">
                 <ColumnStatsPanel colAnalysis={a.colAnalysis}/>
-                {a.savedId && (
+                {save.status === "ready" && (
+                  <Button variant="secondary" className="w-full" onClick={save.onSave}>{t("save.action")}</Button>
+                )}
+                {a.datasetId && <DatasetAiSwitch datasetId={a.datasetId} onChange={setDsAi}/>}
+                {a.savedId && aiOff && (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 margin-rule">{t("ai.offFeature")}</p>
+                )}
+                {a.savedId && !aiOff && (
                   <Button variant="secondary" className="w-full" onClick={() => setShowChat(s => !s)}>
                     <MessageSquare size={14}/>
                     {showChat ? "ปิดหน้าถาม-ตอบ" : "ถามต่อเกี่ยวกับข้อมูลชุดนี้"}
@@ -266,10 +307,15 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {showChat && a.savedId && <div className="mt-4"><ChatPanel analysisId={a.savedId}/></div>}
+            {showChat && a.savedId && !aiOff && <div className="mt-4"><ChatPanel analysisId={a.savedId}/></div>}
           </div>
         )}
       </div>
+      {saveOpen && save.status === "ready" && (
+        <Suspense fallback={null}>
+          <SaveDatasetDialog roster={needsSchoolAttestation(a)} onSave={saveCurrentDataset} onClose={() => setSaveOpen(false)}/>
+        </Suspense>
+      )}
       <Tour open={tourOpen} onClose={() => setTourOpen(false)}/>
     </div>
   );

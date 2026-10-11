@@ -14,10 +14,15 @@ import pg                from "pg";
 import fs                from "fs";
 import path              from "path";
 import { fileURLToPath } from "url";
+import { pgSslOptions }  from "./pgSsl.js";
 
 const log       = serviceLogger("db");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR  = process.env.SQLITE_DIR || path.join(__dirname, "../../data");
+
+/** v21.30: the SQLite file the pool would open (or create), for operator
+ *  scripts that must refuse to run against a brand-new empty database. */
+export const sqliteFile = () => path.join(DATA_DIR, "app.db");
 
 let _pool    = null;   // pg.Pool when using Postgres
 let _sqlite  = null;   // @libsql/client when using SQLite
@@ -27,14 +32,15 @@ let _backend = null;   // "postgres" | "sqlite"
 export async function initPool() {
   if (process.env.DATABASE_URL) {
     _backend = "postgres";
+    // v21.30: certificate verification is opt-in — see pgSsl.js. The URL comes
+    // back without its sslmode=… when an explicit CA setting replaces it.
+    const tls = pgSslOptions();
     _pool    = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: tls.connectionString,
       max:              10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: process.env.DATABASE_URL.includes("localhost")
-        ? false
-        : { rejectUnauthorized: false },   // Railway / Supabase
+      ssl: tls.ssl,
     });
 
     // Verify connection
@@ -46,7 +52,7 @@ export async function initPool() {
   } else {
     _backend = "sqlite";
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    _sqlite = createClient({ url: `file:${path.join(DATA_DIR, "app.db")}` });
+    _sqlite = createClient({ url: `file:${sqliteFile()}` });
     log.info({ backend: "sqlite", path: DATA_DIR }, "Connected to SQLite");
   }
 }

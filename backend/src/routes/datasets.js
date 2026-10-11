@@ -13,8 +13,13 @@ import { parseFileStreaming } from "../services/streaming.js";
 import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
+import * as R from "../db/repository.js";
 import * as CR from "../db/collabRepository.js";
 import foldersRouter from "./folders.js";
+import { setDatasetAi, saveSource } from "./datasetAi.js";
+import { downloadVersion } from "./datasetDownload.js";
+import { requirePlacement } from "./datasetScope.js";
+import { schoolAuthority } from "../services/schoolRoster.js";
 import { pageParams } from "../pagination.js";
 
 const router = express.Router();
@@ -30,8 +35,8 @@ const csvExcelOnly = (_, file, cb) =>
    was a blacklist that never listed the Windows "MZ" signature, so an .exe
    renamed to .csv walked straight into storage. */
 
-const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
-const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
+const upload      = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
+const uploadMulti  = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
 
 function canAccess(role) { return role !== null; }
 /**
@@ -54,6 +59,7 @@ router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { folderId, starred, trashed, search, workspaceId, view } = req.query;
     const { limit, offset } = pageParams(req.query, { defaultLimit: 30 });
+    if (!(await requirePlacement(req, res, { workspaceId }))) return;   // v21.30: members only
 
     let items, total;
     if (view === "shared") {
@@ -84,7 +90,14 @@ router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (re
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const { name, description, folderId, workspaceId } = req.body;
-    const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    if (!(await requirePlacement(req, res, { workspaceId, folderId }))) return;
+    const source = await saveSource(req, res);   // v21.30: the analysis being saved, and its AI choice
+    if (!source) return;
+    const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    const { headers, colAnalysis, totalRows, dupeCount, normalization } = parsed;
+    // v21.30: a class roster is saved only with the school's authority — checked before anything is kept.
+    const schoolAttestedAt = schoolAuthority(req, res, [{ file: req.file, parsed }]);
+    if (schoolAttestedAt === false) return;
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
     recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
                    parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
@@ -107,12 +120,13 @@ router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (re
       fileType: req.file.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length,
       colAnalysis, qualityScore: quality?.score,
-      sizeBytes: req.file.size,
+      sizeBytes: req.file.size, schoolAttestedAt, aiEnabled: source.aiEnabled,
     });
+    if (source.analysis) await R.linkAnalysisToDataset(source.analysis.id, ds.id, req.user.userId);
 
     await CR.logActivity({ workspaceId, datasetId: ds.id, userId: req.user.userId, action: "dataset_created", targetType: "dataset", targetId: ds.id, metadata: { name: name || req.file.originalname } });
 
-    res.status(201).json({ ...ds, totalRows, totalCols: headers.length, colAnalysis, quality });
+    res.status(201).json({ ...ds, totalRows, totalCols: headers.length, colAnalysis, quality, aiEnabled: source.aiEnabled });
   } catch (err) { next(err); }
 });
 
@@ -133,21 +147,24 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), requireFileMa
        entirely. As middleware it cannot be skipped or half-applied. */
 
     const { name, description, folderId, workspaceId } = req.body;
+    if (!(await requirePlacement(req, res, { workspaceId, folderId }))) return;
 
     const first = req.files[0];
     const bundleId = randomUUID();
-    // Parse BEFORE writing to storage (mirrors the single-upload order): a file
-    // that passes the magic gate but fails to parse used to leave its stored
-    // object orphaned because storage.put ran first.
-    const { headers, colAnalysis, totalRows: firstRows, dupeCount } = await parseFileStreaming(first.buffer, first.originalname);
-    const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
+    // Parse EVERY file, once, BEFORE writing to storage (mirrors the
+    // single-upload order): a file that passes the magic gate but fails to
+    // parse used to leave its stored object orphaned because storage.put ran
+    // first. v21.30: the school gate needs every parse too — one roster among
+    // the files is enough to require the attestation.
+    const parsedAll = [];
+    for (const f of req.files) parsedAll.push(await parseFileStreaming(f.buffer, f.originalname));
+    const schoolAttestedAt = schoolAuthority(req, res, req.files.map((file, i) => ({ file, parsed: parsedAll[i] })));
+    if (schoolAttestedAt === false) return;
 
-    let totalRows = firstRows;
-    for (let i = 1; i < req.files.length; i++) {
-      const r = await parseFileStreaming(req.files[i].buffer, req.files[i].originalname);
-      totalRows += r.totalRows;
-    }
+    const { headers, colAnalysis, dupeCount } = parsedAll[0];
+    const totalRows = parsedAll.reduce((s, p) => s + p.totalRows, 0);
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
+    const firstStored = await storage.put(storage.buildKey({ datasetId: bundleId, versionNum: 1, fileName: first.originalname }), first.buffer);
 
     const ds = await DR.createDataset({
       datasetId: bundleId,
@@ -162,13 +179,13 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), requireFileMa
       fileType: first.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length,
       colAnalysis, qualityScore: quality?.score,
-      sizeBytes: req.files.reduce((s, f) => s + f.size, 0),
+      sizeBytes: req.files.reduce((s, f) => s + f.size, 0), schoolAttestedAt,
     });
 
     // Remaining files become additional versions with a clear change note
     for (let i = 1; i < req.files.length; i++) {
       const f = req.files[i];
-      const parsed  = await parseFileStreaming(f.buffer, f.originalname);
+      const parsed  = parsedAll[i];
       const q       = computeQualityScore(parsed.colAnalysis, parsed.totalRows, parsed.dupeCount);
         const bundledStored = await storage.put(storage.buildKey({ datasetId: ds.id, versionNum: i + 1, fileName: f.originalname }), f.buffer);
       await DR.addDatasetVersion({
@@ -195,6 +212,7 @@ router.get("/:id", requireAuth, async (req, res, next) => {
     if (!canAccess(role)) return res.status(403).json({ error: "No access" });
     const ds = await DR.getDatasetWithContent(req.params.id);
     if (!ds) return res.status(404).json({ error: "Not found" });
+    await DR.touchDataset(ds.id);   // v21.30: opening is use (services/retention.js)
     res.json({ ...ds, myRole: role });
   } catch (err) { next(err); }
 });
@@ -244,10 +262,14 @@ router.patch("/:id/star", requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// ── AI switch (v21.30, owner only — handler in routes/datasetAi.js) ──
+router.patch("/:id/ai", requireAuth, setDatasetAi);
+
 // ── Move to folder ─────────────────────────────────────────
 router.patch("/:id/move", requireAuth, async (req, res, next) => {
   try {
     if (!(await requireDatasetRole(req, res, { write: true }))) return;
+    if (!(await requirePlacement(req, res, { folderId: req.body.folderId }))) return;
     await DR.moveDataset(req.params.id, req.body.folderId || null);
     res.json({ success: true });
   } catch (err) { next(err); }
@@ -296,7 +318,10 @@ router.post("/:id/versions", requireAuth, upload.single("file"), requireFileMagi
     if (!(await requireDatasetRole(req, res, { write: true }))) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-    const { headers, colAnalysis, totalRows, dupeCount, normalization } = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
+    const { headers, colAnalysis, totalRows, dupeCount, normalization } = parsed;
+    const schoolAttestedAt = schoolAuthority(req, res, [{ file: req.file, parsed }]);
+    if (schoolAttestedAt === false) return;
     const quality = computeQualityScore(colAnalysis, totalRows, dupeCount);
     recordUpload({ source: "dataset", fileType: req.file.originalname.split(".").pop(), sizeBytes: req.file.size,
                    parsed: { headers, colAnalysis, totalRows, normalization }, userId: req.user.userId });
@@ -311,6 +336,7 @@ router.post("/:id/versions", requireAuth, upload.single("file"), requireFileMagi
       totalRows, totalCols: headers.length, colAnalysis, qualityScore: quality?.score,
       changeNote: req.body.changeNote, uploadedBy: req.user.userId, sizeBytes: req.file.size,
     });
+    if (schoolAttestedAt) await DR.markSchoolAttested(req.params.id, schoolAttestedAt);
 
     const ds = await DR.getDataset(req.params.id);
     await CR.logActivity({ datasetId: req.params.id, userId: req.user.userId, action: "version_added", metadata: { name: ds.name, version: v.versionNum } });
@@ -337,6 +363,9 @@ router.get("/:id/versions/:versionId", requireAuth, async (req, res, next) => {
     res.json(v);
   } catch (err) { next(err); }
 });
+
+// ── Original file of a version (v21.30, owner only — routes/datasetDownload.js) ──
+router.get("/:id/versions/:versionId/download", requireAuth, downloadVersion);
 
 router.post("/:id/versions/:versionId/restore", requireAuth, async (req, res, next) => {
   try {

@@ -200,15 +200,23 @@ describe("E2E · Journey A — anonymous: upload → analyze → export", () => 
 
 // ─────────────────────────────────────────────────────────
 describe("E2E · Journey B — registered: analyze → share → history → delete", () => {
-  const user = { username: `e2e_${Date.now()}`, password: "e2e-password-123" };
+  // v21.30: sign-up requires both click-wrap boxes (TERMS_REQUIRED otherwise).
+  const user = { username: `e2e_${Date.now()}`, password: "e2e-password-123", acceptTerms: true, ageConfirmed: true };
   let token, savedId, shareToken;
 
-  test("register issues tokens", async () => {
+  test("sign-up without the click-wrap boxes is refused, and makes no account", async () => {
+    const r = await post("/api/auth/register", { username: user.username, password: user.password });
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).code, "TERMS_REQUIRED");
+  });
+
+  test("register issues tokens and records the accepted version", async () => {
     const r = await post("/api/auth/register", user);
     assert.equal(r.status, 201);
     const d = await r.json();
     token = d.accessToken;
     assert.ok(token);
+    assert.ok(d.legal.accepted && d.legal.accepted === d.legal.current, "the current Terms/Privacy version is on record");
   });
 
   test("analyze as a logged-in user persists the report", async () => {
@@ -217,14 +225,28 @@ describe("E2E · Journey B — registered: analyze → share → history → del
     const d = await r.json();
     savedId = d.savedId;
     assert.ok(savedId, "analysis was saved for the authenticated user");
+    // v21.30: the analysis record only — the file is stored on "Save dataset".
+    const datasets = await (await get("/api/datasets", token)).json();
+    assert.equal(datasets.length, 0, "analyze stores no dataset on its own");
   });
 
-  test("share the report behind a password", async () => {
-    const r = await post(`/api/analyses/${savedId}/share`, { title: "Q3 report", password: "hunter2" }, token);
+  test("Save dataset stores the file and links the analysis on screen", async () => {
+    const r = await post("/api/datasets", uploadForm(CSV, "sales.csv", { analysisId: savedId }), token, true);
+    assert.equal(r.status, 201);
+    const d = await r.json();
+    assert.equal(d.aiEnabled, true);
+    const datasets = await (await get("/api/datasets", token)).json();
+    assert.deepEqual(datasets.map((x) => x.id), [d.id]);
+  });
+
+  test("share the report behind a password, with an expiry", async () => {
+    const r = await post(`/api/analyses/${savedId}/share`, { title: "Q3 report", password: "hunter2", expiresInDays: 7 }, token);
     assert.equal(r.status, 201, "creating a share returns 201 Created");
     const d = await r.json();
     shareToken = d.shareUrl.split("/").pop();
     assert.ok(shareToken);
+    const days = (new Date(d.expiresAt).getTime() - Date.now()) / 86_400_000;
+    assert.ok(days > 6.9 && days <= 7, `expires in ${days} days`);
   });
 
   test("public view: no password → 401, wrong → 401, correct → 200", async () => {
@@ -237,6 +259,7 @@ describe("E2E · Journey B — registered: analyze → share → history → del
 
     const right = await get(`/api/public/share/${shareToken}`, null, { "X-Share-Password": "hunter2" });
     assert.equal(right.status, 200);
+    assert.equal(right.headers.get("x-robots-tag"), "noindex, nofollow", "kept out of search indexes");
     const d = await right.json();
     assert.ok(d.analysis.includes("[MOCK]"));
     assert.equal(d.title, "Q3 report");
@@ -272,7 +295,7 @@ describe("E2E · Journey B — registered: analyze → share → history → del
 
 // ─────────────────────────────────────────────────────────
 describe("E2E · Journey C — intelligence: chat + deep-dive agent", () => {
-  const user = { username: `e2e_ai_${Date.now()}`, password: "e2e-password-123" };
+  const user = { username: `e2e_ai_${Date.now()}`, password: "e2e-password-123", acceptTerms: true, ageConfirmed: true };
   let token, savedId;
 
   test("setup: register + analyze", async () => {

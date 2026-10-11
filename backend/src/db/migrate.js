@@ -5,6 +5,7 @@
  */
 import { initPool, execMultiple, getBackend, query } from "./pool.js";
 import { serviceLogger } from "../logger.js";
+import { DEFAULT_SHARE_TITLE, DEFAULT_SHARE_EXPIRY_DAYS } from "../services/shareView.js";
 const log = serviceLogger("migrate");
 
 const SCHEMA = [
@@ -208,6 +209,29 @@ const SCHEMA = [
     created_at    TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_uploadmeta_created   ON upload_metadata(created_at DESC)`,
+
+  // v21.30: data lifecycle (db/cascade.js, services/retention.js). Deleting
+  // an analysis looks up its chat and share links by analysis_id, and the
+  // daily retention jobs delete audit and notification rows by age.
+  `CREATE INDEX IF NOT EXISTS idx_chat_analysis        ON chat_messages(analysis_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_shares_analysis      ON shared_reports(analysis_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_created        ON audit_log(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_notif_created        ON notifications(created_at)`,
+
+  // v21.30: the privacy-request log (services/privacyRequests.js) — one row
+  // per export, deletion or manual request, kept 3 years to show each was
+  // handled. subject_hash is sha256(user id): the row outlives the account
+  // and must not identify anyone by itself.
+  `CREATE TABLE IF NOT EXISTS privacy_requests (id TEXT PRIMARY KEY, subject_hash TEXT NOT NULL, type TEXT NOT NULL, channel TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, completed_at TEXT, note TEXT)`,
+  `CREATE INDEX IF NOT EXISTS idx_privreq_created      ON privacy_requests(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_privreq_subject      ON privacy_requests(subject_hash)`,
+
+  // v21.30: the computer traffic log (services/trafficLog.js) — Computer-
+  // Related Crime Act s.26. What happened, who, from which IP, when, and an
+  // optional id of the thing acted on; never content, a filename or a share
+  // token. Kept 90 days by the retention job, which deletes by created_at.
+  `CREATE TABLE IF NOT EXISTS traffic_log (id TEXT PRIMARY KEY, event TEXT NOT NULL, user_id TEXT, ip TEXT, ref TEXT, created_at TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS idx_traffic_created      ON traffic_log(created_at)`,
 ];
 
 /**
@@ -223,6 +247,72 @@ const ADDITIVE = [
   // file_content stays for backfill and is dropped once every row has moved.
   { table: "dataset_versions", column: "storage_key",    type: "TEXT" },
   { table: "dataset_versions", column: "storage_sha256", type: "TEXT" },
+  // v21.30: the two AI switches (services/aiGate.js). Existing datasets keep
+  // AI on and existing analyses keep it allowed — exactly their old behaviour.
+  { table: "datasets",         column: "ai_enabled",     type: "INTEGER NOT NULL DEFAULT 1" },
+  { table: "analyses",         column: "ai_disabled",    type: "INTEGER NOT NULL DEFAULT 0" },
+  // v21.30: data lifecycle. last_used_at feeds the inactivity rule in
+  // services/retention.js — updated_at only moves on edits, so opening or
+  // re-analysing a dataset would not otherwise count as use. NULL on old rows
+  // is fine: the rule takes the latest of every timestamp it has.
+  // school_attested_at is when the uploader confirmed their school's
+  // authority to save a class roster (services/schoolRoster.js).
+  { table: "datasets",         column: "last_used_at",       type: "TEXT" },
+  { table: "datasets",         column: "school_attested_at", type: "TEXT" },
+  // v21.30: 1 when the user pressed "Save dataset" (every dataset made since,
+  // db/datasetRepository.js createDataset). Rows from before stay 0: the SPA
+  // stored every signed-in analysis's file by itself, and /account and the
+  // Privacy Notice say so rather than calling those copies files "you saved".
+  { table: "datasets",         column: "saved_on_request",   type: "INTEGER NOT NULL DEFAULT 0" },
+  // v21.30: click-wrap. Which Terms/Privacy version (services/legal.js) the
+  // user accepted, when, and from which IP. NULL on accounts from before this
+  // release: the SPA asks those users to accept before carrying on.
+  { table: "users",            column: "terms_version",      type: "TEXT" },
+  { table: "users",            column: "terms_accepted_at",  type: "TEXT" },
+  { table: "users",            column: "terms_accepted_ip",  type: "TEXT" },
+  // v21.30: 1 on every analysis whose AI report came from the statistics-only
+  // prompt (services/aiSafe.js). NULL marks one made before: its report and
+  // chat may quote raw rows, so neither is re-sent to the AI or published.
+  { table: "analyses",         column: "ai_minimised",       type: "INTEGER" },
+];
+
+/**
+ * One-off data fixes, run after ADDITIVE on every boot (v21.30).
+ *
+ * Each must be idempotent — a second run finds nothing left to change — and
+ * valid SQL on both SQLite and Postgres. Each runs through query() on its own,
+ * so a fix can rely on an ADDITIVE column existing.
+ */
+const DATA_FIXES = [
+  // v21.30: analyses no longer keep the client IP (routes/analysis.js passes
+  // null). Clear what earlier releases stored; the column stays for old dumps.
+  `UPDATE analyses SET ip_address = NULL WHERE ip_address IS NOT NULL`,
+
+  // v21.30: Scheduled Reports is off. Its stub runner never sent anything, so
+  // the stored schedules — recipient email addresses included — served no
+  // purpose and are deleted. Nothing can create a row any more
+  // (routes/schedules.js → FEATURE_UNAVAILABLE), so this stays a no-op.
+  `DELETE FROM scheduled_reports`,
+
+  // v21.30: share links. Revoking used to set is_active=0 and keep the row
+  // (token, title, analysis link) forever; it now deletes, and so do the
+  // links revoked before.
+  `DELETE FROM shared_reports WHERE is_active=0`,
+  // The SPA titled every link with the uploaded file name, which a public
+  // page then showed to anyone holding the URL. It had no way to type any
+  // other title, and it never sent an expiry — so a link with no expiry IS a
+  // link from before v21.30, and its title is a file name. Matching on that,
+  // not on a.file_name=title, matters for Thai names: multer stored
+  // analyses.file_name decoded as latin1 ("à¸£à¸²à¸¢…") while the SPA sent the
+  // real name, so the two never compared equal. Runs BEFORE the expiry fix
+  // below, which is what makes it a one-off.
+  `UPDATE shared_reports SET title='${DEFAULT_SHARE_TITLE}' WHERE title IS NULL OR expires_at IS NULL
+     OR EXISTS (SELECT 1 FROM analyses a WHERE a.id=shared_reports.analysis_id AND a.file_name=shared_reports.title)`,
+  // Links made without an expiry lived forever. Each gets 30 days from the
+  // boot that first finds it; new links always carry one (routes/shares.js),
+  // so later boots match nothing. The timestamp is computed in JS because
+  // SQLite and Postgres share no date-arithmetic syntax.
+  `UPDATE shared_reports SET expires_at='${new Date(Date.now() + DEFAULT_SHARE_EXPIRY_DAYS * 86_400_000).toISOString()}' WHERE expires_at IS NULL`,
 ];
 
 async function existingColumns(table) {
@@ -251,6 +341,8 @@ export async function migrate() {
       if (!/duplicate column|already exists/i.test(err.message)) throw err;
     }
   }
+
+  for (const sql of DATA_FIXES) await query(sql);
 
   log.info({ backend: getBackend() }, "migrations applied");
 }

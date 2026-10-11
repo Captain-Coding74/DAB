@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Send, Bot, User } from "lucide-react";
 import { apiFetch, useAppStore } from "../../store";
-import { WaveBars } from "../ui";
+import { WaveBars, AiLabel } from "../ui";
 
 export function ChatPanel({ analysisId }) {
   const toast = useAppStore(s => s.toast);
@@ -133,6 +133,9 @@ export function ChatPanel({ analysisId }) {
             </div>
             <div className={`max-w-[80%] text-sm px-3.5 py-2.5 rounded-xl leading-relaxed whitespace-pre-wrap ${m.role === "user" ? "bg-brand-500 text-white" : "bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-800 border-l-2 border-l-brand-500 dark:border-l-brand-400"}`}>
               {m.content}
+              {/* v21.30: every AI reply carries the label — a partial one too,
+                  if the stream breaks mid-reply */}
+              {m.role === "assistant" && m.content && <AiLabel className="mt-2 whitespace-normal"/>}
             </div>
           </div>
         ))}
