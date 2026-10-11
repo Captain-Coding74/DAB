@@ -33,6 +33,35 @@ describe("i18n", () => {
     assert.equal(t("nav.analyze"), "วิเคราะห์");
   });
 
+  test("v21.30 privacy notes keep the conditions that make them true", () => {
+    // Public claims. "Stored only if you save" and "not sent to the AI" are
+    // the load-bearing parts; a shortened rewrite must not drop them.
+    assert.match(t("columns.pdpaNotice", "en"), /left out of what the AI sees/);
+    assert.match(t("columns.pdpaNotice", "en"), /stored only if you save/);
+    assert.match(t("columns.pdpaNotice", "th"), /ก็ต่อเมื่อคุณบันทึกชุดข้อมูล/);
+    assert.match(t("classReport.privacy", "en"), /not sent to the AI and not included in share links/);
+    assert.match(t("workspace.schedulesSoon", "en"), /coming soon/);
+  });
+
+  test("v21.30: the AI label is the exact text the PDF/Excel exports print", async () => {
+    // Two copies (SPA bundle, backend exports) of one public sentence; this
+    // keeps them from drifting apart.
+    const { AI_LABEL } = await import("../../../backend/src/services/aiLabel.js");
+    assert.equal(t("ai.label", "en"), AI_LABEL.en);
+    assert.equal(t("ai.label", "th"), AI_LABEL.th);
+  });
+
+  test("v21.30: the share warning says who can see the report and for how long", () => {
+    const en = t("share.warning", "en");
+    assert.match(en, /^Anyone with the link can see this report/);
+    assert.match(en, /until it expires/);
+    assert.match(en, /detected as personal data are hidden/);
+    assert.match(t("share.warning", "th"), /ทุกคนที่มีลิงก์/);
+    assert.match(t("share.warning", "th"), /จนกว่าลิงก์จะหมดอายุ/);
+    // The generic title — never the file name — in both languages.
+    assert.equal(t("share.defaultTitle", "en"), "Analysis report");
+  });
+
   test("an explicit language is honoured", () => {
     assert.equal(t("nav.analyze", "th"), "วิเคราะห์");
   });

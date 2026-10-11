@@ -20,7 +20,7 @@ export function LegalText({ text }) {
       {label}<span className="sr-only"> {t("legal.newTab")}</span>
     </a>
   );
-  const parts = fillSlots(text, { terms: link("/terms", t("legal.terms")), privacy: link("/privacy", t("legal.privacy")) });
+  const parts = fillSlots(text, { terms: link("/terms", t("legal.termsName")), privacy: link("/privacy", t("legal.privacyName")) });
   return parts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>);
 }
 

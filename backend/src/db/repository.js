@@ -214,8 +214,9 @@ export async function createSharedReport({ analysisId, userId, title, passwordHa
     [id,analysisId,userId,token,title||null,passwordHash||null,expiresAt||null,now()]);
   return { id, token };
 }
+/* v21.30: no a.file_name — a public page never shows it (services/shareView.js). */
 export async function getSharedReport(token) {
-  const r = await query(`SELECT sr.*,a.analysis,a.file_name,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
+  const r = await query(`SELECT sr.*,a.analysis,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
   if (!r[0]) return null;
   if (r[0].expires_at && new Date(r[0].expires_at) < new Date()) return null;
   return r[0];
@@ -224,24 +225,17 @@ export async function incrementShareViewCount(token) { await query(`UPDATE share
 export async function getUserSharedReports(userId) {
   return query(`SELECT sr.id,sr.token,sr.title,sr.view_count,sr.expires_at,sr.created_at,a.file_name FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id WHERE sr.user_id=$1 ORDER BY sr.created_at DESC`,[userId]);
 }
-export async function deleteSharedReport(id, userId) { await query(`UPDATE shared_reports SET is_active=0 WHERE id=$1 AND user_id=$2`,[id,userId]); }
+/** v21.30: a hard delete (was is_active=0). True when the caller owned it. */
+export async function deleteSharedReport(id, userId) {
+  const r = await query(`DELETE FROM shared_reports WHERE id=$1 AND user_id=$2 RETURNING id`,[id,userId]);
+  return r.length > 0;
+}
 
 // ── Scheduled Reports ──────────────────────────────────────
-export async function createScheduledReport({ workspaceId, userId, name, datasetId, prompt, cronExpr, recipients, format }) {
-  const id=uuid();
-  await query(`INSERT INTO scheduled_reports (id,workspace_id,user_id,name,dataset_id,prompt,cron_expr,recipients,format,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id,workspaceId||null,userId,name,datasetId||null,prompt,cronExpr,JSON.stringify(recipients),format||"pdf",now()]);
-  return { id };
-}
-export async function getScheduledReports(wsId) {
-  return query(`SELECT * FROM scheduled_reports WHERE workspace_id=$1 AND is_active=1 ORDER BY created_at DESC`,[wsId]);
-}
-/** Mark a run and advance next_run — without persisting the next fire time,
- *  getDueScheduledReports matched every report on every one-minute tick. */
-export async function updateScheduledRun(id, nextRun = null) { await query(`UPDATE scheduled_reports SET last_run=$1,next_run=$2,run_count=run_count+1 WHERE id=$3`,[now(),nextRun,id]); }
-export async function getDueScheduledReports() {
-  return query(`SELECT * FROM scheduled_reports WHERE is_active=1 AND (next_run IS NULL OR next_run<=$1)`,[now()]);
-}
+/* v21.30: the feature is off (routes/schedules.js) and the table was purged
+   (db/migrate.js DATA_FIXES), so create/list/run helpers went with the stub
+   runner. Delete stays so an older client still gets a clean 200; with the
+   table empty it removes nothing. */
 export async function deleteScheduledReport(id, userId) { await query(`DELETE FROM scheduled_reports WHERE id=$1 AND user_id=$2`,[id,userId]); }
 
 // ── Audit ──────────────────────────────────────────────────

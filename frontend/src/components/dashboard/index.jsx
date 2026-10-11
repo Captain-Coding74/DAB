@@ -128,6 +128,10 @@ export default function Dashboard() {
               <p className="num text-[10px] text-gray-400 dark:text-gray-500 mt-1">CSV / EXCEL</p>
               <input id="fileIn" type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => onPick(e.target.files[0])}/>
             </div>
+            {/* v21.30: a plain <a> — /privacy is a server page, not a route here. */}
+            <a href="/privacy#uploads" className="mt-2 inline-block text-[11px] text-gray-500 dark:text-gray-400 underline underline-offset-2 hover:text-brand-500 transition-colors">
+              {t("upload.howWeHandle")}
+            </a>
             {file && (
               <div className="margin-rule mt-3 flex items-baseline justify-between gap-3">
                 <span className="num text-xs text-gray-800 dark:text-gray-100 truncate">{file.name}</span>

@@ -4,23 +4,22 @@ const DEFAULT_BRAND = LEDGER.stamp.DEFAULT;
 import { Users, Plus, Trash2, Settings, Bell, Palette } from "lucide-react";
 import { apiFetch, useAppStore } from "../../store";
 import { Button, Card, Badge, Input, Modal, Spinner } from "../ui";
+import { useLang } from "../../lib/i18n";
 
 export default function WorkspacePanel() {
   const { user, currentWorkspace, setCurrentWorkspace, toast } = useAppStore();
+  const { t } = useLang();
   const [workspaces, setWorkspaces]   = useState([]);
   const [members,    setMembers]      = useState([]);
-  const [schedules,  setSchedules]    = useState([]);
   const [loading,    setLoading]      = useState(true);
   const [showCreate, setShowCreate]   = useState(false);
   const [showBrand,  setShowBrand]    = useState(false);
-  const [showSched,  setShowSched]    = useState(false);
   const [newWs,      setNewWs]        = useState({ name: "", description: "", brandColor: DEFAULT_BRAND });
   const [inviteUser, setInviteUser]   = useState("");
   const [brand,      setBrand]        = useState({ brandColor: DEFAULT_BRAND, brandName: "", brandLogo: "" });
-  const [newSched,   setNewSched]     = useState({ name: "", cronExpr: "0 9 * * 1", recipients: "", prompt: "สรุปภาพรวม", format: "pdf" });
 
   useEffect(() => { fetchWorkspaces(); }, []);
-  useEffect(() => { if (currentWorkspace) { fetchMembers(); fetchSchedules(); } }, [currentWorkspace]);
+  useEffect(() => { if (currentWorkspace) fetchMembers(); }, [currentWorkspace]);
 
   async function fetchWorkspaces() {
     setLoading(true);
@@ -48,15 +47,6 @@ export default function WorkspacePanel() {
           brandLogo:  data.brand_logo  || "",
         });
       }
-    } catch {}
-  }
-
-  async function fetchSchedules() {
-    if (!currentWorkspace) return;
-    try {
-      const res  = await apiFetch(`/api/workspaces/${currentWorkspace.id}/schedules`);
-      const data = await res.json();
-      if (res.ok) setSchedules(Array.isArray(data) ? data : []);
     } catch {}
   }
 
@@ -101,31 +91,6 @@ export default function WorkspacePanel() {
       if (!res.ok) throw new Error("Failed");
       toast("บันทึก branding แล้ว!");
       setShowBrand(false);
-    } catch (err) { toast(err.message, "error"); }
-  }
-
-  async function createSchedule() {
-    if (!currentWorkspace || !newSched.name || !newSched.recipients) return;
-    try {
-      const recipients = newSched.recipients.split(",").map(r => r.trim()).filter(Boolean);
-      const res  = await apiFetch(`/api/workspaces/${currentWorkspace.id}/schedules`, {
-        method: "POST", body: JSON.stringify({ ...newSched, recipients }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast("สร้าง schedule แล้ว!");
-      setShowSched(false);
-      setNewSched({ name: "", cronExpr: "0 9 * * 1", recipients: "", prompt: "สรุปภาพรวม", format: "pdf" });
-      fetchSchedules();
-    } catch (err) { toast(err.message, "error"); }
-  }
-
-  async function deleteSchedule(id) {
-    if (!currentWorkspace) return;
-    try {
-      await apiFetch(`/api/workspaces/${currentWorkspace.id}/schedules/${id}`, { method: "DELETE" });
-      toast("ลบ schedule แล้ว");
-      fetchSchedules();
     } catch (err) { toast(err.message, "error"); }
   }
 
@@ -210,34 +175,15 @@ export default function WorkspacePanel() {
               </div>
             </Card>
 
-            {/* Scheduled Reports */}
+            {/* Scheduled Reports — v21.30: off until it really runs. The old
+                form collected recipient emails for a runner that sent nothing
+                and showed "N runs" for runs that never happened; the server
+                now refuses to create one (FEATURE_UNAVAILABLE). */}
             <Card>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Bell size={15} className="text-brand-400"/>
-                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Scheduled Reports</span>
-                </div>
-                <Button size="sm" variant="secondary" onClick={() => setShowSched(true)}>
-                  <Plus size={13}/> New Schedule
-                </Button>
+              <div className="flex items-center gap-2">
+                <Bell size={15} className="text-gray-400"/>
+                <span className="text-sm text-gray-500 dark:text-gray-400">{t("workspace.schedulesSoon")}</span>
               </div>
-              {schedules.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">ยังไม่มี scheduled report</p>
-              ) : (
-                <div className="space-y-2">
-                  {schedules.map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-950 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{s.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{s.cron_expr} · {s.format.toUpperCase()} · {s.run_count} runs</p>
-                      </div>
-                      <button onClick={() => deleteSchedule(s.id)} className="p-1 text-gray-400 hover:text-red-500 transition">
-                        <Trash2 size={13}/>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </Card>
           </div>
 
@@ -285,28 +231,6 @@ export default function WorkspacePanel() {
           <div className="flex gap-2 pt-2">
             <Button className="flex-1" onClick={createWorkspace}>สร้าง</Button>
             <Button variant="secondary" className="flex-1" onClick={() => setShowCreate(false)}>ยกเลิก</Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Create Schedule Modal */}
-      <Modal open={showSched} onClose={() => setShowSched(false)} title="Scheduled Report ใหม่">
-        <div className="space-y-3">
-          <Input label="ชื่อ Report *" placeholder="Weekly Sales Report" value={newSched.name} onChange={e => setNewSched(s => ({...s, name: e.target.value}))}/>
-          <Input label="Cron Expression *" placeholder="0 9 * * 1" value={newSched.cronExpr} onChange={e => setNewSched(s => ({...s, cronExpr: e.target.value}))}/>
-          <p className="text-xs text-gray-400">ตัวอย่าง: <code>0 9 * * 1</code> = ทุกวันจันทร์ 9:00 น.</p>
-          <Input label="Recipients (email, คั่นด้วย comma) *" placeholder="a@mail.com, b@mail.com" value={newSched.recipients} onChange={e => setNewSched(s => ({...s, recipients: e.target.value}))}/>
-          <Input label="คำถามสำหรับ AI" value={newSched.prompt} onChange={e => setNewSched(s => ({...s, prompt: e.target.value}))}/>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Format</label>
-            <select value={newSched.format} onChange={e => setNewSched(s => ({...s, format: e.target.value}))} className="w-full text-sm border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-300">
-              <option value="pdf">PDF</option>
-              <option value="excel">Excel</option>
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={createSchedule}>สร้าง Schedule</Button>
-            <Button variant="secondary" className="flex-1" onClick={() => setShowSched(false)}>ยกเลิก</Button>
           </div>
         </div>
       </Modal>

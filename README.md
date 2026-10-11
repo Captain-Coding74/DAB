@@ -1,6 +1,6 @@
 # 📊 Data Analysis Bot v20.4 — After-Hours Console
 
-React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + scheduled reports + team workspaces — now parsing the files Thai shops *actually* export.
+React dashboard + AI chat + **Insights Engine** + quality scores + multi-file + shareable reports + custom branding + team workspaces — now parsing the files Thai shops *actually* export.
 
 ---
 
@@ -58,10 +58,10 @@ docker compose up -d
 
 | Feature | Detail |
 |---|---|
-| **🛬 Public Landing (v20.4.1)** | Bilingual EN/TH landing page at `/welcome` — live-parse console hero that demos the messy-file layer on loop, EN default with persisted toggle. Also un-hardcoded `/api/health` version (a test was pinning the bug) |
+| **🛬 Public Landing (v20.4.1)** | Bilingual EN/TH landing page at `/welcome` — a scripted parse-console hero that demos the messy-file layer on loop (labelled as an illustration since v21.30; the real engine output is the Findings section), EN default with persisted toggle. Also un-hardcoded `/api/health` version (a test was pinning the bug) |
 | **🌒 After-Hours Console (v20.4)** | The Ledger evolves: navy ink console by default, amber instrument accent, severity-colored margin rules per finding, and a 6-rule motion system (readout count-up, insight stagger, ring-draw + grade stamping, reduced-motion respected). Browser suite upgraded to guard the demo-tap flow — was silently stale since v20.1 |
 | **🛡️ Launch Safety (v20.3)** | AI prose is the signed-in tier: anonymous uploads get the full instant Insights Engine, zero Anthropic calls. Global `AI_DAILY_BUDGET` caps the daily bill with graceful stats-only degradation. Fixed a dead-since-v16 import bug in stored-dataset re-analysis (first test to ever hit it) |
-| **📡 Upload Telemetry (v20.2)** | Privacy-safe usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). No filenames, no raw column names, no cell values — enforced by tests. `npm run telemetry` prints the "which vertical showed up" report |
+| **📡 Upload Telemetry (v20.2)** | Usage fingerprints: file shapes + fixed-dictionary column categories → weighted segment inference (pharmacy / retail / restaurant / web / logistics…). The **telemetry table** holds no filenames, no raw column names, no cell values — enforced by tests. Rows carry the user id for signed-in uploads. That is a promise about telemetry only: signed-in analyses are kept in History with their filename and column names (see [Privacy](#privacy)). `npm run telemetry` prints the "which vertical showed up" report |
 | **⚡ Instant Demo (v20.1)** | Public no-auth landing demo: tap a sample → full Insights Engine results with zero AI calls, cached in-process. The messy Thai sample doubles as a live v20 showcase, and the AI-report slot becomes the conversion CTA |
 | **🧹 Messy File Layer (v20)** | TIS-620/UTF-16 encoding detection, delimiter sniffing (`;` tab `\|`), banner-row/header detection, Thai numbers (`฿1,234.50`, `(500)`, `๑๒๓`), พ.ศ. → ค.ศ. dates (`14 ม.ค. 2569`), date columns no longer masquerade as numeric. 45 new tests |
 | **React Dashboard** | Vite + Tailwind + Recharts |
@@ -73,9 +73,9 @@ docker compose up -d
 | **🌙 Dark Mode (v9)** | Class-based Tailwind dark theme across every screen, charts included (was a dead toggle before v9) |
 | **🛡️ Security (v9)** | helmet CSP headers, global API rate limiting (was imported-but-unused), rate-limited exports, share passwords via header, JWT fail-fast in prod, file-type filter on dataset uploads |
 | **Multi-file** | Upload up to 10 files as one dataset |
-| **Shareable Reports** | Public links, password-protect, expiry |
+| **Shareable Reports** | Public links made from a warning dialog: expiry required (1, 7, 30 or 90 days), optional password, generic title (never the file name), `noindex`, personal-data column values withheld; revoking deletes the link |
 | **Custom Branding** | Per-workspace color, logo, name |
-| **Scheduled Reports** | Cron-based PDF/Excel delivery |
+| **Scheduled Reports** | Coming soon — switched off in v21.30. The runner was a stub that never sent anything, so creating a schedule now answers `501 FEATURE_UNAVAILABLE` and stored schedules (with their recipient addresses) were purged |
 | **Team Workspaces** | Owner / Admin / Member roles |
 | **PostgreSQL + SQLite** | Unified pool, zero-config local dev |
 | **Redis + Memory Cache** | Profile, history, analysis caching |
@@ -86,6 +86,18 @@ docker compose up -d
 | **Monitoring** | `/api/metrics` — p50/p95/p99. Open in dev; in production needs `METRICS_TOKEN` (scraper bearer) or a `TELEMETRY_ADMINS` user |
 | **Docker + CI/CD** | unit → integration → build → deploy |
 | **99 checks** | 35 unit + 35 integration + 29 live smoketest, all green |
+
+---
+
+## Privacy
+
+What DAB does with data is set out in its public notices, served by the app itself:
+
+- `/privacy` — Privacy Notice: what is collected, what the AI sees, how long things are kept, and how to use your rights
+- `/terms` — Terms of Service
+- [`docs/privacy/README.md`](docs/privacy/README.md) — the operator's back-office privacy documents: records of processing (as controller and as processor), legitimate-interest assessments, the retention schedule, the breach plan, the data-request procedure, the vendor register, the DPO assessment, the evidence behind each public claim, and the owner's to-do list. Drafts for review by a Thai data-protection lawyer, not legal advice
+
+In short: try mode (signed out) reads a file in memory and stores none of its contents. Signed in, analyses go to History, and the original file is stored only when the user presses Save. The AI (Anthropic's Claude API) gets the question, column names and statistics, not raw rows — the one exception is an AI Edit the user explicitly confirms — and nothing from columns detected as personal data beyond their name and kind. Users can download their data or delete their account at `/account`. The notices name the operator from `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS`; set them in production.
 
 ---
 
@@ -112,7 +124,7 @@ dab-v9/
 │   │   │   ├── insights.js            ← v9 deterministic insights (+tests)
 │   │   │   ├── qualityScore.js        ← 0-100 quality scorer
 │   │   │   ├── promptSuggestions.js   ← Smart prompts + auto charts
-│   │   │   └── scheduler.js           ← Cron report runner
+│   │   │   └── scheduler.js           ← Housekeeping cron (token prune)
 │   │   └── middleware/
 │   │       ├── rateLimiter.js         ← Per-user limits
 │   │       └── monitoring.js          ← Metrics + errors
@@ -126,7 +138,7 @@ dab-v9/
 │       │   ├── charts/                ← AutoChart, CorrelationHeatmap
 │       │   ├── dashboard/             ← Main analysis view
 │       │   ├── chat/                  ← AI chat panel
-│       │   └── workspace/             ← Teams, branding, schedules
+│       │   └── workspace/             ← Teams, branding
 │       └── pages/
 │           ├── AuthPage.jsx
 │           ├── HistoryPage.jsx
@@ -165,8 +177,8 @@ npm run benchmark          # perf: 100 / 1k / 10k rows
 | PATCH | /api/workspaces/:id/branding | Update branding |
 | POST | /api/workspaces/:id/members | Invite member |
 | DELETE | /api/workspaces/:id/members/:uid | Remove member |
-| GET | /api/workspaces/:id/schedules | List schedules |
-| POST | /api/workspaces/:id/schedules | Create schedule |
+| GET | /api/workspaces/:id/schedules | List schedules (always empty — coming soon) |
+| POST | /api/workspaces/:id/schedules | 501 `FEATURE_UNAVAILABLE` (coming soon) |
 | DELETE | /api/workspaces/:id/schedules/:id | Delete schedule |
 | POST | /api/analyses/:id/chat | AI chat message |
 | GET | /api/analyses/:id/chat | Chat history |
@@ -187,7 +199,7 @@ npm run benchmark          # perf: 100 / 1k / 10k rows
 
 ### 🛡️ Security
 - `helmet` with a CSP tuned for the SPA + Swagger UI (verified swagger-ui-express 5.x uses no inline scripts)
-- Share passwords sent via `X-Share-Password` header instead of query string (query still works for old links) — keeps passwords out of access logs, proxies, and browser history
+- Share passwords sent via `X-Share-Password` header instead of query string (the query parameter was removed in v21) — keeps passwords out of access logs, proxies, and browser history. Since v21.30 share tokens are redacted from request logs too
 - JWT secrets: server refuses to boot in production without real `JWT_SECRET` / `JWT_REFRESH_SECRET` (previously fell back silently to known dev strings)
 - `express.json` body limit set explicitly (1 MB)
 
@@ -264,7 +276,7 @@ flowchart LR
   S --> R[(SQLite / PostgreSQL)]
   S --> C[(Redis / memory cache)]
   S --> A[Anthropic API]
-  S --> W[Scheduler · node-cron]
+  S --> W[Housekeeping · node-cron]
 ```
 
 ---

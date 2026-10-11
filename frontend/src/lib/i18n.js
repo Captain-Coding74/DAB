@@ -38,6 +38,7 @@ export const STRINGS = {
   // Format names, not words — identical in both languages by design.
   "upload.hint":        { en: "CSV / Excel",        th: "CSV / Excel", sameInBoth: true },
   "upload.trySample":   { en: "Try a sample file",  th: "ลองไฟล์ตัวอย่าง" },
+  "upload.howWeHandle": { en: "How we handle your file", th: "เราจัดการไฟล์ของคุณอย่างไร" },
 
   // ── the readout strip ──
   "stat.rows":          { en: "ROWS",               th: "แถว" },
@@ -133,7 +134,7 @@ export const STRINGS = {
   "account.legalVersion": { en: "Terms & Privacy Notice version you accepted", th: "ฉบับของข้อกำหนดและประกาศความเป็นส่วนตัวที่คุณยอมรับ" },
   "account.links":      { en: "Your privacy",       th: "ความเป็นส่วนตัวของคุณ" },
   "account.privacy":    { en: "Privacy Notice",     th: "ประกาศความเป็นส่วนตัว" },
-  "account.terms":      { en: "Terms of Service",   th: "ข้อกำหนดการใช้บริการ" },
+  "account.terms":      { en: "Terms of Service",   th: "ข้อกำหนดการใช้งาน" },
   "account.requests":   { en: "Other requests (by email or post)", th: "คำขออื่น ๆ (ทางอีเมลหรือไปรษณีย์)" },
   "account.exportTitle":{ en: "Download my data",   th: "ดาวน์โหลดข้อมูลของฉัน" },
   "account.exportBody": { en: "One JSON file with everything DAB holds about you: your profile, workspaces and roles, saved datasets (the details of every version), analyses, chat, share links, comments, notifications, activity, the sign-in log and upload statistics.",
@@ -183,16 +184,70 @@ export const STRINGS = {
                           th: "ฉันยอมรับ{terms}และได้อ่าน{privacy}แล้ว" },
   "legal.age":          { en: "I am at least 18 years old, and if I am under 20 my parent or guardian agrees",
                           th: "ฉันมีอายุ 18 ปีขึ้นไป และหากอายุยังไม่ถึง 20 ปี บิดามารดาหรือผู้ปกครองของฉันยินยอมแล้ว" },
-  "legal.terms":        { en: "Terms of Service",   th: "ข้อกำหนดการใช้บริการ" },
-  "legal.privacy":      { en: "Privacy Notice",     th: "ประกาศความเป็นส่วนตัว" },
+  // The documents' full names, as their pages title them; the footer's short
+  // link labels (legal.terms / legal.privacy) are further down.
+  "legal.termsName":    { en: "Terms of Service",   th: "ข้อกำหนดการใช้งาน" },
+  "legal.privacyName":  { en: "Privacy Notice",     th: "ประกาศความเป็นส่วนตัว" },
   "legal.newTab":       { en: "(opens in a new tab)", th: "(เปิดในแท็บใหม่)" },
   "legal.tickBoth":     { en: "Tick both boxes to create your account.", th: "โปรดทำเครื่องหมายทั้งสองช่องเพื่อสร้างบัญชี" },
-  "legal.updatedTitle": { en: "We've updated our Terms and Privacy Notice", th: "เราได้ปรับปรุงข้อกำหนดการใช้บริการและประกาศความเป็นส่วนตัว" },
+  "legal.updatedTitle": { en: "We've updated our Terms and Privacy Notice", th: "เราได้ปรับปรุงข้อกำหนดการใช้งานและประกาศความเป็นส่วนตัว" },
   "legal.updatedBody":  { en: "Please read the {terms} and the {privacy}. To keep using your account, accept them below, or sign out.",
                           th: "โปรดอ่าน{terms}และ{privacy} หากต้องการใช้บัญชีต่อ โปรดกดยอมรับด้านล่าง หรือออกจากระบบ" },
   "legal.version":      { en: "Version {version}",  th: "ฉบับวันที่ {version}" },
   "legal.accept":       { en: "Accept and continue", th: "ยอมรับและใช้งานต่อ" },
   "legal.acceptFailed": { en: "Could not save your acceptance. Try again.", th: "บันทึกการยอมรับไม่สำเร็จ โปรดลองอีกครั้ง" },
+
+  // ── privacy notes (v21.30) — public claims: each must stay literally true ──
+  /* Kinds are listed, not "all personal data": student IDs are detected but
+     deliberately left readable for the teacher (sensitive.js maskValue). */
+  "columns.pdpaNotice": {
+    en: "Detected Thai IDs, phone numbers, names, birth dates, emails and card or bank numbers are masked here, and the values of every column detected as personal data are left out of what the AI sees. Your original file is not changed — it is stored only if you save the dataset.",
+    th: "เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล และเลขบัตรเครดิต/เดบิตหรือเลขบัญชีธนาคารที่ระบบตรวจพบจะถูกปิดบังในหน้านี้ และค่าในทุกคอลัมน์ที่ตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะไม่ถูกส่งให้ AI ไฟล์ต้นฉบับของคุณไม่ถูกแก้ไข — และจะถูกเก็บไว้ก็ต่อเมื่อคุณบันทึกชุดข้อมูลเท่านั้น" },
+  // The share page shows the same panel to someone who is not the owner.
+  "columns.pdpaNoticeShared": {
+    en: "Detected personal data (e.g. Thai ID, phone, name, birth date, email, card or bank number) is masked or hidden in this shared report.",
+    th: "ข้อมูลส่วนบุคคลที่ระบบตรวจพบ (เช่น เลขบัตรประชาชน เบอร์โทร ชื่อ วันเกิด อีเมล เลขบัตรเครดิต/เดบิต หรือเลขบัญชีธนาคาร) ถูกปิดบังหรือซ่อนไว้ในรายงานที่แชร์นี้" },
+  "classReport.privacy": {
+    en: "Computed on DAB's server from your file, for you only — not sent to the AI and not included in share links.",
+    th: "คำนวณบนเซิร์ฟเวอร์ของ DAB จากไฟล์ของคุณ แสดงให้คุณเห็นเท่านั้น — ไม่ส่งให้ AI และไม่รวมอยู่ในลิงก์แชร์" },
+  "workspace.schedulesSoon": { en: "Scheduled reports — coming soon", th: "รายงานตามกำหนดเวลา — เปิดให้ใช้เร็ว ๆ นี้" },
+
+  // ── AI label (v21.30) — must equal backend/src/services/aiLabel.js (i18n.test.js checks) ──
+  "ai.label": {
+    en: "AI-generated — may be wrong. Check it before you rely on it.",
+    th: "สร้างโดย AI — อาจผิดพลาดได้ โปรดตรวจสอบก่อนนำไปใช้" },
+
+  // ── share links (v21.30) — the dialog is the only way to make one ──
+  "share.button":       { en: "Share",              th: "แชร์" },
+  "share.dialogTitle":  { en: "Share this report",  th: "แชร์รายงานนี้" },
+  /* Load-bearing: "anyone with the link" and "until it expires". Only the
+     VALUES of detected personal-data columns are withheld — their names stay
+     on the page, so the sentence says values, not columns. */
+  "share.warning": {
+    en: "Anyone with the link can see this report — the AI text, column names, statistics and chart — until it expires. Values in columns detected as personal data are hidden.",
+    th: "ทุกคนที่มีลิงก์จะเห็นรายงานนี้ได้ ทั้งข้อความจาก AI ชื่อคอลัมน์ สถิติ และกราฟ จนกว่าลิงก์จะหมดอายุ ค่าในคอลัมน์ที่ระบบตรวจพบว่าเป็นข้อมูลส่วนบุคคลจะถูกซ่อนไว้" },
+  "share.titleLabel":   { en: "Title shown on the page", th: "ชื่อที่แสดงบนหน้ารายงาน" },
+  "share.defaultTitle": { en: "Analysis report",    th: "รายงานผลการวิเคราะห์" },
+  "share.expiry":       { en: "Link expires after", th: "ลิงก์หมดอายุหลังจาก" },
+  "share.day":          { en: "day",                th: "วัน" },
+  "share.days":         { en: "days",               th: "วัน" },
+  "share.password":     { en: "Password (optional)", th: "รหัสผ่าน (ไม่บังคับ)" },
+  "share.passwordHint": { en: "Viewers must enter it before the report opens.",
+                          th: "ผู้ชมต้องใส่รหัสผ่านนี้ก่อนจึงจะเปิดรายงานได้" },
+  "share.create":       { en: "Create link and copy", th: "สร้างลิงก์และคัดลอก" },
+  "share.copied":       { en: "Link created and copied to the clipboard.", th: "สร้างลิงก์และคัดลอกไปยังคลิปบอร์ดแล้ว" },
+  "share.copyManually": { en: "Link created. Copy it from the box below.", th: "สร้างลิงก์แล้ว คัดลอกจากช่องด้านล่างได้เลย" },
+  "share.linkLabel":    { en: "Share link",         th: "ลิงก์สำหรับแชร์" },
+  "share.expiresOn":    { en: "This link expires on", th: "ลิงก์นี้จะหมดอายุในวันที่" },
+  "share.reportPage":   { en: "Report this page",   th: "แจ้งปัญหาหน้านี้" },
+
+  // ── legal links — shared by every page that links the notices ──
+  "legal.privacy":      { en: "Privacy",            th: "ความเป็นส่วนตัว" },
+  "legal.terms":        { en: "Terms",              th: "ข้อกำหนดการใช้งาน" },
+  "legal.storage":      { en: "Storage",            th: "การจัดเก็บในเบราว์เซอร์" },
+  "legal.contact":      { en: "Contact",            th: "ติดต่อ" },
+  "legal.licences":     { en: "Licences",           th: "สัญญาอนุญาต" },
+  "legal.nav":          { en: "Legal",              th: "ข้อมูลทางกฎหมาย" },
 
   // ── common ──
   "common.cancel":      { en: "Cancel",             th: "ยกเลิก" },

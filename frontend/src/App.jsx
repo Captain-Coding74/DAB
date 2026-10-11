@@ -170,8 +170,17 @@ function Nav() {
   );
 }
 
+/* v21.30: the legal pages are server documents (backend/src/legalPages.js),
+   not routes in this router — so plain <a>s, for the same reason as /welcome
+   below. Same five links, same order, as the landing page footer. */
+const LEGAL_LINKS = [
+  ["/privacy", "legal.privacy"], ["/terms", "legal.terms"], ["/storage", "legal.storage"],
+  ["/contact", "legal.contact"], ["/licenses", "legal.licences"],
+];
+
 function Shell() {
   useGlobalShortcuts();
+  const { t } = useLang();
   return (
     <>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-white dark:focus:bg-gray-900 focus:px-3 focus:py-2 focus:rounded-lg focus:border focus:border-brand-400 text-sm">
@@ -205,6 +214,11 @@ function Shell() {
       <footer className="border-t border-gray-200 dark:border-gray-800 mt-10">
         <div className="max-w-screen-xl mx-auto px-4 py-5 flex items-center gap-4 flex-wrap">
           <span className="eyebrow">Data Analysis Bot · After-hours console · สร้างโดย Phatcharaphong Siriphatcharakul · 2 March 2025</span>
+          <nav aria-label={t("legal.nav")} className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
+            {LEGAL_LINKS.map(([href, key]) => (
+              <a key={href} href={href} className="text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">{t(key)}</a>
+            ))}
+          </nav>
           <a href="/welcome"
              className="ml-auto text-sm text-gray-500 dark:text-gray-400 hover:text-brand-500 transition-colors">
             Why DAB ↗

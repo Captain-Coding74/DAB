@@ -1,6 +1,12 @@
 """Convert a (subset) woff2 into three.js typeface JSON (the FontLoader format).
 three's Font.js reads glyph.o as space-separated commands:
   m x y | l x y | q endX endY ctrlX ctrlY | b endX endY c1X c1Y c2X c2Y
+
+v21.30: the output is a Modified Version of the font under the SIL OFL 1.1, which forbids a
+modified font to use the Reserved Font Name ("Plex" for IBM Plex). So "IBM Plex ..." becomes
+"DAB Render ..." in the family name, and the outputs are named dab-render-*.typeface.json:
+  python3 scripts/woff2_to_typeface.py ../../frontend/public/fonts/plex-mono-500.woff2 assets/dab-render-mono-500.typeface.json
+assets/OFL.txt (written by `npm run licenses` at the repo root) carries the licence.
 """
 import json, sys
 from fontTools.ttLib import TTFont
@@ -20,7 +26,8 @@ def fmt(v): return str(round(v, 2)).rstrip('0').rstrip('.') if isinstance(v, flo
 
 src, dst = sys.argv[1], sys.argv[2]
 f = TTFont(src); gs = f.getGlyphSet(); cmap = f.getBestCmap(); hmtx = f['hmtx']
-head = f['head']; post = f['post']; name = f['name'].getDebugName(1)
+head = f['head']; post = f['post']; name = f['name'].getDebugName(1).replace('IBM Plex', 'DAB Render')
+assert 'plex' not in name.lower(), f'reserved font name left in {name!r}'
 glyphs = {}
 for cp, gname in cmap.items():
     if cp > 0xFFFF: continue
@@ -38,7 +45,8 @@ out = {
     'boundingBox': {'yMin': head.yMin, 'xMin': head.xMin, 'yMax': head.yMax, 'xMax': head.xMax},
     'resolution': head.unitsPerEm,
     # IBM Plex is SIL OFL 1.1: carry the copyright and licence with the redistributed outline data
-    'original_font_information': {'format': 0, 'fontFamily': name, 'copyright': f['name'].getDebugName(0), 'license_url': f['name'].getDebugName(14)},
+    'original_font_information': {'format': 0, 'fontFamily': name, 'copyright': f['name'].getDebugName(0), 'license_url': f['name'].getDebugName(14),
+                                  'license': 'SIL Open Font License 1.1. Modified Version: renamed, the original family name is reserved. See OFL.txt'},
 }
 json.dump(out, open(dst, 'w'), separators=(',', ':'))
 print(dst, len(glyphs), 'glyphs, upm', head.unitsPerEm)

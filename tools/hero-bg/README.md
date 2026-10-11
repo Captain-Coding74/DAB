@@ -103,4 +103,5 @@ off the headline well.
 | `modules/stamp.js` | B+ stamp, shock ring, sweep light, and the step rail |
 | `lib.js` | Timing helpers, seeded RNG, brand colours, grade shader (vignette, faint edge chromatic aberration, headline well, ink composite, static dither) |
 | `gate.mjs`, `preview.mjs` | Legibility/crop gate over every frame; real-page screenshots with the video paused at given times |
-| `assets/*.typeface.json` | IBM Plex outlines for extruded type, generated from `frontend/public/fonts` by `scripts/woff2_to_typeface.py` (needs fonttools + brotli) |
+| `assets/dab-render-*.typeface.json` | Outlines for the extruded type, generated from `frontend/public/fonts` by `scripts/woff2_to_typeface.py` (needs fonttools + brotli). They are Modified Versions of IBM Plex under the SIL OFL 1.1, so they are named "DAB Render Sans Thai" and "DAB Render Mono": a modified font may not use the Reserved Font Name "Plex". The page's own woff2 files are unmodified and keep their names |
+| `assets/OFL.txt` | The OFL text and IBM's copyright notices for those outlines, written by `npm run licenses` at the repo root (`licenses:check` fails if it goes stale or a family name contains "Plex" again) |

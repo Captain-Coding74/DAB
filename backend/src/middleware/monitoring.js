@@ -25,7 +25,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { cache }     from "../services/cache.js";
 import { getBackend } from "../db/pool.js";
-import { logger }    from "../logger.js";
+import { logger, redactUrl } from "../logger.js";
 import { isOperator } from "../services/operators.js";
 
 // ── In-memory metrics store ───────────────────────────────
@@ -149,7 +149,8 @@ export function errorHandler(err, req, res, next) {
 
   /* Headers already sent: the status is out of our hands, so record it as a
      server fault — that is what a half-written response is. */
-  if (res.headersSent) { metrics.totalErrors++; logger.error({ err, url: req.url }, "Error after response started"); return next(err); }
+  // v21.30: urls through redactUrl — a share token in a log line is access to the report.
+  if (res.headersSent) { metrics.totalErrors++; logger.error({ err, url: redactUrl(req.url) }, "Error after response started"); return next(err); }
 
   // v13 (found by E2E): upload rejections are client errors, not server errors.
   // Multer's fileFilter and limit errors were surfacing as 500s in production
@@ -180,10 +181,10 @@ export function errorHandler(err, req, res, next) {
      client being wrong: warn, no stack. A 5xx is us: error, full detail. */
   const clientFault = status >= 400 && status < 500;
   if (clientFault) {
-    logger.warn({ status, url: req.url, method: req.method, reason: err.message }, "Request rejected");
+    logger.warn({ status, url: redactUrl(req.url), method: req.method, reason: err.message }, "Request rejected");
   } else {
     metrics.totalErrors++;
-    logger.error({ err, url: req.url, method: req.method, userId: req.user?.userId }, "Unhandled error");
+    logger.error({ err, url: redactUrl(req.url), method: req.method, userId: req.user?.userId }, "Unhandled error");
   }
   res.status(status).json({
     error:     process.env.NODE_ENV === "production" ? "Internal server error" : err.message,

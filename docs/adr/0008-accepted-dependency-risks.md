@@ -32,9 +32,9 @@ Neither reaches production. Both are accepted without mitigation.
   **downgrades ExcelJS to an older major** — the engine under the entire
   streaming parser (ADR-0003).
   *Mitigation:* reachable only via dataset upload, which requires
-  authentication, is capped at 10 MB by multer before parsing, and passes the
-  v21 magic-byte gate. Worst case is a crashed worker on a hostile file from a
-  logged-in user.
+  authentication, is capped by multer before parsing (`MAX_UPLOAD_MB`, 25 MB
+  by default), and passes the v21 magic-byte gate. Worst case is a crashed
+  worker on a hostile file from a logged-in user.
 - **react-router** (moderate): open redirect via backslash
   (GHSA-wrjc-x8rr-h8h6) and SSR-hydration constructor injection
   (GHSA-337j-9hxr-rhxg). Four internal routes, no SSR. Clearing them fully
@@ -48,9 +48,10 @@ Accept the eleven, with bounds, and gate against growth:
 
 1. **ExcelJS chain: accepted.** All DoS-class. The vulnerable code is
    reachable only through the dataset upload path, which requires
-   authentication, is capped at 10 MB by multer before parsing, and sits
-   behind the v21 magic-byte gate. Worst case is a crashed worker on a
-   hostile file from a logged-in user — bounded, recoverable, logged.
+   authentication, is capped by multer before parsing (`MAX_UPLOAD_MB`, 25 MB
+   by default), and sits behind the v21 magic-byte gate. Worst case is a
+   crashed worker on a hostile file from a logged-in user — bounded,
+   recoverable, logged.
 2. **react-router: accepted until the v7 major.** The app has four internal
    routes and no SSR; neither advisory has a realistic path here. Revisit as
    part of a deliberate React Router 7 upgrade, not an audit auto-fix.
@@ -82,3 +83,11 @@ Accept the eleven, with bounds, and gate against growth:
 - Install scripts remain off in CI (`ignore-scripts`): the audit log flagged
   two packages with postinstall hooks, and a compromised transitive must not
   execute code at install time.
+
+## v21.30 correction (2026-10-10)
+
+This record said uploads were "capped at 10 MB". The code's default is 25 MB
+(`MAX_UPLOAD_MB`, `backend/src/config.js`); the two mentions above are
+corrected in place. The acceptance is unchanged: the
+cap still bounds the bytes multer accepts before ExcelJS sees them, and
+`MAX_XLSX_INFLATED_MB` still bounds what an .xlsx may inflate to.

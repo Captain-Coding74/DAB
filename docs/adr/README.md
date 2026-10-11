@@ -15,7 +15,7 @@ from memory, and so a decision that *should* be revisited can be found.
 | [0003](0003-exceljs-over-sheetjs.md) | exceljs over SheetJS for spreadsheet parsing | Accepted |
 | [0004](0004-budgets-ratchets-vs-absolute.md) | Two kinds of budget: ratchets and absolute targets | Accepted |
 | [0005](0005-no-realtime-collaboration-yet.md) | **No real-time collaboration (yet)** | Accepted |
-| [0006](0006-agent-reads-stats-not-rows.md) | The AI agent queries computed stats, never raw rows | Accepted |
+| [0006](0006-agent-reads-stats-not-rows.md) | The AI agent queries computed stats, never raw rows | Accepted · v21.30 update |
 | [0007](0007-runtime-palette-for-canvas-surfaces.md) | Colours needed in JavaScript live in one runtime palette | Accepted |
-| [0008](0008-accepted-dependency-risks.md) | Accepted dependency risks: ExcelJS chain + react-router, no --force | Accepted |
-| [0009](0009-ai-row-editing.md) | AI row editing sends raw data, and says so | Accepted, with limits |
+| [0008](0008-accepted-dependency-risks.md) | Accepted dependency risks: ExcelJS chain + react-router, no --force | Accepted · v21.30 correction |
+| [0009](0009-ai-row-editing.md) | AI row editing sends raw data, and says so | Accepted, with limits · v21.30 update |

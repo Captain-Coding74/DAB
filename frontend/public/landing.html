@@ -140,6 +140,7 @@
   /* Local scrim for the hero copy so the background can stay bright. */
   .hero-stage .hero h1,
   .hero-stage .hero .sub,
+  .hero-stage .hero .console-note,
   .hero-stage .hero .eyebrow {
     text-shadow: 0 1px 2px rgba(11,18,32,.9), 0 2px 16px rgba(11,18,32,.75);
   }
@@ -160,9 +161,8 @@
                  border-bottom: 1px solid var(--edge); background: var(--panel-2); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--edge); }
   .console-file { font-family: var(--mono); font-size: 12px; color: var(--mute); margin-left: 4px; }
-  .console-live { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--amber);
+  .console-live { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--mute);
                   display: flex; align-items: center; gap: 6px; letter-spacing: .15em; }
-  .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: pulse 1.6s infinite; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
   .console-body { padding: 18px 20px 16px; font-family: var(--mono); font-size: 13.5px; min-height: 178px; }
   .ln { display: flex; align-items: baseline; gap: 10px; padding: 5px 0; min-height: 30px;
@@ -191,6 +191,9 @@
            color: var(--green); border: 2px double var(--green); border-radius: 8px; padding: 3px 13px;
            transform: scale(1.25) rotate(-3deg); opacity: 0; }
   .grade.stamped { animation: stampIn .16s ease-out forwards; }
+  .console-note { max-width: 780px; margin: 10px auto 0; font-size: 12px; color: var(--mute); }
+  /* Links inside copy (v21.30): the global reset strips colour and underline. */
+  .console-note a, .honest a, .final p a { color: var(--amber); text-decoration: underline; text-underline-offset: 2px; }
   @keyframes stampIn { to { transform: scale(1) rotate(-3deg); opacity: 1; } }
 
   section { padding: 84px 0; border-top: 1px solid rgba(31,43,69,.55); }
@@ -230,6 +233,9 @@
   .final { text-align: center; padding: 96px 0 80px; }
   footer { border-top: 1px solid var(--edge); padding: 26px 0 34px; color: var(--faint);
            font-family: var(--mono); font-size: 11px; text-align: center; }
+  .legal-links { font-family: var(--sans); font-size: 13px; margin-bottom: 10px; color: var(--faint); }
+  .legal-links a { color: var(--mute); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--edge); }
+  .legal-links a:hover { color: var(--amber); text-decoration-color: currentColor; }
   .rv { opacity: 0; transform: translateY(16px); transition: opacity .5s cubic-bezier(.2,.8,.2,1), transform .5s cubic-bezier(.2,.8,.2,1); }
   .rv.in { opacity: 1; transform: none; }
 
@@ -327,13 +333,18 @@
     <a class="btn btn-amber" href="/" data-i18n="heroCta1">แตะข้อมูลตัวอย่าง ↗</a>
     <a class="btn btn-ghost" href="#how" data-i18n="heroCta2">ทำงานยังไง</a>
   </div>
-  <div class="trust mono" data-i18n="trust">ไม่ต้องล็อกอิน · ไม่เก็บไฟล์ตัวอย่าง · สถิติล้วน ไม่เผาโควต้า AI</div>
+  <div class="trust mono" data-i18n="trust">ไม่ต้องล็อกอิน · ไฟล์ตัวอย่างมีในระบบอยู่แล้ว · ไฟล์ที่อัปโหลดในโหมดลองใช้ไม่ถูกเก็บไว้ · สถิติล้วน ไม่เผาโควต้า AI</div>
 
-  <div class="console" aria-label="Live parsing demo">
+  <!-- v21.30: this console is a scripted loop — its rows, counters, "8 ms"
+       and grade are written into landing.js, not engine output (the real
+       engine grades the sample A 92/100, as Findings shows). Its label used
+       to claim a live parse, beside a pulsing "on air" dot; it is labelled an
+       illustration now, with a visible caption pointing at the real results. -->
+  <div class="console" role="img" aria-label="Illustrative parsing animation" aria-describedby="consoleNote">
     <div class="console-bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="console-file">ยอดขาย_มค-มีค.csv</span>
-      <span class="console-live"><span class="pulse"></span>LIVE PARSE</span>
+      <span class="console-live" data-i18n="consoleLabel">ILLUSTRATION</span>
     </div>
     <div class="console-body" id="cbody"></div>
     <div class="console-foot">
@@ -344,6 +355,7 @@
       <div class="grade-slot"><span class="grade" id="grade">B+</span></div>
     </div>
   </div>
+  <p class="console-note" id="consoleNote" data-i18n-html="consoleNote">ภาพเคลื่อนไหวประกอบเพื่ออธิบายเท่านั้น ผลจริงของไฟล์ตัวอย่างอยู่ในส่วน<a href="#findings-sec">บันทึกข้างเล่ม</a>ด้านล่าง</p>
 </header>
 </div>
 
@@ -431,21 +443,26 @@
 
 <section><div class="wrap">
   <div class="honest rv">
-    <div><b data-i18n="h1B">ข้อมูลตัวอย่าง ไม่ใช่ของปลอมสวย ๆ</b><span data-i18n="h1T">ตัวเลขทุกตัวบนหน้านี้มาจาก engine จริง รันกับไฟล์เละจริง</span></div>
+    <div><b data-i18n="h1B">ข้อมูลตัวอย่าง ไม่ใช่ของปลอมสวย ๆ</b><span data-i18n-html="h1T">ตัวเลขทุกตัวในส่วน<a href="#findings-sec">บันทึกข้างเล่ม</a>มาจาก engine จริง รันกับไฟล์เละจริง</span></div>
     <div><b data-i18n="h2B">โหมดลองใช้ ไม่แตะ AI</b><span data-i18n="h2T">ผลตรวจฟรีคำนวณจากสถิติล้วน — เร็ว ตรวจซ้ำได้ และไม่เผางบใคร</span></div>
-    <div><b data-i18n="h3B">ความเป็นส่วนตัวมาก่อน</b><span data-i18n="h3T">ระบบเก็บเพียงรูปทรงไฟล์กับหมวดคอลัมน์ ไม่เก็บชื่อไฟล์ ชื่อคอลัมน์ หรือข้อมูลจริง</span></div>
+    <div><b data-i18n="h3B">ความเป็นส่วนตัวเป็นค่าเริ่มต้น</b><span data-i18n-html="h3T">โหมดลองใช้อ่านไฟล์ในหน่วยความจำและไม่เก็บเนื้อหาไว้เลย — บันทึกเพียงรูปทรงของไฟล์ เมื่อเข้าสู่ระบบ ผลวิเคราะห์จะอยู่ในประวัติของคุณ ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกดบันทึกเท่านั้น และ AI เห็นคำถาม ชื่อคอลัมน์ และค่าสถิติ — ไม่เห็นแถวข้อมูล เว้นแต่คุณยืนยันคำสั่งให้ AI แก้ไขข้อมูล และไม่เห็นข้อมูลส่วนบุคคลที่ระบบตรวจพบ ดาวน์โหลดข้อมูลหรือลบบัญชีได้ทุกเมื่อ · <a href="/privacy">ประกาศความเป็นส่วนตัว</a></span></div>
   </div>
 </div></section>
 
 <div class="final wrap" id="cta">
   <div class="eyebrow rv" data-i18n="ctaEyebrow">พร้อมเมื่อคุณพร้อม</div>
   <h2 class="rv" style="margin-top:10px" data-i18n="ctaH2">เอาไฟล์ที่เละที่สุดของคุณมา</h2>
-  <p class="rv" style="color:var(--mute);margin-top:10px" data-i18n="ctaSub">ถ้าเครื่องนี้อ่านไม่ออก เราอยากเห็นไฟล์นั้นมาก</p>
+  <p class="rv" style="color:var(--mute);margin-top:10px" data-i18n-html="ctaSub">เจอไฟล์ที่เครื่องนี้อ่านไม่ออก? บอกเราได้ที่<a href="/contact">หน้าติดต่อ</a> — เล่าลักษณะไฟล์ให้ฟัง และโปรดอย่าส่งข้อมูลส่วนบุคคลจริงมา</p>
   <div class="cta-row rv"><a class="btn btn-amber" href="/" data-i18n="ctaBtn">เปิดเครื่องตรวจ ↗</a></div>
 </div>
 
 </main>
-<footer><div class="wrap" data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · <span class="ver-txt">—</span> — สถิติล้วนตรวจซ้ำได้เสมอ</div></footer>
+<!-- v21.30: the legal pages. The labels are separate [data-i18n] nodes because
+     applyLang() replaces a node's text, which would wipe links nested in it. -->
+<footer><div class="wrap">
+  <p class="legal-links"><a href="/privacy" data-i18n="lgPrivacy">ความเป็นส่วนตัว</a> · <a href="/terms" data-i18n="lgTerms">ข้อกำหนดการใช้งาน</a> · <a href="/storage" data-i18n="lgStorage">การจัดเก็บในเบราว์เซอร์</a> · <a href="/contact" data-i18n="lgContact">ติดต่อ</a> · <a href="/licenses" data-i18n="lgLicences">สัญญาอนุญาต</a></p>
+  <div data-i18n="footer">DATA ANALYSIS BOT · AFTER-HOURS CONSOLE · <span class="ver-txt">—</span> — สถิติล้วนตรวจซ้ำได้เสมอ</div>
+</div></footer>
 
 <script src="landing.js" defer></script>
 </body>

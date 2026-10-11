@@ -54,10 +54,12 @@ import { mountFixRoutes }       from "./routes/fixes.js";
 import { MAX_UPLOAD_MB, MAX_UPLOAD_BYTES, TRUST_PROXY } from "./config.js";
 import { mountChatRoutes }      from "./routes/chat.js";
 import { mountShareRoutes }     from "./routes/shares.js";
+import { SHARE_ROBOTS }         from "./services/shareView.js";
 import { mountScheduleRoutes }  from "./routes/schedules.js";
 import { mountHistoryRoutes }   from "./routes/history.js";
 import { mountDemoRoutes }      from "./routes/demo.js";
 import { mountTelemetryRoutes } from "./routes/telemetry.js";
+import { mountLegalPages }      from "./legalPages.js";
 import { startScheduler }        from "./services/scheduler.js";
 import { trafficLog }            from "./services/trafficLog.js";
 import { logger, httpLogger, requestLogger, serviceLogger } from "./logger.js";
@@ -143,6 +145,9 @@ export function createApp() {
      /app/frontend/dist, so the image served no UI at all and /api was the only
      thing answering. Default keeps the source-tree path for `npm run dev`. */
   const distPath = process.env.PUBLIC_DIR || path.join(__dirname, "../../frontend/dist");
+  // v21.30: /privacy, /terms, /storage, /contact, /licenses and /api/legal.
+  // Before static, so /privacy.html can never be served with raw placeholders.
+  mountLegalPages(app, distPath);
   app.use(express.static(distPath));
 
   const upload = multer({
@@ -219,8 +224,13 @@ export function createApp() {
   app.get("/welcome", (_, res) => sendOrFallback(res, "landing.html", () => res.redirect("/")));
 
   // Serve React for all non-API routes (SPA fallback)
-  app.get(/^(?!\/api).*/, (_, res) => sendOrFallback(res, "index.html",
-    () => res.status(200).send("Frontend not built. Run: npm run build -w frontend")));
+  app.get(/^(?!\/api).*/, (req, res) => {
+    // v21.30: a /share/<token> document is a bearer link — keep it out of
+    // search indexes (SharePage adds the matching <meta name="robots">).
+    if (/^\/share\//i.test(req.path)) res.set("X-Robots-Tag", SHARE_ROBOTS);
+    sendOrFallback(res, "index.html",
+      () => res.status(200).send("Frontend not built. Run: npm run build -w frontend"));
+  });
 
   app.use(errorHandler);
 

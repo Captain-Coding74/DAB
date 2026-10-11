@@ -29,7 +29,9 @@ await Promise.all([
   document.fonts.load('500 56px "Plex Mono"', "SKIPPED banner row B.E. C.E. number acct negative"), document.fonts.load('500 80px "Plex Mono"', "HEADER"),
 ]);
 const loadFont = async (n) => new FontLoader().parse(await (await fetch(`assets/${n}.typeface.json`)).json());
-const fonts = { mono500: await loadFont("plex-mono-500"), latin700: await loadFont("plex-latin-700"), latin600: await loadFont("plex-latin-600") };
+// v21.30: the extruded-type outlines are Modified Versions of IBM Plex, so under the SIL OFL they carry
+// their own names ("DAB Render Mono", "DAB Render Sans Thai"), not the reserved "Plex" (assets/OFL.txt)
+const fonts = { mono500: await loadFont("dab-render-mono-500"), latin700: await loadFont("dab-render-sans-700"), latin600: await loadFont("dab-render-sans-600") };
 
 /* ── renderer / scene ── */
 const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true, powerPreference: "high-performance" });

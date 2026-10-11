@@ -5,6 +5,7 @@
  */
 import { initPool, execMultiple, getBackend, query } from "./pool.js";
 import { serviceLogger } from "../logger.js";
+import { DEFAULT_SHARE_TITLE, DEFAULT_SHARE_EXPIRY_DAYS } from "../services/shareView.js";
 const log = serviceLogger("migrate");
 
 const SCHEMA = [
@@ -267,13 +268,36 @@ const ADDITIVE = [
 ];
 
 /**
- * One-off data fixes, run after ADDITIVE on every boot. Each must be
- * idempotent (a no-op once applied) and valid SQL on SQLite and Postgres.
+ * One-off data fixes, run after ADDITIVE on every boot (v21.30).
+ *
+ * Each must be idempotent — a second run finds nothing left to change — and
+ * valid SQL on both SQLite and Postgres. Each runs through query() on its own,
+ * so a fix can rely on an ADDITIVE column existing.
  */
 const DATA_FIXES = [
   // v21.30: analyses no longer keep the client IP (routes/analysis.js passes
   // null). Clear what earlier releases stored; the column stays for old dumps.
   `UPDATE analyses SET ip_address = NULL WHERE ip_address IS NOT NULL`,
+
+  // v21.30: Scheduled Reports is off. Its stub runner never sent anything, so
+  // the stored schedules — recipient email addresses included — served no
+  // purpose and are deleted. Nothing can create a row any more
+  // (routes/schedules.js → FEATURE_UNAVAILABLE), so this stays a no-op.
+  `DELETE FROM scheduled_reports`,
+
+  // v21.30: share links. Revoking used to set is_active=0 and keep the row
+  // (token, title, analysis link) forever; it now deletes, and so do the
+  // links revoked before.
+  `DELETE FROM shared_reports WHERE is_active=0`,
+  // Links made without an expiry lived forever. Each gets 30 days from the
+  // boot that first finds it; new links always carry one (routes/shares.js),
+  // so later boots match nothing. The timestamp is computed in JS because
+  // SQLite and Postgres share no date-arithmetic syntax.
+  `UPDATE shared_reports SET expires_at='${new Date(Date.now() + DEFAULT_SHARE_EXPIRY_DAYS * 86_400_000).toISOString()}' WHERE expires_at IS NULL`,
+  // The SPA titled every link with the uploaded file name, which a public
+  // page then showed to anyone holding the URL.
+  `UPDATE shared_reports SET title='${DEFAULT_SHARE_TITLE}' WHERE title IS NULL
+     OR EXISTS (SELECT 1 FROM analyses a WHERE a.id=shared_reports.analysis_id AND a.file_name=shared_reports.title)`,
 ];
 
 async function existingColumns(table) {
