@@ -3,6 +3,101 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.30] — 2026-10-11 "Privacy"
+A legal review of DAB against Thailand's PDPA, the Computer-Related Crime
+Act and consumer law found gaps that carried legal risk: what the app did
+with data, what its pages claimed, and what it never told anyone. This
+release closes them in ten parts, built in two streams and merged, and
+publishes the notices that describe the result. The notices are interim:
+they and the back-office drafts await review by a Thai data-protection
+lawyer (open questions in `docs/privacy/README.md`).
+- **AI minimisation.** Analyze, chat, the deep-dive agent and fix
+  suggestions send statistics only — no raw rows. Personal-data detection
+  now also covers email, payment-card and bank-account numbers, passports,
+  postal addresses, LINE/social IDs and the PDPA s.26 kinds (by header), and
+  a detected column reaches the AI as its name and kind only. AI Edit sends
+  rows only after a confirmation dialog (`AI_EDIT_CONFIRM_REQUIRED`).
+  "Statistics only" per upload and an owner-only AI switch per dataset:
+  chat, the agent and AI Edit refuse (`AI_DISABLED`); analysis and fix
+  suggestions fall back to statistics and rules.
+- **Data lifecycle.** Analyze stores the analysis record only; the file is
+  stored on an explicit "Save dataset" (a class roster also needs the
+  school-authority confirmation, `SCHOOL_AUTHORITY_REQUIRED`). No IP with
+  analyses. A daily job enforces the retention periods (Trash 30 days,
+  inactive datasets 365, analyses 365, telemetry 395, audit log 365, feed
+  and notifications 365, traffic log 90, privacy requests 3 years), and
+  deletes cascade.
+- **Account rights.** `/account`: download everything as JSON, delete the
+  account (password-confirmed, immediate). A privacy-request log keeps only
+  a hash of the user id; `privacy-request.mjs` logs email and post requests.
+- **Click-wrap and the traffic log.** Sign-up needs the Terms/Privacy box
+  and the age line; the accepted version, time and IP are kept, and a
+  version change asks signed-in users to accept again. The Computer-Related
+  Crime Act s.26 traffic log records the listed events for 90 days (never
+  less), with a dataset id, share id or export format as its only reference.
+- **Security hardening.** Stored files are encrypted at rest (AES-256-GCM)
+  when `STORAGE_ENCRYPTION_KEY` is set; new object keys hold no file name;
+  Postgres certificate verification (`DATABASE_SSL_CA` /
+  `DATABASE_SSL_VERIFY`); no default secrets in `docker-compose.yml`; the
+  workspace and collaborator lists show no one's email.
+- **Honest claims.** Landing copy scoped to what the engine really does, the
+  hero console labelled an illustration, in-app privacy notes. Scheduled
+  Reports is off ("coming soon", `FEATURE_UNAVAILABLE`); the stub runner and
+  the stored schedules, recipient emails included, are gone.
+- **Share links and AI labels.** Links come only from a dialog that warns
+  who can see the report, with a generic title, a required expiry (1, 7, 30
+  or 90 days — old links got 30) and an optional password. Public pages are
+  noindex, omit the file name and the values of personal-data columns, and
+  link "Report this page"; revoking deletes. AI text is labelled in the app,
+  on share pages and in PDF/Excel exports (`ai_generated`). Share tokens are
+  redacted from request logs.
+- **Legal pages.** `/privacy`, `/terms`, `/storage`, `/contact` and
+  `/licenses`, in English and Thai, served before the SPA; `GET /api/legal`;
+  footer links on every page.
+- **Licences.** Third-party notices are generated and gated
+  (`npm run licenses:check`, in CI); the IBM Plex OFL ships with the fonts.
+- **Back office.** `docs/privacy/`: records of processing, retention
+  schedule, breach plan, request procedure, vendor register, DPO assessment
+  and the evidence behind every public claim.
+- **Integration fixes.** "Save dataset" links the analysis on screen and
+  keeps a statistics-only choice (the dataset starts with AI off). Share
+  pages re-classify analyses saved before the wider detection.
+  `POST /api/analyze` checks the `datasetId`/`workspaceId` it is given, and
+  a legacy analysis with no owner is no longer open to every signed-in user.
+  Service logs carry no file names, column names or values. The first paint
+  is back under its 101 kB budget (string packs for lazy screens, the fixes
+  panel loads with its tab). The History preview carries the AI label, the
+  phone nav fits again, and `docker-compose.yml` passes the `LEGAL_*` and
+  `*_RETENTION_DAYS` settings through.
+- **Tests and budgets.** 574 backend unit, 375 integration, 67 frontend,
+  25 HTTP e2e and 37 browser/geometry tests pass; the browser suites now
+  drive sign-up, Save dataset, the share dialog, the AI-edit confirmation,
+  the re-accept dialog and the legal pages. They run on the bundled
+  Chromium again (without its `--single-process` flag). Initial payload
+  100.7 / 101 kB, total code 244.0 / 244 kB. The coverage run reads its
+  suite lists from `backend/package.json`; `maxFilesUncounted` 29 → 38 for
+  eight lazily loaded privacy components and two operator CLIs (reason in
+  `quality-budget.json`). `npm run audit:gate` still fails on advisories in
+  the unchanged dependency tree (it fails the same on 21.29).
+
+**Before deploying**, configure:
+- `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` (PDPA s.23; production
+  warns at boot while they are empty, and the pages say "being set up"),
+  `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION`, and
+  `LEGAL_OPERATOR_NAME` if the operator is not the default.
+- `STORAGE_ENCRYPTION_KEY` (keep a copy: nothing can read a file without
+  it), then run `npm run storage-encrypt -w backend` once to encrypt files
+  stored before it was set (`-- --dry-run` counts them first).
+- On a managed Postgres, `DATABASE_SSL_CA` or `DATABASE_SSL_VERIFY=1`.
+- Docker Compose: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `POSTGRES_PASSWORD`,
+  `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` have no defaults any more; an
+  existing `pg-data` volume needs its password changed once (README).
+- `*_RETENTION_DAYS`: leave the defaults unless the Privacy Notice changes
+  first — it states those periods. `TRAFFIC_LOG_RETENTION_DAYS` cannot go
+  below 90.
+- `LEGAL_VERSION` is `2026-10-10`. If the lawyer's review changes the
+  notices materially, bump it: signed-in users then accept the new text.
+
 ## [21.29] — 2026-10-09 "Walkthrough"
 A 23 s looping walkthrough of the real app now opens the "How it works"
 section on `/welcome`. It shows tapping the corner-shop sample, the readout
