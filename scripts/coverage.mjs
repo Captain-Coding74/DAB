@@ -21,7 +21,7 @@
  * Usage: node scripts/coverage.mjs
  */
 import { execSync } from "node:child_process";
-import { readdirSync, statSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname, relative, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,20 +107,26 @@ function run(label, cwd, cmd) {
 }
 
 const COV_FLAGS = "--test --experimental-test-coverage --test-coverage-exclude='**/*.test.js' --test-concurrency=1";
-const TEST_ENV  = "JWT_SECRET=test-secret-32chars-long!!!! JWT_REFRESH_SECRET=test-refresh-32chars-long! NODE_ENV=test";
+const TEST_ENV  = "LOG_LEVEL=silent RATE_LIMIT_MAX=1000 MAX_XLSX_INFLATED_MB=16 JWT_SECRET=test-secret-32chars-long!!!! JWT_REFRESH_SECRET=test-refresh-32chars-long! NODE_ENV=test";
+
+/* v21.30: the suite lists come from the package.json scripts themselves.
+   This was a third, hand-kept copy of backend's lists ("kept in sync by hand
+   for now; the budget failing is the signal"); ten privacy suites landed in
+   package.json and none reached it, so the modules only they load — storage
+   encryption, retention, the traffic log, account erasure — reported as never
+   tested. Reading the scripts makes drift impossible: a suite package.json
+   runs is a suite coverage runs. */
+const PKG_SCRIPTS = JSON.parse(readFileSync(join(ROOT, "backend", "package.json"), "utf8")).scripts;
+const suitesOf = (script) => script.match(/\bsrc\/\S+\.test\.m?js\b/g) || [];
+const backendSuites = [...new Set([...suitesOf(PKG_SCRIPTS.test), ...suitesOf(PKG_SCRIPTS["test:integration"])])];
+// frontend's script is `node --test src/**/*.test.js`: every test file under src.
+const frontendSuites = walk(join(ROOT, "frontend", "src")).filter(isTest).map(f => relative(join(ROOT, "frontend"), f));
 
 const backend = run("backend", join(ROOT, "backend"),
-  /* This list was hardcoded and separate from package.json's test script, so
-     every suite added since it was written — inference, PLS-SEM, Kalman,
-     panel, data fixes, storage, prompt, quality — was excluded from the
-     coverage run. Those services then reported as "never loaded by an
-     in-process test" despite having passing tests, and the uncounted-files
-     budget drifted upward for no real reason. Kept in sync by hand for now;
-     the budget failing is the signal to update both. */
-  `${TEST_ENV} node ${COV_FLAGS} src/stats.test.js src/prompt.test.js src/qualityScore.test.js src/inference.test.js src/plsSem.test.js src/kalman.test.js src/panel.test.js src/dataFixes.test.js src/fixSuggest.test.js src/aiEdit.test.js src/storage.test.js src/insights.test.js src/agent.test.js src/streaming.test.js src/normalize.test.js src/telemetry.test.js src/aiBudget.test.js src/shareView.test.js src/logRedaction.test.js src/legalPages.test.js src/thirdPartyNotices.test.js src/integration.test.js src/routes.test.js src/shares.test.js`);
+  `${TEST_ENV} node ${COV_FLAGS} ${backendSuites.join(" ")}`);
 
 const frontend = run("frontend", join(ROOT, "frontend"),
-  `node ${COV_FLAGS} src/lib/api.test.js src/lib/grade.test.js`);
+  `node ${COV_FLAGS} ${frontendSuites.join(" ")}`);
 
 // ── which source files did the run never even load? ────────
 const allSrc = [
