@@ -13,7 +13,7 @@ import { LEGAL_PAGES, escapeHtml, legalValues, renderLegal, warnMissingLegalCont
 
 const PUBLIC = new URL("../../frontend/public/", import.meta.url);
 const source = (name) => readFileSync(new URL(`${name}.html`, PUBLIC), "utf8");
-const KNOWN = ["OPERATOR_NAME", "CONTACT_EMAIL", "POSTAL_ADDRESS", "HOSTING_PROVIDER", "HOSTING_REGION", "HOSTING_TRANSFER_BASIS", "LEGAL_VERSION"];
+const KNOWN = ["OPERATOR_NAME", "CONTACT_EMAIL", "POSTAL_ADDRESS", "HOSTING_PROVIDER", "HOSTING_REGION", "HOSTING_TRANSFER_BASIS", "STORAGE_ENCRYPTION", "LEGAL_VERSION"];
 
 describe("legalInfo (services/legal.js)", () => {
   test("names the default operator and leaves contact details empty until configured", () => {
@@ -116,6 +116,15 @@ describe("warnMissingLegalContacts", () => {
     assert.match(legalValues(legalInfo({}), {}).HOSTING_TRANSFER_BASIS, /being set up/);
   });
 
+  test("encryption at rest is stated as checked on this server, in both languages", () => {
+    const say = (state) => legalValues(legalInfo({}), {}, state).STORAGE_ENCRYPTION;
+    assert.match(say("all"), /<span lang="en">Stored files are encrypted at rest \(AES-256-GCM\)\.<\/span><span lang="th">[^<]+<\/span>$/);
+    assert.match(say("partial"), /<span lang="en">Files saved since encryption was switched on are encrypted at rest \(AES-256-GCM\); some older files are not encrypted yet\.<\/span>/);
+    assert.match(say("off"), /<span lang="en">Stored files are not yet encrypted at rest by DAB itself\.<\/span><span lang="th">/);
+    assert.ok(!say("off").includes("AES"), "no encryption claim without the key");
+    assert.equal(say("unknown"), say("partial"), "anything unverified gets the cautious wording");
+  });
+
   test("silent outside production, so tests and dev never see it", () => {
     const log = spy();
     for (const NODE_ENV of ["test", "development", undefined]) {
@@ -164,6 +173,28 @@ describe("page sources (frontend/public)", () => {
         assert.ok(html.includes(`href="${href}"`), `${name} links ${href}`);
       }
     }
+  });
+
+  test("v21.31 wording: the s.26 term, third-party analytics, what /account cannot download or delete, encryption as checked", () => {
+    const privacy = source("privacy"), storage = source("storage");
+    assert.ok(privacy.includes("sexual behaviour") && !privacy.includes("sexual orientation"), "PDPA s.26 says sexual behaviour");
+    for (const [name, html] of [["privacy", privacy], ["storage", storage]]) {
+      assert.ok(!/\bno analytics\b|uses no analytics/.test(html), `${name}: our own upload statistics are analytics too`);
+      assert.ok(html.includes("third-party analytics"), `${name}: says which analytics it means`);
+    }
+    assert.ok(privacy.includes("download or delete almost all of it") && !privacy.includes("delete all of it"), "some records survive deletion");
+    assert.ok(!privacy.includes("when the operator has enabled it") && !privacy.includes("เมื่อผู้ให้บริการเปิดใช้งาน"));
+    assert.equal(privacy.split("{{STORAGE_ENCRYPTION}}").length - 1, 4, "sections 3 and 10, in both languages");
+    // The Thai prevails, so it is pinned too.
+    assert.ok(privacy.includes("พฤติกรรมทางเพศ") && !privacy.includes("รสนิยมทางเพศ"));
+    assert.ok(privacy.includes("ดาวน์โหลดหรือลบข้อมูลเกือบทั้งหมด") && !privacy.includes("ลบข้อมูลทั้งหมดได้"));
+    for (const [name, html] of [["privacy", privacy], ["storage", storage]]) {
+      assert.ok(!html.includes("วิเคราะห์พฤติกรรมผู้ใช้"), `${name}: Thai matches the English scope`);
+      assert.ok(html.includes("วิเคราะห์การใช้งาน (analytics)"), `${name}: Thai names usage analytics`);
+    }
+    const contact = source("contact");
+    assert.ok(!contact.includes("download all your data") && !contact.includes("ดาวน์โหลดข้อมูลทั้งหมดของคุณ"), "the download leaves out the traffic log");
+    assert.ok(contact.includes("everything except your traffic-log entries"));
   });
 
   test("the storage notice lists exactly the six keys DAB writes", () => {

@@ -18,7 +18,7 @@
  * v21.30: the same machinery now covers ordinary business files — email,
  * payment card, bank account, passport, postal address, LINE/social IDs —
  * and the PDPA s.26 categories (health, religion, ethnicity, disability,
- * criminal record, sexual orientation, political opinion, trade union,
+ * criminal record, sexual behaviour, political opinion, trade union,
  * biometric), which are detected by header and stay READABLE in the owner's
  * own view but are excluded from AI payloads like every other kind.
  *

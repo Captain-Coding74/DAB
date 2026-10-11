@@ -3,6 +3,38 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.31] — 2026-10-11 "Notice wording"
+Wording slips in the Privacy Notice, the Storage notice and the Contact
+page, found while checking the notice line by line for counsel. None
+changes what DAB does with data, so `LEGAL_VERSION` stays 2026-10-10 and
+nobody is asked to accept again; each changed page now prints "Wording
+revised 2026-10-11" beside its version, in both languages.
+- **Sensitive data:** the English list of PDPA s.26 categories said "sexual
+  orientation"; the Act and the Thai text say sexual behaviour.
+- **Analytics:** "no analytics" (Privacy §2 and §14, Storage notice) now
+  says no *third-party* analytics; Privacy §14 points to DAB's own upload
+  statistics in §3. Advertising and tracking stay ruled out without
+  qualification. The Thai said "no user-behaviour analytics", which the
+  telemetry linked to signed-in users made doubtful; it now names
+  third-party usage analytics, as the English does.
+- **Download and deletion:** Privacy §2 said you can download or delete
+  "all of it" at `/account`, and the Contact page that you can download "all
+  your data". Traffic-log entries are not in the download (they are sent on
+  request) and survive deletion for their 90 days, as does the
+  privacy-request-log entry, so §2 now says "almost all of it" and links §9,
+  and the Contact page names the traffic-log exception like §12 does.
+- **Encryption:** §3 and §10 said stored files are encrypted "when the
+  operator has enabled it", which no reader can check. They now print
+  `{{STORAGE_ENCRYPTION}}`, filled from a check rather than from the key
+  alone (`services/encryptionStatus.js`): no key → DAB does not yet encrypt
+  stored files; key set but anything still in the clear (objects saved
+  before the key, pre-v21.1 copies in `dataset_versions.file_content`), or
+  not checked yet → files saved since encryption was switched on are
+  encrypted and some older ones are not yet; key set and the check finds
+  nothing in the clear → stored files are encrypted at rest (AES-256-GCM).
+  The check runs at boot and daily, reads only each object's first bytes,
+  and logs counts (never keys) while plaintext remains.
+
 ## [21.30] — 2026-10-11 "Privacy"
 A legal review of DAB against Thailand's PDPA, the Computer-Related Crime
 Act and consumer law found gaps that carried legal risk: what the app did

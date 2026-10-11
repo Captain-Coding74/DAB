@@ -13,6 +13,7 @@ import cron from "node-cron";
 import { pruneRefreshTokens } from "../db/repository.js";
 import { serviceLogger } from "../logger.js";
 import { startRetention } from "./retention.js";
+import { checkEncryptionAtRest } from "./encryptionStatus.js";
 
 const log = serviceLogger("scheduler");
 
@@ -31,5 +32,9 @@ export function startScheduler() {
   pruneTokens();   // once at startup so a long-running instance doesn't wait an hour
   // v21.30: data retention — daily, plus once shortly after boot (services/retention.js).
   startRetention();
-  log.info("Scheduler started (token prune hourly, retention daily)");
+  // v21.31: what the Privacy Notice may say about encryption at rest —
+  // checked at boot and daily, since storage-encrypt runs as its own process.
+  cron.schedule("41 3 * * *", () => checkEncryptionAtRest(), { timezone: "Asia/Bangkok" });
+  checkEncryptionAtRest();
+  log.info("Scheduler started (token prune hourly, retention and encryption check daily)");
 }

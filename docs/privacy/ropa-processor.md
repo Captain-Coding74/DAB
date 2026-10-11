@@ -29,7 +29,7 @@ Whatever the controller's file is about. Typical cases:
 
 The Terms (section 5) ask users not to upload PDPA s.26 sensitive data without a lawful basis, and never to upload payment-card numbers. DAB cannot prevent it, so assume it may be present.
 
-**Detection.** DAB looks for personal data in each upload: Thai citizen ID, phone, name, birth date and student ID; email, payment-card number, bank-account number, passport number, postal address, LINE or other social-media ID; and s.26 data recognised from the column header (health or medical, religion, ethnicity or race, disability, criminal record, sexual orientation, political opinion, trade-union membership, biometric). A detected column carries a `sensitive` marker with its kind. Detection can miss data, especially sensitive data under an unclear header.
+**Detection.** DAB looks for personal data in each upload: Thai citizen ID, phone, name, birth date and student ID; email, payment-card number, bank-account number, passport number, postal address, LINE or other social-media ID; and s.26 data recognised from the column header (health or medical, religion, ethnicity or race, disability, criminal record, sexual behaviour, political opinion, trade-union membership, biometric). A detected column carries a `sensitive` marker with its kind. Detection can miss data, especially sensitive data under an unclear header.
 
 ## Processing operations
 
