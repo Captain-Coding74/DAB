@@ -171,7 +171,9 @@ export async function remove(key) {
   } catch (err) {
     // Deleting an object that is already gone is not an error worth raising:
     // callers delete during cleanup paths that must stay idempotent.
-    log.debug({ key, err: err.message }, "object delete skipped");
+    // v21.30: the error code only — a key written before v21.30 holds the
+    // uploaded file name, and an fs error message repeats the full path.
+    log.debug({ code: err.code || err.name }, "object delete skipped");
   }
 }
 

@@ -181,7 +181,10 @@ export function errorHandler(err, req, res, next) {
      client being wrong: warn, no stack. A 5xx is us: error, full detail. */
   const clientFault = status >= 400 && status < 500;
   if (clientFault) {
-    logger.warn({ status, url: redactUrl(req.url), method: req.method, reason: err.message }, "Request rejected");
+    // v21.30: a JSON parse error quotes the start of the request body —
+    // possibly a password or an uploaded value — so it is logged by type.
+    const reason = err.type === "entity.parse.failed" ? "malformed JSON body" : err.message;
+    logger.warn({ status, url: redactUrl(req.url), method: req.method, reason }, "Request rejected");
   } else {
     metrics.totalErrors++;
     logger.error({ err, url: redactUrl(req.url), method: req.method, userId: req.user?.userId }, "Unhandled error");

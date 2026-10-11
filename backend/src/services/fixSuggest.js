@@ -116,7 +116,7 @@ export function validateSuggestions(raw, headers) {
     const params = {};
     if (spec.needs.includes("column")) {
       const col = s?.params?.column ?? s?.column;
-      if (!col || !cols.has(col)) { log.debug({ op, col }, "dropped: unknown column"); continue; }
+      if (!col || !cols.has(col)) { log.debug({ op }, "dropped: unknown column"); continue; }   // v21.30: no column names in logs
       params.column = col;
     }
 

@@ -419,7 +419,10 @@ export async function parseFileStreaming(buffer, originalName) {
   const ext  = originalName.split(".").pop().toLowerCase();
   const size = buffer.length;
   const mode = size >= STREAM_THRESHOLD ? "streaming" : "buffered-stream";
-  log.debug({ file: originalName, sizeKB: Math.round(size/1024), mode }, "Parsing file");
+  // v21.30: the extension, never the name — file names name people, classes
+  // and clients, and logs outlive the upload (privacy notice: no file names
+  // in logs).
+  log.debug({ ext, sizeKB: Math.round(size/1024), mode }, "Parsing file");
 
   /* Legacy .xls (Excel 97-2003) is an OLE compound document — exceljs only
      reads OOXML zips, so wb.xlsx.load() dies with an opaque "can't find end
@@ -440,7 +443,7 @@ export async function parseFileStreaming(buffer, originalName) {
     : await streamCSV(buffer);
   const ms     = Math.round(performance.now() - t0);
 
-  log.info({ file: originalName, rows: result.totalRows, ms, mode,
+  log.info({ ext, rows: result.totalRows, ms, mode,
              norm: result.normalization }, "File parsed");
   // School edition (v21.18): PDPA guard at the one place every file becomes
   // data — direct identifiers masked, ID-column aggregates nulled, and a

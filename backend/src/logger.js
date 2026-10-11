@@ -50,9 +50,12 @@ export const logger = pino({
    matches routes case-insensitively, so this does too. */
 const SHARE_PATH  = /^((?:\/api\/public)?\/share\/)[^/?#]+/i;
 const TOKEN_QUERY = /([?&][^=&#]*token=)[^&#]*/gi;
+/* The dataset list's search box sends what the user typed — usually part of
+   a dataset name, which defaults to the uploaded file name. */
+const SEARCH_QUERY = /([?&](?:search|q)=)[^&#]*/gi;
 export function redactUrl(url) {
   if (typeof url !== "string") return url;
-  return url.replace(SHARE_PATH, "$1[redacted]").replace(TOKEN_QUERY, "$1[redacted]");
+  return url.replace(SHARE_PATH, "$1[redacted]").replace(TOKEN_QUERY, "$1[redacted]").replace(SEARCH_QUERY, "$1[redacted]");
 }
 
 // ── HTTP request logger middleware ────────────────────────
