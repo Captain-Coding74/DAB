@@ -5,6 +5,7 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { apiFetch, getJSON, postJSON, configureApi } from "./api.js";
+import { setLang } from "./i18n.js";
 
 let calls, state;
 beforeEach(() => {
@@ -75,5 +76,32 @@ describe("apiFetch", () => {
   test("getJSON returns parsed body on success", async () => {
     calls._next = () => ({ status: 200, ok: true, json: async () => ({ hello: "world" }) });
     assert.deepEqual(await getJSON("/x"), { hello: "world" });
+  });
+});
+
+/* v21.30: routes that answer { error (Thai), errorEn, code } showed the Thai
+   sentence to English readers. */
+describe("error messages follow the language", () => {
+  const refusal = () => ({ status: 403, ok: false, json: async () => ({ error: "ปิด AI ไว้", errorEn: "AI is off for this data", code: "AI_DISABLED" }) });
+  afterEach(() => setLang("th"));
+
+  test("English readers get errorEn, with the code and status on the error", async () => {
+    setLang("en");
+    calls._next = refusal;
+    await assert.rejects(() => postJSON("/x", {}), (err) => {
+      assert.equal(err.message, "AI is off for this data");
+      assert.equal(err.code, "AI_DISABLED");
+      assert.equal(err.status, 403);
+      return true;
+    });
+  });
+
+  test("Thai readers get the Thai message; a route without errorEn is unchanged", async () => {
+    setLang("th");
+    calls._next = refusal;
+    await assert.rejects(() => getJSON("/x"), /ปิด AI ไว้/);
+    setLang("en");
+    calls._next = () => ({ status: 400, ok: false, json: async () => ({ error: "bad input" }) });
+    await assert.rejects(() => getJSON("/x"), /bad input/);
   });
 });

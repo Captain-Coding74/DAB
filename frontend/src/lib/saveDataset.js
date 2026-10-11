@@ -41,6 +41,23 @@ export function saveStatus({ signedIn, file, analysis }) {
 export const needsSchoolAttestation = (analysis) => !!analysis?.classReport;
 
 /**
+ * The POST /api/analyze form. datasetId (v21.30): the dataset the result on
+ * screen was saved as. Analysing the same file again used to send only the
+ * file, so the server neither applied that dataset's AI switch — an owner who
+ * had switched AI off still got an AI report — nor linked the new analysis,
+ * which then outlived the dataset's deletion. With the id it does both (and
+ * checks the caller may use the dataset).
+ */
+export function analyzeForm(file, question, { noAi = false, datasetId = null } = {}) {
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  fd.append("question", question);
+  if (noAi) fd.append("noAi", "1");
+  if (datasetId) fd.append("datasetId", datasetId);
+  return fd;
+}
+
+/**
  * analysisId: the saved analysis on screen (its savedId). The server links
  * it to the new dataset, so the dataset's AI switch and its deletion cover
  * it. noAi: the upload was "Statistics only" — the dataset is created with

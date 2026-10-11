@@ -13,6 +13,26 @@
 export const needsAcceptance = (legal) => Boolean(legal?.current) && legal.accepted !== legal.current;
 
 /**
+ * Is the re-accept gate up? It is the only control: the API does not refuse
+ * a user who has not re-accepted, so while it is up nothing else may act —
+ * the global shortcuts and the command palette check this too (App.jsx,
+ * components/palette), and the app behind the dialog is inert.
+ */
+export const gateActive = (state) => !!state?.user && needsAcceptance(state?.legal);
+
+/**
+ * Is the dialog up on this page? Everywhere the gate is active except
+ * /account: a user who would rather not accept new terms must still be able
+ * to download their data and delete their account (the Terms and the
+ * Privacy Notice say /account stays open to them). The shortcuts and the
+ * palette stay off there too — they act on the dashboard.
+ */
+export const gateShown = (state, pathname) => gateActive(state) && pathname !== "/account";
+
+/** Wait before asking for the legal status again after a failed fetch: 5 s, doubling, at most a minute. */
+export const legalRetryMs = (attempt) => Math.min(60_000, 5_000 * 2 ** Math.max(0, attempt));
+
+/**
  * The signed-in user's { accepted, current } from GET /api/auth/me, or null
  * when it cannot be had (offline, signed out). `getJSON` is lib/api's, passed
  * in so this runs under Node.

@@ -50,7 +50,14 @@ describe("i18n", () => {
     assert.match(t("columns.pdpaNotice", "en"), /left out of what the AI sees/);
     assert.match(t("columns.pdpaNotice", "en"), /stored only if you save/);
     assert.match(t("columns.pdpaNotice", "th"), /ก็ต่อเมื่อคุณบันทึกชุดข้อมูล/);
-    assert.match(t("classReport.privacy", "en"), /not sent to the AI and not included in share links/);
+    assert.match(t("classReport.privacy", "en"), /none of this is sent to the AI or included in share links/);
+    // v21.30: the masking note is scoped to the column panel — the class
+    // report on the same page shows names in full, and says so.
+    assert.match(t("columns.pdpaNotice", "en"), /masked in these column statistics/);
+    assert.match(t("columns.pdpaNotice", "th"), /ในสถิติรายคอลัมน์นี้/);
+    assert.doesNotMatch(t("columns.pdpaNotice", "th"), /ในหน้านี้/);
+    assert.match(t("classReport.privacy", "en"), /names are shown in full/);
+    assert.match(t("classReport.privacy", "th"), /แสดงชื่อนักเรียนเต็ม/);
     assert.match(t("workspace.schedulesSoon", "en"), /coming soon/);
   });
 

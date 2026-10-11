@@ -120,7 +120,9 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg", dism
     if (!open) return;
     prevRef.current = document.activeElement;
     const box = boxRef.current;
-    const focusables = () => box.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    // v21.30: disabled controls cannot take focus — counting the disabled
+    // Accept button as "last" let Tab walk out of the re-accept dialog.
+    const focusables = () => box.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
     (focusables()[0] || box).focus();
 
     const onKey = (e) => {

@@ -8,8 +8,8 @@ import { addStrings } from "../i18n.js";   // explicit .js: packs are loaded by 
 
 export const SAVE_STRINGS = addStrings({
   "save.title":         { en: "Save this dataset?", th: "บันทึกชุดข้อมูลนี้หรือไม่" },
-  "save.body":          { en: "Save the original file to DAB so you can run hypothesis tests and re-analyse later. It is kept until you delete it, or after 365 days without use.",
-                          th: "บันทึกไฟล์ต้นฉบับไว้ใน DAB เพื่อใช้ทดสอบสมมติฐานและวิเคราะห์ซ้ำภายหลัง ไฟล์จะถูกเก็บไว้จนกว่าคุณจะลบเอง หรือจนกว่าจะไม่มีการใช้งานครบ 365 วัน" },
+  "save.body":          { en: "Save the original file to DAB so you can run hypothesis tests and re-analyse it later from your Account page. It is kept until you delete it there, or after 365 days without use.",
+                          th: "บันทึกไฟล์ต้นฉบับไว้ใน DAB เพื่อใช้ทดสอบสมมติฐานและวิเคราะห์ซ้ำภายหลังจากหน้าบัญชีของคุณ ไฟล์จะถูกเก็บไว้จนกว่าคุณจะลบที่หน้านั้น หรือจนกว่าจะไม่มีการใช้งานครบ 365 วัน" },
   "save.retention":     { en: "How long DAB keeps data", th: "DAB เก็บข้อมูลไว้นานเท่าใด" },
   "save.confirm":       { en: "Save",               th: "บันทึก" },
   "save.rosterNote":    { en: "This file looks like a class roster, so saving it needs your confirmation.",

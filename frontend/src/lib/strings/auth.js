@@ -37,6 +37,10 @@ export const AUTH_STRINGS = addStrings({
   "legal.updatedTitle": { en: "We've updated our Terms and Privacy Notice", th: "เราได้ปรับปรุงข้อกำหนดการใช้งานและประกาศความเป็นส่วนตัว" },
   "legal.updatedBody":  { en: "Please read the {terms} and the {privacy}. To keep using your account, accept them below, or sign out.",
                           th: "โปรดอ่าน{terms}และ{privacy} หากต้องการใช้บัญชีต่อ โปรดกดยอมรับด้านล่าง หรือออกจากระบบ" },
+  /* v21.30: declining stays possible — /account is open behind the gate. */
+  "legal.decline":      { en: "Rather not accept? {account} stays open: download your data or delete your account there.",
+                          th: "ไม่ต้องการยอมรับใช่หรือไม่ {account}ยังเปิดให้ใช้ได้ คุณดาวน์โหลดข้อมูลหรือลบบัญชีได้ที่นั่น" },
+  "legal.accountName":  { en: "Your Account page", th: "หน้าบัญชีของคุณ" },
   "legal.version":      { en: "Version {version}",  th: "ฉบับวันที่ {version}" },
   "legal.accept":       { en: "Accept and continue", th: "ยอมรับและใช้งานต่อ" },
   "legal.acceptFailed": { en: "Could not save your acceptance. Try again.", th: "บันทึกการยอมรับไม่สำเร็จ โปรดลองอีกครั้ง" },

@@ -739,6 +739,41 @@ describe("Critical flow: privacy controls (v21.30)", () => {
     assert.ok(!(await page.content()).includes("browser-e2e"), "the file name is not on the public page");
   });
 
+  /* v21.30: the notices say a stored file is kept until you delete it and
+     that revoking a link deletes it — /account is where both happen. */
+  btest("/account lists the stored file and the share link, and deletes each", async () => {
+    await page.goto(`${BASE}/account`, { waitUntil: "load" });
+    const links = page.getByRole("region", { name: "ลิงก์แชร์" });
+    const row = links.getByRole("listitem").first();
+    await row.waitFor({ timeout: 15_000 });
+    await row.getByRole("button", { name: "ยกเลิกลิงก์" }).click();
+    await row.getByRole("button", { name: "ยืนยันลบถาวร" }).click();
+    await links.getByText("คุณยังไม่มีลิงก์แชร์").waitFor({ timeout: 15_000 });
+
+    const files = page.getByRole("region", { name: "ไฟล์ที่จัดเก็บไว้" });
+    const file = files.getByRole("listitem").filter({ hasText: "browser-e2e.csv" });
+    await file.waitFor({ timeout: 15_000 });
+    await file.getByRole("button", { name: "ลบ", exact: true }).click();
+    await file.getByRole("button", { name: "ยืนยันลบถาวร" }).click();
+    await file.waitFor({ state: "detached", timeout: 15_000 });
+    await page.goto(BASE, { waitUntil: "load" });
+  });
+
+  // v21.30: a "Statistics only" result lost its Share and export buttons.
+  btest("a Statistics-only result can still be shared and exported", async () => {
+    await page.locator("#fileIn").setInputFiles({
+      name: "stats-only.csv", mimeType: "text/csv",
+      buffer: Buffer.from("สินค้า,ยอดขาย\nน้ำปลา,120\nข้าวสาร,450\nน้ำตาล,80\n"),
+    });
+    await page.getByText("พร้อมตรวจ").waitFor({ timeout: 10_000 });
+    await page.getByRole("checkbox", { name: /สถิติล้วน/ }).check();
+    await page.getByRole("button", { name: "วิเคราะห์ไฟล์" }).click();
+    await page.getByText(/โหมดสถิติล้วน/).waitFor({ timeout: 30_000 });
+    assert.equal(await page.getByRole("button", { name: "แชร์", exact: true }).count(), 1, "Share is offered");
+    assert.equal(await page.getByRole("button", { name: "PDF" }).count(), 1, "PDF export is offered");
+    assert.equal(await page.getByRole("button", { name: "Excel" }).count(), 1, "Excel export is offered");
+  });
+
   btest("after a Terms/Privacy update, the app asks to accept before going on", async () => {
     // Pretend the account accepted an older version: /api/auth/me reports it.
     await page.route("**/api/auth/me", async (route) => {
@@ -754,6 +789,21 @@ describe("Critical flow: privacy controls (v21.30)", () => {
       assert.ok(await dialog.isVisible(), "Esc does not dismiss it");
       const accept = dialog.getByRole("button", { name: "ยอมรับและใช้งานต่อ" });
       assert.ok(await accept.isDisabled(), "Accept waits for the box");
+      // v21.30: nothing behind the dialog can act — no palette, and Tab
+      // stays inside it (the disabled Accept button used to let focus out).
+      await page.keyboard.press("Control+k");
+      assert.equal(await page.getByRole("dialog", { name: "Command palette" }).count(), 0, "Ctrl+K opens nothing");
+      await dialog.getByRole("button", { name: "ออกจากระบบ" }).focus();
+      for (let i = 0; i < 6; i++) {
+        await page.keyboard.press("Tab");
+        assert.ok(await dialog.evaluate((d) => d.contains(document.activeElement)), `Tab ${i + 1} left the dialog`);
+      }
+      // Declining stays possible: /account (download, delete) is open behind the gate.
+      await dialog.getByRole("link", { name: "หน้าบัญชีของคุณ" }).click();
+      await dialog.waitFor({ state: "detached", timeout: 15_000 });
+      await page.getByRole("button", { name: "ลบบัญชีของฉันถาวร" }).waitFor({ timeout: 15_000 });
+      await page.goto(BASE, { waitUntil: "load" });
+      await dialog.waitFor({ timeout: 15_000 });
       await dialog.locator('input[name="acceptTerms"]').check();
       await accept.click();
       await dialog.waitFor({ state: "detached", timeout: 15_000 });

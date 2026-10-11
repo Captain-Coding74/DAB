@@ -5,18 +5,20 @@
  * than the current one, or who never accepted (accounts from before
  * sign-up asked). It cannot be dismissed: the only ways on are Accept
  * (POST /api/auth/accept-terms with the version shown, which the server
- * records with the time and IP) or Sign out. Modal supplies role="dialog",
+ * records with the time and IP), Sign out, or — for someone who would rather
+ * not accept — the link to /account, where the gate never shows, to
+ * download their data or delete the account (v21.30). Modal supplies role="dialog",
  * aria-modal, the focus trap and focus restore; first focus lands on the
  * first link, never on Accept, which stays disabled until the box is ticked.
  */
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Modal, Button } from "../ui";
 import { useAppStore } from "../../store";
 import { getJSON, postJSON } from "../../lib/api";
 import { useLang } from "../../lib/i18n";
 import "../../lib/strings/auth.js";   // v21.30: this dialog's strings load with it (lib/i18n.js addStrings)
-import { fetchLegal } from "../../lib/legal.js";
+import { fetchLegal, fillSlots } from "../../lib/legal.js";
 import { LegalText } from "./LegalText.jsx";
 
 export default function ReacceptDialog({ legal }) {
@@ -58,6 +60,9 @@ export default function ReacceptDialog({ legal }) {
       <form onSubmit={accept} className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
         <p id="legal-updated-body"><LegalText text={t("legal.updatedBody")}/></p>
         <p className="num text-xs text-gray-500 dark:text-gray-400">{t("legal.version").replace("{version}", legal.current)}</p>
+        <p className="text-xs">{fillSlots(t("legal.decline"), {
+          account: <Link to="/account" className="underline underline-offset-2 hover:text-brand-600 dark:hover:text-brand-300">{t("legal.accountName")}</Link>,
+        }).map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}</p>
         <label className="flex items-start gap-2 cursor-pointer">
           <input type="checkbox" name="acceptTerms" required checked={agree} onChange={(e) => setAgree(e.target.checked)}
             aria-describedby="legal-updated-body" className="mt-0.5 accent-brand-500"/>

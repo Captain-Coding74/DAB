@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useAppStore } from "../../store";
+import { gateActive } from "../../lib/legal.js";
 import { Kbd } from "../ui";
 
 export function firePaletteAction(name) {
@@ -16,6 +17,7 @@ export function firePaletteAction(name) {
 
 export default function CommandPalette() {
   const { paletteOpen, setPaletteOpen, dark, toggleDark, user } = useAppStore();
+  const gated = useAppStore(gateActive);   // v21.30: no actions behind the re-accept dialog
   const nav = useNavigate();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -51,7 +53,7 @@ export default function CommandPalette() {
     listRef.current?.children[sel]?.scrollIntoView({ block: "nearest" });
   }, [sel]);
 
-  if (!paletteOpen) return null;
+  if (!paletteOpen || gated) return null;
 
   const onKey = (e) => {
     if (e.key === "Escape")     { e.preventDefault(); close(); }

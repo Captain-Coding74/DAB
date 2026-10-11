@@ -5,7 +5,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { saveStatus, needsSchoolAttestation, saveForm, saveDataset } from "./saveDataset.js";
+import { saveStatus, needsSchoolAttestation, saveForm, saveDataset, analyzeForm } from "./saveDataset.js";
 
 const file = new File(["a,b\n1,2\n"], "scores.csv", { type: "text/csv" });
 
@@ -76,5 +76,23 @@ describe("saveForm / saveDataset", () => {
     // still mention the endpoint in a comment, but only saveDataset() calls it.
     const hook = readFileSync(new URL("../hooks/useAnalysis.js", import.meta.url), "utf8");
     assert.ok(!/apiFetch\(\s*["'`]\/api\/datasets["'`]/.test(hook), "useAnalysis must not POST /api/datasets itself");
+  });
+});
+
+/* v21.30: analysing again after "Save dataset" names that dataset, so the
+   server applies its AI switch and links the new analysis to it. */
+describe("analyzeForm", () => {
+  const file = new File(["a,b\n1,2\n"], "sales.csv");
+  test("a fresh upload sends the file and the question only", () => {
+    const fd = analyzeForm(file, "q");
+    assert.equal(fd.get("question"), "q");
+    assert.equal(fd.get("file").name, "sales.csv");
+    assert.equal(fd.has("datasetId"), false);
+    assert.equal(fd.has("noAi"), false);
+  });
+  test("after Save it carries the dataset id, and Statistics only as before", () => {
+    const fd = analyzeForm(file, "", { datasetId: "ds-1", noAi: true });
+    assert.equal(fd.get("datasetId"), "ds-1");
+    assert.equal(fd.get("noAi"), "1");
   });
 });

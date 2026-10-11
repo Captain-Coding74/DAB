@@ -46,9 +46,25 @@ export function InsightRow({ ins, index = 0 }) {
   );
 }
 
+/* Share and the PDF / Excel exports. v21.30: in both shells — a "Statistics
+   only" result, or one past the AI budget, used to lose all three, though
+   the server shares and exports a report with no AI text just the same. */
+function ReportActions({ canShare, exporting, onShareOpen, onExport }) {
+  const { t } = useLang();
+  return (
+    <div className="flex gap-2">
+      {canShare && <Button variant="ghost" size="sm" onClick={onShareOpen} aria-haspopup="dialog"><Share2 size={13}/> {t("share.button")}</Button>}
+      <Button variant="secondary" size="sm" onClick={() => onExport("pdf")}   loading={exporting==="pdf"}><FileText size={13}/> PDF</Button>
+      <Button variant="secondary" size="sm" onClick={() => onExport("excel")} loading={exporting==="excel"}><Download size={13}/> Excel</Button>
+    </div>
+  );
+}
+
 export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
   const { t } = useLang();
   const [shareOpen, setShareOpen] = useState(false);   // v21.30: Share opens ShareDialog
+  const actions = <ReportActions canShare={canShare} exporting={exporting} onShareOpen={() => setShareOpen(true)} onExport={onExport}/>;
+  const shareDialog = canShare && shareOpen && <ShareDialog open onClose={() => setShareOpen(false)} onCreate={onShare}/>;
   // No AI prose to show — four honest reasons, one shared shell:
   //   demo       → pitch uploading your own file (v20.1)
   //   aiGated    → anonymous upload: stats were free, AI is the signed-in tier (v20.3)
@@ -57,9 +73,12 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
   if (!a.analysis && (a.demo || a.aiGated || a.aiBudget || a.aiDisabled)) {
     return (
       <Card>
-        <div className="flex items-center gap-2.5 mb-4">
-          <Eyebrow>รายงานผู้ตรวจ · AI</Eyebrow>
-          {a.quality && <GradeStamp score={a.quality.score}/>}
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <Eyebrow>รายงานผู้ตรวจ · AI</Eyebrow>
+            {a.quality && <GradeStamp score={a.quality.score}/>}
+          </div>
+          {(a.aiDisabled || a.aiBudget) && actions}
         </div>
         <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-3">
           {a.aiDisabled ? (
@@ -101,6 +120,7 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
             )}
           </div>
         </div>
+        {shareDialog}
       </Card>
     );
   }
@@ -111,15 +131,11 @@ export function AnalysisTab({ a, canShare, exporting, onShare, onExport }) {
           <Eyebrow>รายงานผู้ตรวจ · AI</Eyebrow>
           {a.quality && <GradeStamp score={a.quality.score}/>}
         </div>
-        <div className="flex gap-2">
-          {canShare && <Button variant="ghost" size="sm" onClick={() => setShareOpen(true)} aria-haspopup="dialog"><Share2 size={13}/> {t("share.button")}</Button>}
-          <Button variant="secondary" size="sm" onClick={() => onExport("pdf")}   loading={exporting==="pdf"}><FileText size={13}/> PDF</Button>
-          <Button variant="secondary" size="sm" onClick={() => onExport("excel")} loading={exporting==="excel"}><Download size={13}/> Excel</Button>
-        </div>
+        {actions}
       </div>
       <p className="text-sm text-gray-800 dark:text-gray-200 leading-7 whitespace-pre-wrap border-t border-gray-100 dark:border-gray-800 pt-4">{a.analysis}</p>
       {a.analysis && <AiLabel className="mt-3"/>}
-      {canShare && shareOpen && <ShareDialog open onClose={() => setShareOpen(false)} onCreate={onShare}/>}
+      {shareDialog}
     </Card>
   );
 }

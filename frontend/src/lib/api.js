@@ -7,6 +7,7 @@
  * testable under plain node. The app wires the real store once at startup.
  */
 import { recordApi } from "./perf.js";   // explicit .js: this module is unit-tested under plain Node
+import { currentLang } from "./i18n.js";
 
 let store = {
   getState: () => ({ accessToken: null, refreshTokens: async () => false, logout: () => {} }),
@@ -74,9 +75,18 @@ export async function apiFetch(url, opts = {}) {
   return res;
 }
 
+/* v21.30: the privacy routes answer { error (Thai), errorEn, code }. The
+   Thai sentence used to reach English readers as-is, in every toast fed by
+   a thrown message; an English reader now gets errorEn, and callers can
+   branch on the code. */
 async function toJSON(res) {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error((currentLang() === "en" && data.errorEn) || data.error || `HTTP ${res.status}`);
+    err.code = data.code || null;
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 export const getJSON  = (url, opts)       => apiFetch(url, opts).then(toJSON);

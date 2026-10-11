@@ -4,7 +4,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { needsAcceptance, consentGiven, fillSlots, fetchLegal } from "./legal.js";
+import { needsAcceptance, consentGiven, fillSlots, fetchLegal, gateActive, legalRetryMs, gateShown } from "./legal.js";
 import { STRINGS } from "./i18n.js";
 import "./strings/auth.js";   // the click-wrap string pack (lib/i18n.js addStrings)
 
@@ -71,5 +71,31 @@ describe("fetchLegal", () => {
     assert.equal(await fetchLegal(async () => ({ username: "a" })), null);
     assert.equal(await fetchLegal(async () => null), null);
     assert.equal(await fetchLegal(async () => { throw new Error("offline"); }), null);
+  });
+});
+
+/* v21.30: the gate is the only control — the API does not refuse a user who
+   has not re-accepted — so shortcuts and the palette consult it, and a failed
+   status fetch is retried instead of leaving the gate down all session. */
+describe("gateActive / legalRetryMs", () => {
+  test("up only for a signed-in user whose accepted version is not the current one", () => {
+    assert.equal(gateActive({ user: { username: "a" }, legal: { accepted: "2026-01-01", current: "2026-10-10" } }), true);
+    assert.equal(gateActive({ user: { username: "a" }, legal: { accepted: null, current: "2026-10-10" } }), true);
+    assert.equal(gateActive({ user: { username: "a" }, legal: { accepted: "2026-10-10", current: "2026-10-10" } }), false);
+    assert.equal(gateActive({ user: null, legal: { accepted: null, current: "2026-10-10" } }), false);
+    assert.equal(gateActive({ user: { username: "a" }, legal: null }), false, "unknown until fetched");
+  });
+  test("a failed fetch is retried: 5 s, doubling, capped at a minute", () => {
+    assert.deepEqual([0, 1, 2, 3, 4, 10].map(legalRetryMs), [5000, 10000, 20000, 40000, 60000, 60000]);
+  });
+});
+
+describe("gateShown", () => {
+  const due = { user: { username: "a" }, legal: { accepted: null, current: "2026-10-10" } };
+  test("everywhere the gate is active, except /account — download and deletion stay open", () => {
+    assert.equal(gateShown(due, "/"), true);
+    assert.equal(gateShown(due, "/history"), true);
+    assert.equal(gateShown(due, "/account"), false);
+    assert.equal(gateShown({ ...due, legal: { accepted: "2026-10-10", current: "2026-10-10" } }, "/"), false);
   });
 });

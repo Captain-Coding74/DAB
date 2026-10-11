@@ -1,7 +1,7 @@
 /**
  * lib/account.js — the /account page's actions (v21.30): download everything
- * DAB holds about you, download each original file you saved, and delete the
- * account.
+ * DAB holds about you, download each original file you saved, list and
+ * delete each stored file and share link, and delete the account.
  *
  * Downloads go through apiFetch (bearer token, refresh on 401) and reach the
  * browser as a Blob on a temporary object-URL link. Nothing is written to
@@ -84,10 +84,56 @@ export async function deleteMyAccount(password, fetcher = apiFetch) {
   return { ok: false, status: res.status, code: data.code || null, error: data.error || `HTTP ${res.status}` };
 }
 
-/** The i18n key for a failed deletion. */
+/** The i18n key for a failed deletion. A wrong password is 403 WRONG_PASSWORD
+ *  — never 401, which apiFetch would treat as an expired session and re-send. */
 export function deleteErrorKey(result) {
   if (result?.code === "PASSWORD_REQUIRED") return "account.passwordRequired";
-  if (result?.status === 401) return "account.wrongPassword";
+  if (result?.code === "WRONG_PASSWORD") return "account.wrongPassword";
   if (result?.status === 429) return "account.tooMany";
   return "account.deleteFailed";
 }
+
+/* ── Stored files and share links (v21.30) ─────────────────
+   The Save dialog and the notices say a stored file is kept "until you
+   delete it", and that revoking a link deletes it — but the app had no
+   control for either: the routes existed, nothing called them. /account
+   lists both, with a delete (and, for a file, "analyse again") on each. */
+
+async function jsonOf(res) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+/**
+ * Every dataset the user owns, Trash included, as { id, name, rows, cols,
+ * createdAt, automatic, trashed } — `automatic` for a copy an earlier version
+ * of DAB stored without asking (datasets.saved_on_request = 0).
+ */
+export async function listStoredFiles(fetcher = apiFetch) {
+  const [live, trash] = await Promise.all(["", "&trashed=true"].map(async (q) => jsonOf(await fetcher(`/api/datasets?limit=100${q}`))));
+  return [...live, ...trash].map((d) => ({
+    id: d.id, name: d.name, rows: d.total_rows, cols: d.total_cols, createdAt: d.created_at,
+    automatic: Number(d.saved_on_request) !== 1, trashed: Number(d.is_trashed) === 1,
+  }));
+}
+
+/** Delete a stored file for good — the same cascade as the retention job. */
+export const deleteStoredFile = async (id, fetcher = apiFetch) =>
+  jsonOf(await fetcher(`/api/datasets/${encodeURIComponent(id)}/permanent`, { method: "DELETE" }));
+
+/** Analyse a stored file again (its current version) — the result the dashboard shows. */
+export const analyseStoredFile = async (id, fetcher = apiFetch) =>
+  jsonOf(await fetcher(`/api/datasets/${encodeURIComponent(id)}/analyze`, { method: "POST", body: JSON.stringify({ question: "" }) }));
+
+/** The user's share links as { id, title, expiresAt, views, expired }. */
+export async function listShareLinks(fetcher = apiFetch, now = Date.now()) {
+  return (await jsonOf(await fetcher("/api/shares"))).map((l) => ({
+    id: l.id, title: l.title, expiresAt: l.expires_at, views: Number(l.view_count) || 0,
+    expired: !!l.expires_at && new Date(l.expires_at).getTime() <= now,
+  }));
+}
+
+/** Revoke a link: the server deletes it, and the public page answers 404 from then on. */
+export const revokeShareLink = async (id, fetcher = apiFetch) =>
+  jsonOf(await fetcher(`/api/shares/${encodeURIComponent(id)}`, { method: "DELETE" }));

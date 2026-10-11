@@ -129,7 +129,7 @@ export function FixPanel({ datasetId, onApplied, aiOff = false, save }) {
       else if (scope.tooMany) toast(t("aiEdit.tooMany").replace("{rows}", scope.rowCount.toLocaleString()).replace("{max}", scope.maxRows), "error");
       else if (!scope.sentColumns.length) toast(t("aiEdit.nothingToSend"), "error");
       else setConfirm(scope);
-    } catch (e) { toast(e.message || "เรียก AI ไม่สำเร็จ", "error"); }
+    } catch (e) { toast(e.message || t("common.error"), "error"); }
     finally { setAiBusy(false); }
   }
 
@@ -141,7 +141,7 @@ export function FixPanel({ datasetId, onApplied, aiOff = false, save }) {
     try {
       const d = await postJSON(`/api/fixes/${datasetId}/ai-edit`, { instruction: inst.trim(), confirmSend: true });
       setAi(d);
-    } catch (e) { toast(e.message || "เรียก AI ไม่สำเร็จ", "error"); }
+    } catch (e) { toast(e.message || t("common.error"), "error"); }
     finally { setAiBusy(false); }
   }
 

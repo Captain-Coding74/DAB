@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   canDelete, acceptedLegalVersion, fileNameFrom, fetchDownload, exportUrl, exportFallbackName,
   filesIn, saveBlob, deleteMyAccount, deleteErrorKey,
+  listStoredFiles, deleteStoredFile, analyseStoredFile, listShareLinks, revokeShareLink,
 } from "./account.js";
 import { STRINGS } from "./i18n.js";
 import "./strings/account.js";   // the page's string pack (lib/i18n.js addStrings)
@@ -40,11 +41,35 @@ describe("delete confirmation", () => {
     const missing = await fail(400, { error: "x", code: "PASSWORD_REQUIRED" });
     assert.equal(missing.code, "PASSWORD_REQUIRED");
     assert.equal(deleteErrorKey(missing), "account.passwordRequired");
-    assert.equal(deleteErrorKey(await fail(401, { error: "Wrong password" })), "account.wrongPassword");
+    assert.equal(deleteErrorKey(await fail(403, { error: "Wrong password", code: "WRONG_PASSWORD" })), "account.wrongPassword");
     assert.equal(deleteErrorKey(await fail(429, {})), "account.tooMany");
     assert.equal(deleteErrorKey(await fail(500, {})), "account.deleteFailed");
     for (const k of ["account.passwordRequired", "account.wrongPassword", "account.tooMany", "account.deleteFailed"]) {
       assert.ok(STRINGS[k], `${k} is translated`);
+    }
+  });
+});
+
+/* v21.30: a wrong password came back 401, which apiFetch treats as an expired
+   session — it rotated the tokens and re-sent the DELETE, spending two of
+   the account budget's tries per typo. Through the REAL apiFetch now. */
+describe("a wrong password through apiFetch", () => {
+  test("one request, no token refresh, and the wrong-password message", async () => {
+    const { apiFetch, configureApi } = await import("./api.js");
+    let refreshes = 0, logouts = 0;
+    const sent = [];
+    configureApi({ getState: () => ({ accessToken: "at", refreshTokens: async () => { refreshes++; return true; }, logout: () => { logouts++; } }) });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => { sent.push(opts.method); return response(403, { error: "Wrong password", code: "WRONG_PASSWORD" }); };
+    try {
+      const r = await deleteMyAccount("typo", apiFetch);
+      assert.equal(deleteErrorKey(r), "account.wrongPassword");
+      assert.deepEqual(sent, ["DELETE"]);
+      assert.equal(refreshes, 0);
+      assert.equal(logouts, 0);
+    } finally {
+      globalThis.fetch = realFetch;
+      configureApi({ getState: () => ({ accessToken: null, refreshTokens: async () => false, logout: () => {} }) });
     }
   });
 });
@@ -101,5 +126,47 @@ describe("downloads", () => {
     assert.equal(acceptedLegalVersion({ legal: { accepted: null, current: "2026-10-10" } }), null);
     assert.equal(acceptedLegalVersion({}), null);
     assert.equal(acceptedLegalVersion(null), null);
+  });
+});
+
+/* v21.30: stored files and share links can be listed and deleted one by one
+   — the notices promise "until you delete it" and "revoking deletes it". */
+describe("stored files and share links", () => {
+  const recorder = (routes) => {
+    const calls = [];
+    const fetcher = async (url, opts = {}) => { calls.push(`${opts.method || "GET"} ${url}`); return response(200, routes(url)); };
+    return { calls, fetcher };
+  };
+
+  test("lists live and trashed datasets, marking the copies an earlier version stored by itself", async () => {
+    const { calls, fetcher } = recorder((url) => url.includes("trashed=true")
+      ? [{ id: "t", name: "old", total_rows: 3, total_cols: 2, created_at: "2026-01-01", saved_on_request: 0, is_trashed: 1 }]
+      : [{ id: "a", name: "roster.csv", total_rows: 30, total_cols: 5, created_at: "2026-10-11", saved_on_request: 1, is_trashed: 0 },
+         { id: "b", name: "sales.csv", total_rows: 9, total_cols: 4, created_at: "2026-05-01", saved_on_request: 0, is_trashed: 0 }]);
+    const files = await listStoredFiles(fetcher);
+    assert.deepEqual(calls, ["GET /api/datasets?limit=100", "GET /api/datasets?limit=100&trashed=true"]);
+    assert.deepEqual(files.map((f) => [f.id, f.automatic, f.trashed]), [["a", false, false], ["b", true, false], ["t", true, true]]);
+  });
+
+  test("delete is the permanent delete; analyse again is the stored-dataset analysis", async () => {
+    const { calls, fetcher } = recorder(() => ({ success: true }));
+    await deleteStoredFile("a/b", fetcher);
+    await analyseStoredFile("a", fetcher);
+    assert.deepEqual(calls, ["DELETE /api/datasets/a%2Fb/permanent", "POST /api/datasets/a/analyze"]);
+  });
+
+  test("share links: expiry and views, and revoke deletes the link", async () => {
+    const { calls, fetcher } = recorder((url) => url === "/api/shares"
+      ? [{ id: "s1", title: "Analysis report", expires_at: "2026-11-10T00:00:00Z", view_count: 4 },
+         { id: "s2", title: "Q3", expires_at: "2026-10-01T00:00:00Z", view_count: 0 }]
+      : { success: true });
+    const links = await listShareLinks(fetcher, Date.parse("2026-10-11T00:00:00Z"));
+    assert.deepEqual(links.map((l) => [l.id, l.views, l.expired]), [["s1", 4, false], ["s2", 0, true]]);
+    await revokeShareLink("s1", fetcher);
+    assert.equal(calls.at(-1), "DELETE /api/shares/s1");
+  });
+
+  test("a refused request throws with the server's message", async () => {
+    await assert.rejects(deleteStoredFile("x", async () => response(403, { error: "Forbidden" })), /Forbidden/);
   });
 });

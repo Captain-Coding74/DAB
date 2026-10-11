@@ -9,7 +9,7 @@ import { useState, useCallback, useRef } from "react";
 import { useAppStore } from "../store";
 import { apiFetch, getJSON, postJSON } from "../lib/api";
 import { startSpan } from "../lib/perf";
-import { saveDataset } from "../lib/saveDataset";
+import { saveDataset, analyzeForm } from "../lib/saveDataset";
 import { t } from "../lib/i18n";
 
 const FILE_RE = /\.(csv|xlsx|xls)$/i;
@@ -97,10 +97,8 @@ export function useAnalysis() {
     const savedAs = useAppStore.getState().currentAnalysis?.datasetId ?? null;
     setLoading(true);
     const endSpan = startSpan("analyze");   // v13: measure what the USER waits for
-    const fd = new FormData();
-    fd.append("file", file, file.name);
-    fd.append("question", question);
-    if (noAi) fd.append("noAi", "1");
+    // The dataset it was saved as goes along, so its AI switch applies (lib/saveDataset.js).
+    const fd = analyzeForm(file, question, { noAi, datasetId: savedAs });
     try {
       const res  = await apiFetch("/api/analyze", { method: "POST", headers: {}, body: fd });
       const data = await res.json();

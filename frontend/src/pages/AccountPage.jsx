@@ -4,10 +4,14 @@
  *
  * "Download my data" fetches GET /api/auth/me/export with the bearer token
  * and hands the JSON to the browser as a file; the saved original files it
- * lists can then be downloaded one by one. "Delete my account" says what
- * goes at once and what is kept, and needs the username typed out AND the
- * password — then the local session is cleared and the user lands on /.
- * The decisions and requests live in lib/account.js (unit-tested).
+ * lists can then be downloaded one by one. "Stored files" and "Share links"
+ * list each file DAB keeps and each live link, with a delete on every row —
+ * the notices say a file is kept until you delete it and that revoking a
+ * link deletes it, and nothing in the app could do either before. "Delete my
+ * account" says what goes at once and what is kept, and needs the username
+ * typed out AND the password — then the local session is cleared and the
+ * user lands on /. The decisions and requests live in lib/account.js
+ * (unit-tested).
  */
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -20,6 +24,7 @@ import "../lib/strings/account.js";   // v21.30: this page's strings load with i
 import {
   canDelete, acceptedLegalVersion, fetchDownload, exportUrl, exportFallbackName,
   filesIn, saveBlob, deleteMyAccount, deleteErrorKey,
+  listStoredFiles, deleteStoredFile, analyseStoredFile, listShareLinks, revokeShareLink,
 } from "../lib/account";
 
 const LINK  = "text-sm underline underline-offset-2 text-gray-600 dark:text-gray-300 hover:text-brand-500 transition-colors";
@@ -103,6 +108,99 @@ function ExportCard({ username }) {
   );
 }
 
+/* ── One list card for stored files and share links ───────── */
+const NOTE = "text-xs text-gray-500 dark:text-gray-400";
+
+/** Run a row's action; a finished delete drops the row. Errors become a toast. */
+function useRowAction(drop) {
+  const { t } = useLang();
+  const toast = useAppStore(s => s.toast);
+  const [busy, setBusy] = useState(false);
+  async function run(action, doneKey) {
+    setBusy(true);
+    try {
+      await action();
+      if (doneKey) { toast(t(doneKey)); drop(); return; }
+    } catch { toast(t("account.actionFailed"), "error"); }
+    setBusy(false);
+  }
+  return [busy, run];
+}
+
+/** A delete that asks once more before it runs: it cannot be undone. */
+function ConfirmDelete({ label, busy, onConfirm }) {
+  const { t } = useLang();
+  const [armed, setArmed] = useState(false);
+  if (!armed) return <Button size="sm" variant="ghost" disabled={busy} onClick={() => setArmed(true)}>{label}</Button>;
+  return (
+    <span className="flex gap-1">
+      <Button size="sm" variant="danger" loading={busy} onClick={onConfirm}>{t("account.confirmDelete")}</Button>
+      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setArmed(false)}>{t("common.cancel")}</Button>
+    </span>
+  );
+}
+
+function ListCard({ title, body, empty, load, Row }) {
+  const { t } = useLang();
+  const [items, setItems] = useState(null);   // null while loading, false if it failed
+  useEffect(() => { load().then(setItems, () => setItems(false)); }, []);
+  const status = items === false ? t("account.listFailed") : !items ? t("common.loading") : !items.length && empty;
+  return (
+    <Card title={title} role="region" aria-label={title}>
+      <p className="text-sm text-gray-700 dark:text-gray-300">{body}</p>
+      {status ? <p role={items === false ? "alert" : undefined} className={`mt-3 ${NOTE}`}>{status}</p> : (
+        <ul className="mt-3 divide-y divide-gray-100 dark:divide-gray-800">
+          {items.map(item => (
+            <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <Row item={item} drop={() => setItems(list => list.filter(i => i.id !== item.id))}/>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function FileRow({ item: f, drop }) {
+  const { t } = useLang();
+  const nav = useNavigate();
+  const setCurrentAnalysis = useAppStore(s => s.setCurrentAnalysis);
+  const [busy, run] = useRowAction(drop);
+  // "Analyse again" opens the result on the dashboard, where the dataset's
+  // hypothesis tests, fixes and AI switch are.
+  const open = () => run(async () => {
+    setCurrentAnalysis({ ...(await analyseStoredFile(f.id)), datasetId: f.id, fileName: f.name });
+    nav("/");
+  });
+  return (
+    <>
+      <div className="min-w-0">
+        <p className="text-sm text-gray-800 dark:text-gray-200 break-all">{f.name} <span className={`num ${NOTE}`}>· {f.rows} {t("account.rows")} · {String(f.createdAt || "").slice(0, 10)}</span></p>
+        {f.automatic && <p className={NOTE}>{t("account.storedAuto")}</p>}
+        {f.trashed && <p className={NOTE}>{t("account.storedTrash")}</p>}
+      </div>
+      <span className="flex gap-1">
+        {!f.trashed && <Button size="sm" variant="ghost" disabled={busy} onClick={open}>{t("account.analyseAgain")}</Button>}
+        <ConfirmDelete label={t("account.delete")} busy={busy} onConfirm={() => run(() => deleteStoredFile(f.id), "account.fileDeleted")}/>
+      </span>
+    </>
+  );
+}
+
+function LinkRow({ item: l, drop }) {
+  const { t } = useLang();
+  const [busy, run] = useRowAction(drop);
+  return (
+    <>
+      <div className="min-w-0">
+        <p className="text-sm text-gray-800 dark:text-gray-200 break-all">{l.title}</p>
+        <p className={`num ${NOTE}`}>{l.expired ? t("account.expired") : `${t("account.expires")} ${String(l.expiresAt || "").slice(0, 10)}`} · {l.views} {t("account.views")}</p>
+      </div>
+      <ConfirmDelete label={t("account.revoke")} busy={busy} onConfirm={() => run(() => revokeShareLink(l.id), "account.revoked")}/>
+    </>
+  );
+}
+
 function DeleteCard({ username, onDeleted }) {
   const { t } = useLang();
   const [typed, setTyped]       = useState("");
@@ -178,6 +276,8 @@ export default function AccountPage() {
         <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t("account.title")}</h1>
       </div>
       <ProfileCard username={user.username} profile={profile}/>
+      <ListCard title={t("account.storedTitle")} body={t("account.storedBody")} empty={t("account.filesNone")} load={listStoredFiles} Row={FileRow}/>
+      <ListCard title={t("account.linksTitle")} body={t("account.linksBody")} empty={t("account.linksNone")} load={listShareLinks} Row={LinkRow}/>
       <ExportCard username={user.username}/>
       <DeleteCard username={user.username} onDeleted={onDeleted}/>
     </div>

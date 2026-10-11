@@ -1,5 +1,5 @@
 import React, { useEffect, useState, Suspense, lazy } from "react";
-import { Routes, Route, NavLink, useNavigate } from "react-router-dom";
+import { Routes, Route, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { BarChart2, Users, History, LogOut, LogIn, Moon, Sun, Command, CircleUser } from "lucide-react";
 import { useAppStore } from "./store";
 import { postJSON } from "./lib/api";
@@ -10,6 +10,7 @@ import CommandPalette, { firePaletteAction } from "./components/palette";
 import PerfOverlay from "./components/perf";
 import Dashboard from "./components/dashboard";
 import LegalGate from "./components/legal";   // v21.30: blocks until the current Terms/Privacy version is accepted
+import { gateActive, gateShown } from "./lib/legal.js";
 
 // v11: pages load lazily — the first paint ships only the dashboard
 const WorkspacePanel = lazy(() => import("./components/workspace"));
@@ -37,6 +38,7 @@ function useGlobalShortcuts() {
   const paletteOpen    = useAppStore(s => s.paletteOpen);
   useEffect(() => {
     const onKey = (e) => {
+      if (gateActive(useAppStore.getState())) return;   // v21.30: nothing acts behind the re-accept dialog
       const typing = FIELD_TAG_RE.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(!paletteOpen); return; }
       if (typing) return;
@@ -183,8 +185,13 @@ const LEGAL_LINKS = [
 function Shell() {
   useGlobalShortcuts();
   const { t } = useLang();
+  // v21.30: while the re-accept dialog is up the app behind it is inert — no
+  // Tab, click or screen-reader focus reaches it ("contents": no layout box).
+  const { pathname } = useLocation();
+  const gated = useAppStore((s) => gateShown(s, pathname));
   return (
     <>
+      <div className="contents" inert={gated ? "" : undefined}>
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:bg-white dark:focus:bg-gray-900 focus:px-3 focus:py-2 focus:rounded-lg focus:border focus:border-brand-400 text-sm">
         ข้ามไปเนื้อหาหลัก
       </a>
@@ -227,6 +234,7 @@ function Shell() {
           </a>
         </div>
       </footer>
+      </div>
       <LegalGate/>
       <CommandPalette/>
       <ShortcutsHelp/>
