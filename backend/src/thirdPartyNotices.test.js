@@ -181,13 +181,15 @@ describe("fonts", () => {
 });
 
 describe("/licenses page", () => {
-  test("every licence named in its table matches package-lock.json", () => {
+  test("every library in its table ships in production, with the licence package-lock.json names", () => {
     const html = readFileSync(new URL("frontend/public/licenses.html", ROOT), "utf8");
     const lock = JSON.parse(readFileSync(new URL("package-lock.json", ROOT), "utf8")).packages;
+    // the same walk as the notices: a build or test tool is not a "runtime library", even if it is in the lockfile
+    const production = productionKeys(lock);
     const named = [...html.matchAll(/<td><code>([^<]+)<\/code><\/td><td>([^<]+)<\/td>/g)];
     assert.ok(named.length >= 10, "the main runtime libraries are listed");
     for (const [, pkg, licence] of named) {
-      assert.ok(lock[`node_modules/${pkg}`], `${pkg} is a dependency`);
+      assert.ok(production.has(`node_modules/${pkg}`), `${pkg} is a production dependency`);
       assert.equal(licence, licenceOf({}, lock[`node_modules/${pkg}`]), pkg);
     }
     for (const href of ["/licenses/third-party.txt", "/licenses/OFL-1.1-IBM-Plex.txt"]) {
