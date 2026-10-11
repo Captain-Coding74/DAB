@@ -7,8 +7,9 @@ metrics ledger (`metrics/history.jsonl`).
 Wording slips in the Privacy Notice, the Storage notice and the Contact
 page, found while checking the notice line by line for counsel. None
 changes what DAB does with data, so `LEGAL_VERSION` stays 2026-10-10 and
-nobody is asked to accept again; each changed page now prints "Wording
-revised 2026-10-11" beside its version, in both languages.
+nobody is asked to accept again; each changed page prints "Wording revised
+2026-10-11" beside its version, at the top (and, for the Privacy Notice, in
+§15 too), in both languages.
 - **Sensitive data:** the English list of PDPA s.26 categories said "sexual
   orientation"; the Act and the Thai text say sexual behaviour.
 - **Analytics:** "no analytics" (Privacy §2 and §14, Storage notice) now
@@ -28,12 +29,22 @@ revised 2026-10-11" beside its version, in both languages.
   `{{STORAGE_ENCRYPTION}}`, filled from a check rather than from the key
   alone (`services/encryptionStatus.js`): no key → DAB does not yet encrypt
   stored files; key set but anything still in the clear (objects saved
-  before the key, pre-v21.1 copies in `dataset_versions.file_content`), or
-  not checked yet → files saved since encryption was switched on are
-  encrypted and some older ones are not yet; key set and the check finds
-  nothing in the clear → stored files are encrypted at rest (AES-256-GCM).
+  before the key, pre-v21.1 copies in `dataset_versions.file_content`), not
+  checked yet, or the check failed → files saved since encryption was
+  switched on are encrypted and some older ones may not be yet; key set and
+  the check finds nothing in the clear → stored files are encrypted at rest
+  (AES-256-GCM).
   The check runs at boot and daily, reads only each object's first bytes,
   and logs counts (never keys) while plaintext remains.
+- **CI, about half the wait:** the 3.5-minute "Browser Suite + Perf Budgets +
+  Quality Gates" job ran the browser suite, coverage (70 s) and the audit
+  (35 s) in series, and the Docker build waited for it before Deploy rebuilt
+  the image without a cache. Browser + perf, coverage and the audit are now
+  separate jobs that run side by side; the gate job keeps its name, reads
+  their metrics and passes only when all three did. The image builds
+  alongside the tests, Deploy reuses its cached layers, the two jobs without
+  an npm cache got one, and a newer push to a branch or PR cancels the run
+  it replaces (never on `main`).
 
 ## [21.30] — 2026-10-11 "Privacy"
 A legal review of DAB against Thailand's PDPA, the Computer-Related Crime

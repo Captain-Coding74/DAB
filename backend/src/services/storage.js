@@ -248,7 +248,17 @@ async function readHead(key) {
  */
 export async function countUnsealed() {
   let n = 0;
-  for await (const key of listKeys()) if (!isSealed(await readHead(key))) n++;
+  for await (const key of listKeys()) {
+    let head;
+    try { head = await readHead(key); }
+    catch (err) {
+      // Deleted between the listing and the read (a user delete, the retention
+      // run): a file that is gone is not plaintext at rest.
+      if (err.code === "ENOENT" || err.name === "NoSuchKey") continue;
+      throw err;
+    }
+    if (!isSealed(head)) n++;
+  }
   return n;
 }
 

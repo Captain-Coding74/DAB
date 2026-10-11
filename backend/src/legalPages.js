@@ -50,8 +50,9 @@ const both = (en, th) => `<span lang="en">${en}</span><span lang="th">${th}</spa
 const ENCRYPTION = {
   all:     both("Stored files are encrypted at rest (AES-256-GCM).",
                 "ไฟล์ที่จัดเก็บถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM)"),
-  partial: both("Files saved since encryption was switched on are encrypted at rest (AES-256-GCM); some older files are not encrypted yet.",
-                "ไฟล์ที่บันทึกหลังเปิดใช้การเข้ารหัสถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM) แต่ไฟล์เก่าบางส่วนยังไม่ได้เข้ารหัส"),
+  // Also shown before the first check and after a failed one, so it hedges.
+  partial: both("Files saved since encryption was switched on are encrypted at rest (AES-256-GCM); some older files may not be encrypted yet.",
+                "ไฟล์ที่บันทึกหลังจากเปิดใช้การเข้ารหัสแล้วจะถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM) แต่ไฟล์เก่าบางส่วนอาจยังไม่ได้เข้ารหัส"),
   off:     both("Stored files are not yet encrypted at rest by DAB itself.",
                 "ขณะนี้ตัว DAB เองยังไม่ได้เข้ารหัสไฟล์ที่จัดเก็บไว้"),
 };

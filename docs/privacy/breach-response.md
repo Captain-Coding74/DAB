@@ -40,7 +40,7 @@ Choose what fits; do not wait for the full picture.
 | Whose? | Account holders → DAB is the controller and notifies. People inside uploaded files → DAB is the processor: tell the users who uploaded them (step 6), who decide about their own notices |
 | How many people and records? | Count with SQL on the affected tables; for upload content, `datasets.total_rows` is an upper bound |
 | Especially harmful? | Thai citizen IDs and phone numbers (leaks used by scam call centres lie behind most published PDPA fines); records of minors (School Edition); PDPA s.26 data; password hashes; session tokens |
-| Was it protected? | Stored files encrypted at rest only if `STORAGE_ENCRYPTION_KEY` was set and the key did not leak; passwords are bcrypt hashes; share pages omit file names and the values of detected personal-data columns |
+| Was it protected? | A stored file counts as encrypted only if it was sealed (written after `STORAGE_ENCRYPTION_KEY` was set, or sealed by `storage-encrypt`) and the key did not leak. Before relying on it, check the server log for "stored files are not all encrypted yet" around the breach date, or run `npm run storage-encrypt -w backend -- --dry-run`, for plaintext objects and rows; passwords are bcrypt hashes; share pages omit file names and the values of detected personal-data columns |
 | Contained? | Is the cause closed, and is the data still reachable? |
 
 Then decide, and write the reasoning in the register:

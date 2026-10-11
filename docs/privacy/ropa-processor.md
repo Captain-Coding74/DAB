@@ -85,7 +85,7 @@ As in `ropa-controller.md` ("Security measures"), plus, for upload content:
 
 - personal-data detection, masking in the user's own view of identifiers such as citizen IDs and phone numbers, and the AI and share-page rules above;
 - the original file is stored only when the user opts in;
-- stored files encrypted at rest (AES-256-GCM) when `STORAGE_ENCRYPTION_KEY` is set; storage keys do not contain the file name;
+- stored files encrypted at rest (AES-256-GCM) once `STORAGE_ENCRYPTION_KEY` is set — new files on write, older ones when `storage-encrypt` seals them; the server checks at boot and daily (`services/encryptionStatus.js`) and logs "stored files are not all encrypted yet" with counts while any remain; storage keys do not contain the file name;
 - access to a stored dataset needs ownership or an explicit permission; workspace membership alone grants none.
 
 ## Duties to controllers

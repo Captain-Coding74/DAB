@@ -119,7 +119,12 @@ describe("warnMissingLegalContacts", () => {
   test("encryption at rest is stated as checked on this server, in both languages", () => {
     const say = (state) => legalValues(legalInfo({}), {}, state).STORAGE_ENCRYPTION;
     assert.match(say("all"), /<span lang="en">Stored files are encrypted at rest \(AES-256-GCM\)\.<\/span><span lang="th">[^<]+<\/span>$/);
-    assert.match(say("partial"), /<span lang="en">Files saved since encryption was switched on are encrypted at rest \(AES-256-GCM\); some older files are not encrypted yet\.<\/span>/);
+    assert.match(say("partial"), /<span lang="en">Files saved since encryption was switched on are encrypted at rest \(AES-256-GCM\); some older files may not be encrypted yet\.<\/span>/);
+    // The Thai prevails: pin it as tightly as the English.
+    const th = (state) => say(state).match(/<span lang="th">([^<]+)<\/span>/)[1];
+    assert.ok(th("off").includes("ยังไม่ได้เข้ารหัส") && !th("off").includes("AES"));
+    assert.ok(th("all").includes("AES-256-GCM") && !th("all").includes("ยังไม่"));
+    assert.ok(th("partial").includes("ไฟล์เก่าบางส่วนอาจยังไม่ได้เข้ารหัส"));
     assert.match(say("off"), /<span lang="en">Stored files are not yet encrypted at rest by DAB itself\.<\/span><span lang="th">/);
     assert.ok(!say("off").includes("AES"), "no encryption claim without the key");
     assert.equal(say("unknown"), say("partial"), "anything unverified gets the cautious wording");
@@ -191,6 +196,8 @@ describe("page sources (frontend/public)", () => {
     for (const [name, html] of [["privacy", privacy], ["storage", storage]]) {
       assert.ok(!html.includes("วิเคราะห์พฤติกรรมผู้ใช้"), `${name}: Thai matches the English scope`);
       assert.ok(html.includes("วิเคราะห์การใช้งาน (analytics)"), `${name}: Thai names usage analytics`);
+      assert.ok(!/\(analytics\)(?! ของบุคคลที่สาม)/.test(html), `${name}: "third-party" governs every Thai mention of analytics`);
+      assert.ok(!html.includes("โฆษณาหรือการติดตามใด ๆ"), `${name}: Thai rules out tracking tools, like the English`);
     }
     const contact = source("contact");
     assert.ok(!contact.includes("download all your data") && !contact.includes("ดาวน์โหลดข้อมูลทั้งหมดของคุณ"), "the download leaves out the traffic log");

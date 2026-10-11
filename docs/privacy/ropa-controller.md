@@ -47,7 +47,7 @@ Lawful bases use the PDPA s.24 numbering: contract (s.24(3)), legal obligation (
 | Recipients | Hosting provider; people the account holder chooses (workspace members, users a dataset is shared with, anyone holding a share link); Anthropic for AI features (C2 overlaps with the processor record: the content of files and results is recorded in `ropa-processor.md`) |
 | Transfers abroad | Anthropic PBC, USA, for AI features (see `ropa-processor.md`); the hosting region if outside Thailand |
 | Retention | See `retention-schedule.md`: analyses 365 days; saved datasets until deleted or 365 days without activity; Trash 30 days; activity feed and notifications 365 days; share links until revoked or their analysis is deleted |
-| Security | Owner or explicit per-dataset permission needed to reach a dataset; share pages show an allowlisted view without the file name; stored files encrypted at rest (AES-256-GCM) when `STORAGE_ENCRYPTION_KEY` is set |
+| Security | Owner or explicit per-dataset permission needed to reach a dataset; share pages show an allowlisted view without the file name; stored files encrypted at rest (AES-256-GCM) once `STORAGE_ENCRYPTION_KEY` is set — new files on write, older ones when `storage-encrypt` seals them; the server checks at boot and daily (`services/encryptionStatus.js`) and logs "stored files are not all encrypted yet" with counts while any remain |
 
 ## C3. Acceptance of the Terms and the Privacy Notice
 
@@ -164,7 +164,7 @@ In place in v21.30:
 - Upload checks by content as well as extension, a size limit (`MAX_UPLOAD_MB`), and a ZIP-bomb guard.
 - Metrics endpoint closed in production unless `METRICS_TOKEN` or an operator account is used. Production error responses carry no internal detail.
 - Logs redact credentials and share tokens.
-- Stored files encrypted at rest (AES-256-GCM) when the operator sets `STORAGE_ENCRYPTION_KEY`; new storage keys no longer contain the file name. Postgres certificate verification is available through `DATABASE_SSL_CA` (a CA certificate, as PEM text or a file path) or `DATABASE_SSL_VERIFY=1` (the system CAs); without either, the connection is encrypted but the certificate is not checked, and production warns at boot.
+- Stored files encrypted at rest (AES-256-GCM) once `STORAGE_ENCRYPTION_KEY` is set — new files on write, older ones when `storage-encrypt` seals them; the server checks at boot and daily (`services/encryptionStatus.js`) and logs "stored files are not all encrypted yet" with counts while any remain; new storage keys no longer contain the file name. Postgres certificate verification is available through `DATABASE_SSL_CA` (a CA certificate, as PEM text or a file path) or `DATABASE_SSL_VERIFY=1` (the system CAs); without either, the connection is encrypted but the certificate is not checked, and production warns at boot.
 - Automatic deletion (`retention-schedule.md`).
 
 Known limits, to weigh in a breach assessment:

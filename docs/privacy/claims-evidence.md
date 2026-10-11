@@ -63,7 +63,7 @@ Tests named "routes", "shares" and so on are `backend/src/<name>.test.js`; the f
 | AI Edit (`FixPanel.jsx`) | "คอลัมน์ข้อมูลส่วนบุคคลไม่ถูกส่งเข้า AI" and the "protected columns" line | `aiEdit.notSent` names *detected* personal data; the AI Edit confirmation dialog lists what is sent |
 | Upload and dataset controls | No AI switch | "Statistics only — don't send to AI" and the dataset AI switch: chat, the agent and AI Edit refuse with `AI_DISABLED`; analysis and fix suggestions serve statistics only / rule-based results. Saving a statistics-only upload creates the dataset with AI off (dataLifecycle "a Statistics-only upload saves a dataset with AI off…") |
 | Workspace members and dataset collaborators | Email addresses shown to other members | Hidden — the workspace panel shows usernames only, and the API returns an email only on the caller's own row (memberPrivacy) |
-| Stored files | Unencrypted, file name in the storage key | Encrypted at rest when `STORAGE_ENCRYPTION_KEY` is set; no file name in new keys (storageCrypto, memberPrivacy) |
+| Stored files | Unencrypted, file name in the storage key | Encrypted at rest once `STORAGE_ENCRYPTION_KEY` is set and older files are sealed by `storage-encrypt`; the notice states what the boot/daily check finds (encryptionStatus); no file name in new keys (storageCrypto, memberPrivacy) |
 
 ## 4. To do
 
