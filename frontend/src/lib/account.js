@@ -105,13 +105,28 @@ async function jsonOf(res) {
   return data;
 }
 
+/* GET /api/datasets returns at most 100 a page (backend pagination.js), and
+   before 21.30 every signed-in analysis stored its file — so the list is read
+   page by page. Keyed by id, it stops when a page brings nothing new, so a
+   row that moves between pages is listed once and nothing can loop. */
+const PAGE = 100;
+async function everyPage(fetcher, query) {
+  const byId = new Map();
+  for (let offset = 0; ; offset += PAGE) {
+    const page = await jsonOf(await fetcher(`/api/datasets?limit=${PAGE}${offset ? `&offset=${offset}` : ""}${query}`));
+    const before = byId.size;
+    for (const d of page) byId.set(d.id, d);
+    if (page.length < PAGE || byId.size === before) return [...byId.values()];
+  }
+}
+
 /**
  * Every dataset the user owns, Trash included, as { id, name, rows, cols,
  * createdAt, automatic, trashed } — `automatic` for a copy an earlier version
  * of DAB stored without asking (datasets.saved_on_request = 0).
  */
 export async function listStoredFiles(fetcher = apiFetch) {
-  const [live, trash] = await Promise.all(["", "&trashed=true"].map(async (q) => jsonOf(await fetcher(`/api/datasets?limit=100${q}`))));
+  const [live, trash] = await Promise.all(["", "&trashed=true"].map((q) => everyPage(fetcher, q)));
   return [...live, ...trash].map((d) => ({
     id: d.id, name: d.name, rows: d.total_rows, cols: d.total_cols, createdAt: d.created_at,
     automatic: Number(d.saved_on_request) !== 1, trashed: Number(d.is_trashed) === 1,

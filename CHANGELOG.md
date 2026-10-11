@@ -92,13 +92,13 @@ lawyer (open questions in `docs/privacy/README.md`).
   safeguard (`LEGAL_HOSTING_TRANSFER_BASIS`), describe how a new version
   takes effect, and say the traffic log is sent on request rather than in
   the download.
-- **Tests and budgets.** 593 backend unit, 399 integration, 79 frontend,
+- **Tests and budgets.** 594 backend unit, 399 integration, 81 frontend,
   25 HTTP e2e and 39 browser/geometry tests pass; the browser suites now
   drive sign-up, Save dataset, the share dialog, the AI-edit confirmation,
   the `/account` file and link deletes, a Statistics-only result, the
   re-accept dialog (and its keyboard guards) and the legal pages. They run
   on the bundled Chromium again (without its `--single-process` flag).
-  Initial payload 100.9 / 101 kB; total code 246.4 / 247 kB (raised from
+  Initial payload 100.9 / 101 kB; total code 246.5 / 247 kB (raised from
   244 for the `/account` lists, reason in `frontend/perf-budget.json`). The coverage run reads its
   suite lists from `backend/package.json`; `maxFilesUncounted` 29 → 38 for
   eight lazily loaded privacy components and two operator CLIs (reason in

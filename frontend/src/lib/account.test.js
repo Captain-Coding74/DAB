@@ -148,6 +148,30 @@ describe("stored files and share links", () => {
     assert.deepEqual(files.map((f) => [f.id, f.automatic, f.trashed]), [["a", false, false], ["b", true, false], ["t", true, true]]);
   });
 
+  /* GET /api/datasets caps a page at 100 (backend pagination.js). Before
+     21.30 every signed-in analysis stored its file, so an active account can
+     hold far more than that — and the notices say /account lists them all. */
+  test("lists every page, not only the first 100", async () => {
+    const page = (from, n) => Array.from({ length: n }, (_, i) => ({ id: `d${from + i}`, saved_on_request: 0, is_trashed: 0 }));
+    const { calls, fetcher } = recorder((url) => {
+      if (url.includes("trashed=true")) return [];
+      const offset = Number(new URL(url, "http://x").searchParams.get("offset") || 0);
+      return offset === 0 ? page(0, 100) : offset === 100 ? page(100, 100) : page(200, 7);
+    });
+    const files = await listStoredFiles(fetcher);
+    assert.equal(files.length, 207);
+    assert.equal(new Set(files.map((f) => f.id)).size, 207);
+    assert.deepEqual(calls.filter((c) => !c.includes("trashed")),
+      ["GET /api/datasets?limit=100", "GET /api/datasets?limit=100&offset=100", "GET /api/datasets?limit=100&offset=200"]);
+  });
+
+  test("a server that ignores the offset cannot loop it forever", async () => {
+    const same = Array.from({ length: 100 }, (_, i) => ({ id: `s${i}` }));
+    const { calls, fetcher } = recorder((url) => (url.includes("trashed=true") ? [] : same));
+    assert.equal((await listStoredFiles(fetcher)).length, 100);
+    assert.equal(calls.length, 3, "the trash page, the first page and one repeat — then it stops");
+  });
+
   test("delete is the permanent delete; analyse again is the stored-dataset analysis", async () => {
     const { calls, fetcher } = recorder(() => ({ success: true }));
     await deleteStoredFile("a/b", fetcher);

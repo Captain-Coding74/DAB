@@ -14,6 +14,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { errorHandler, loggableError } from "./middleware/monitoring.js";
 import { logger } from "./logger.js";
+import pino from "pino";
 import { parse } from "csv-parse/sync";
 import { DuplicateUserError } from "./db/repository.js";
 
@@ -102,6 +103,21 @@ describe("errorHandler log lines", () => {
     const fsErr = Object.assign(new Error("ENOENT: no such file or directory, open '/data/objects/datasets/d/1-รายชื่อ ม.3.csv'"), { code: "ENOENT" });
     assert.ok(!logged(fsErr).includes("รายชื่อ"));
     assert.equal(loggableError(fsErr).code, "ENOENT");
+  });
+
+  /* The objects above are what the handler hands the logger; pino then runs
+     the `err` key through its serializer, which names an error after its
+     constructor. A plain object's constructor is Object, so every 5xx line
+     said "type": "Object" and the error's class was lost. */
+  test("the error's type survives pino's err serializer, and nothing quoted comes back", () => {
+    const line = pino.stdSerializers.err(loggableError(new TypeError("Cannot read 'roster.csv'")));
+    assert.equal(line.type, "TypeError");
+    assert.equal(line.message, 'Cannot read "…"');
+    assert.ok(!JSON.stringify(line).includes("roster"));
+    const csv = pino.stdSerializers.err(loggableError(csvError()));
+    assert.equal(csv.type, "CsvError");
+    assert.equal(csv.code, "INVALID_OPENING_QUOTE");
+    assert.ok(!JSON.stringify(csv).includes("Nattida"));
   });
 
   test("a rejected request is logged by its code: a taken username is not repeated", () => {

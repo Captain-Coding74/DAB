@@ -157,7 +157,11 @@ const QUOTED = /["'“‘][\s\S]*["'”’]/;
 export const unquoted = (text) => String(text ?? "").replace(QUOTED, '"…"').slice(0, 300);
 export function loggableError(err) {
   const frames = String(err?.stack || "").split("\n").filter((l) => /^\s+at /.test(l));
-  return { type: err?.name, code: err?.code, message: unquoted(err?.message), stack: frames.join("\n") };
+  // No prototype: pino's err serializer names an error after its constructor,
+  // and a plain object's is Object — every line said "type": "Object". With
+  // no constructor it keeps the type given here: the class, as pino gave it.
+  const type = err?.constructor?.name || err?.name;
+  return Object.assign(Object.create(null), { type, code: err?.code, message: unquoted(err?.message), stack: frames.join("\n") });
 }
 /** A rejected request's reason: its code when it has one, else the unquoted message. */
 export const rejectReason = (err) =>
