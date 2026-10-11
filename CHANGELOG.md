@@ -102,8 +102,14 @@ lawyer (open questions in `docs/privacy/README.md`).
   244 for the `/account` lists, reason in `frontend/perf-budget.json`). The coverage run reads its
   suite lists from `backend/package.json`; `maxFilesUncounted` 29 → 38 for
   eight lazily loaded privacy components and two operator CLIs (reason in
-  `quality-budget.json`). `npm run audit:gate` still fails on advisories in
-  the unchanged dependency tree (it fails the same on 21.29).
+  `quality-budget.json`).
+- **Dependencies.** `npm run audit:gate` was red on 21.29 too: advisories
+  published since the last dependency pass. `npm audit fix` (lockfile only)
+  brings proxy-addr 2.0.8 (IP spoofing through an IPv4-mapped IPv6 trust
+  subnet; `req.ip` feeds the traffic log and the rate limiter) and
+  shell-quote 1.12.0, both CRITICAL. The rest clear only with the
+  tailwindcss 4 rewrite; all five are frontend devDependencies, so they
+  join postcss and vite in the gate's reviewed allowlist. The gate passes.
 
 **Before deploying**, configure:
 - `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` (PDPA s.23),
