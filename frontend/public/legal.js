@@ -32,8 +32,10 @@
   apply(param === "th" || param === "en" ? param : (saved() === "th" ? "th" : "en"));
 
   // Switching language here changes the page height above a deep link
-  // (/privacy#ai), so put the target back in view.
-  const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  // (/privacy#ai), so put the target back in view. A malformed hash (#%E0)
+  // makes decodeURIComponent throw, which must not cost the toggle below.
+  let target = null;
+  try { target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1))); } catch { /* no target */ }
   if (target && document.body.dataset.lang !== served) target.scrollIntoView();
 
   links.forEach(a => a.addEventListener("click", (e) => {

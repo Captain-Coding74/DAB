@@ -7,6 +7,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { LEGAL_VERSION, legalInfo } from "./services/legal.js";
 import { LEGAL_PAGES, escapeHtml, legalValues, renderLegal, warnMissingLegalContacts } from "./legalPages.js";
 
@@ -55,6 +56,13 @@ describe("legalValues", () => {
     }
     assert.match(v.CONTACT_EMAIL, /Contact details are being set up/);
     assert.match(v.CONTACT_EMAIL, /กำลังตั้งค่าข้อมูลติดต่อ/);
+  });
+
+  test("a blank operator name says the name is being set up, not the contact details", () => {
+    const v = legalValues(legalInfo({ LEGAL_OPERATOR_NAME: "  " }));
+    assert.match(v.OPERATOR_NAME, /class="unset"/);
+    assert.match(v.OPERATOR_NAME, /operator's name is being set up/);
+    assert.match(v.OPERATOR_NAME, /กำลังตั้งค่าชื่อผู้ให้บริการ/);
   });
 
   test("a multi-line postal address keeps its lines", () => {
@@ -148,5 +156,37 @@ describe("page sources (frontend/public)", () => {
   test("the storage notice lists exactly the six keys DAB writes", () => {
     const keys = [...new Set(source("storage").match(/\bdab_[a-z_]+/g))].sort();
     assert.deepEqual(keys, ["dab_at", "dab_dark", "dab_landing_lang", "dab_rt", "dab_tour_done", "dab_user"]);
+  });
+});
+
+describe("legal.js (the language toggle)", () => {
+  /** Run legal.js against a minimal DOM: two EN/TH links, a hash, a store. */
+  function runToggle({ hash = "", search = "", stored = null } = {}) {
+    const store = new Map(stored ? [["dab_landing_lang", stored]] : []);
+    const link = (lang) => ({ dataset: { setLang: lang }, handlers: {}, attrs: {},
+      setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(t, fn) { this.handlers[t] = fn; } });
+    const links = [link("en"), link("th")];
+    const document = { body: { dataset: { lang: "en" } }, documentElement: {},
+      querySelectorAll: () => links, getElementById: () => null };
+    const ctx = { document, links, URLSearchParams,
+      location: { hash, search, pathname: "/privacy" }, history: { replaceState() {} },
+      localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) } };
+    vm.runInNewContext(readFileSync(new URL("legal.js", PUBLIC), "utf8"), ctx);
+    return { ...ctx, store };
+  }
+
+  test("a saved Thai choice applies, and a click switches and saves under dab_landing_lang", () => {
+    const { document, links, store } = runToggle({ stored: "th" });
+    assert.equal(document.body.dataset.lang, "th");
+    links[0].handlers.click({ preventDefault() {} });
+    assert.equal(document.body.dataset.lang, "en");
+    assert.deepEqual([...store], [["dab_landing_lang", "en"]], "no other key is written");
+  });
+
+  test("a malformed #hash does not stop the toggle from working", () => {
+    const { document, links } = runToggle({ hash: "#%E0" });
+    assert.equal(typeof links[1].handlers.click, "function", "click handler attached");
+    links[1].handlers.click({ preventDefault() {} });
+    assert.equal(document.body.dataset.lang, "th");
   });
 });

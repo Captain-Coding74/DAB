@@ -36,6 +36,8 @@ const NO_ADDRESS = pending("The postal address is being set up — please check 
                            "กำลังตั้งค่าที่อยู่ทางไปรษณีย์ โปรดกลับมาตรวจสอบอีกครั้งเร็ว ๆ นี้");
 const NO_HOSTING = pending("Not published yet — the details are being set up.",
                            "ยังไม่ได้เผยแพร่ — กำลังตั้งค่ารายละเอียด");
+const NO_NAME    = pending("The operator's name is being set up — please check back soon.",
+                           "กำลังตั้งค่าชื่อผู้ให้บริการ โปรดกลับมาตรวจสอบอีกครั้งเร็ว ๆ นี้");
 
 const clean = (v) => String(v ?? "").trim();
 /** A plain value, escaped, or its fallback. An address may span lines. */
@@ -45,7 +47,7 @@ const textOr = (v, fallback) => (clean(v) ? escapeHtml(clean(v)).replace(/\r?\n/
 export function legalValues(info = legalInfo()) {
   const email = clean(info.contactEmail);
   return {
-    OPERATOR_NAME:    textOr(info.operatorName, NO_EMAIL),
+    OPERATOR_NAME:    textOr(info.operatorName, NO_NAME),
     CONTACT_EMAIL:    email ? `<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>` : NO_EMAIL,
     POSTAL_ADDRESS:   textOr(info.postalAddress, NO_ADDRESS),
     HOSTING_PROVIDER: textOr(info.hostingProvider, NO_HOSTING),

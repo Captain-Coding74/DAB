@@ -97,7 +97,7 @@ The IP address in the traffic log and the audit log is derived through `TRUST_PR
 | | |
 |---|---|
 | Data subjects | Everyone who uses the site |
-| Personal data | For each request: a request id, the method, the URL with share-link tokens and `…token=` values replaced by `[redacted]` (`backend/src/logger.js`), the remote address, the status code. Error records may add the user id |
+| Personal data | For each request: a request id, the method, the URL with share-link tokens and `…token=` values replaced by `[redacted]` (`backend/src/logger.js`), the remote address, the status code. Records about analyses (rows, duration, quality score, saved id; `backend/src/routes/analysis.js`) and error records add the user id |
 | Where | The server's standard output, collected by the hosting provider |
 | Purpose | Run and debug the service; investigate security problems |
 | Lawful basis | Legitimate interests (LIA 1) |

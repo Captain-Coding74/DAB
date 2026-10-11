@@ -96,7 +96,7 @@
 <h3>Logs</h3>
 <ul>
 <li><strong>Traffic log</strong>, required by section 26 of the Computer-Related Crime Act B.E. 2550 (2007): the event, your user id if you are signed in, IP address, time and an optional reference, for sign-up, sign-in, sign-out, analyses, dataset uploads, exports, share-link creation and views, downloads of your data and account deletion. Kept for 90 days, then deleted. No feature of DAB shows it to anyone; we hand it over only to an official entitled to it by law.</li>
-<li><strong>Request log:</strong> for each request the server records your IP address, the method, the address requested (with share-link tokens removed) and the result code; error records may also include your user id. These logs are kept by our hosting provider for as long as its log retention allows.</li>
+<li><strong>Request log:</strong> for each request the server records your IP address, the method, the address requested (with share-link tokens removed) and the result code. Records about analyses and about errors also include your user id, with technical details such as the number of rows and how long it took. These logs are kept by our hosting provider for as long as its log retention allows.</li>
 <li><strong>Rate-limit counters</strong> keyed by IP address or user id, kept for up to 15 minutes.</li>
 </ul>
 <h3>Telemetry</h3>
@@ -133,7 +133,7 @@
 <h3>บันทึก (logs)</h3>
 <ul>
 <li><strong>บันทึกข้อมูลจราจรทางคอมพิวเตอร์</strong> ตามมาตรา 26 แห่งพระราชบัญญัติว่าด้วยการกระทำความผิดเกี่ยวกับคอมพิวเตอร์ พ.ศ. 2550: เหตุการณ์ รหัสผู้ใช้ (หากเข้าสู่ระบบ) หมายเลข IP เวลา และเลขอ้างอิง (ถ้ามี) สำหรับการสมัคร การเข้าและออกจากระบบ การวิเคราะห์ การอัปโหลดชุดข้อมูล การส่งออกรายงาน การสร้างและการเปิดดูลิงก์แชร์ การดาวน์โหลดข้อมูลของคุณ และการลบบัญชี เก็บไว้ 90 วันแล้วลบ ไม่มีฟังก์ชันใดของ DAB แสดงบันทึกนี้แก่ผู้ใด และเราจะส่งมอบให้เฉพาะเจ้าหน้าที่ที่มีอำนาจตามกฎหมายเท่านั้น</li>
-<li><strong>บันทึกคำขอ (request log):</strong> สำหรับแต่ละคำขอ เซิร์ฟเวอร์บันทึกหมายเลข IP วิธีการเรียก (method) ที่อยู่ที่ถูกเรียก (โดยตัดโทเค็นของลิงก์แชร์ออก) และรหัสผลลัพธ์ บันทึกข้อผิดพลาดอาจมีรหัสผู้ใช้ของคุณด้วย บันทึกเหล่านี้อยู่กับผู้ให้บริการโฮสติ้งตามระยะเวลาการเก็บบันทึกของผู้ให้บริการนั้น</li>
+<li><strong>บันทึกคำขอ (request log):</strong> สำหรับแต่ละคำขอ เซิร์ฟเวอร์บันทึกหมายเลข IP วิธีการเรียก (method) ที่อยู่ที่ถูกเรียก (โดยตัดโทเค็นของลิงก์แชร์ออก) และรหัสผลลัพธ์ บันทึกเกี่ยวกับการวิเคราะห์และข้อผิดพลาดจะมีรหัสผู้ใช้ของคุณด้วย พร้อมรายละเอียดทางเทคนิค เช่น จำนวนแถวและเวลาที่ใช้ บันทึกเหล่านี้อยู่กับผู้ให้บริการโฮสติ้งตามระยะเวลาการเก็บบันทึกของผู้ให้บริการนั้น</li>
 <li><strong>ตัวนับสำหรับจำกัดอัตราการใช้งาน</strong> ซึ่งอ้างอิงหมายเลข IP หรือรหัสผู้ใช้ เก็บไว้ไม่เกิน 15 นาที</li>
 </ul>
 <h3>Telemetry</h3>

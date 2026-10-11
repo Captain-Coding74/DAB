@@ -12,7 +12,7 @@ Review each assessment once a year, and whenever the data, the period or the pur
 
 ## LIA 1. Security audit log, request logs and rate limiting
 
-**Processing.** `audit_log` (user id, event — sign-up, sign-in, sign-out everywhere — IP address, time; 365 days). Request logs on standard output (request id, method, URL with share tokens redacted, remote address, status code; error records may add the user id; kept by the host). Rate-limit counters keyed by IP address, user id, or IP address and share token (up to 15 minutes), and the warnings that name those keys.
+**Processing.** `audit_log` (user id, event — sign-up, sign-in, sign-out everywhere — IP address, time; 365 days). Request logs on standard output (request id, method, URL with share tokens redacted, remote address, status code; records about analyses and error records add the user id; kept by the host). Rate-limit counters keyed by IP address, user id, or IP address and share token (up to 15 minutes), and the warnings that name those keys.
 
 **1. Purpose.** Keep accounts and the service safe: notice brute-force and credential-stuffing attempts, investigate a suspected account takeover or breach, find the cause of errors, and keep the service available to everyone. These interests belong to DAB and equally to its users, whose accounts and files the logs protect. They are lawful and specific.
 
