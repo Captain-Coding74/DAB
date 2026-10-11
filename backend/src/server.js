@@ -12,6 +12,8 @@ import { migrate }             from "./db/migrate.js";
 import { initCache, cache }    from "./services/cache.js";
 import { startScheduler }      from "./services/scheduler.js";
 import { logger, serviceLogger } from "./logger.js";
+import { warnStorageUnencrypted } from "./services/storageCrypto.js";
+import { warnDbTlsUnverified }    from "./db/pgSsl.js";
 
 /** Plain, un-decorated output: this is guidance for a human, not a log record. */
 const say = (...lines) => lines.forEach(l => process.stderr.write(l + "\n"));
@@ -44,6 +46,10 @@ try {
   }
   process.exit(1);
 }
+
+// v21.30: production runs without these protections only on purpose — say so once.
+warnStorageUnencrypted();
+warnDbTlsUnverified();
 
 const server = app.listen(PORT, () => {
   svcLog.info({ port: PORT }, "started");

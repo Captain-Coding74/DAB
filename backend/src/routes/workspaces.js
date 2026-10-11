@@ -24,7 +24,8 @@ export function mountWorkspaceRoutes(app) {
     try {
       const member = await R.isMember(req.params.id, req.user.userId);
       if (!member) return res.status(403).json({ error: "Not a member" });
-      const [ws, members] = await Promise.all([R.getWorkspace(req.params.id), R.getWorkspaceMembers(req.params.id)]);
+      // v21.30: the caller's own email only — other members appear by username.
+      const [ws, members] = await Promise.all([R.getWorkspace(req.params.id), R.getWorkspaceMembers(req.params.id, { viewerId: req.user.userId })]);
       res.json({ ...ws, members });
     } catch (err) { next(err); }
   });

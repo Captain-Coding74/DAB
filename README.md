@@ -34,8 +34,22 @@ cd ../backend && npm start      # serves dist/ + API on :3000
 ### Docker
 ```bash
 cp .env.example .env
+# Required — compose refuses to start while any of these is blank:
+#   JWT_SECRET, JWT_REFRESH_SECRET   openssl rand -hex 32   (each)
+#   POSTGRES_PASSWORD                openssl rand -hex 24   (letters/digits: it goes into a URL)
+#   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+# Recommended:
+#   STORAGE_ENCRYPTION_KEY           openssl rand -base64 32 (keep a copy somewhere safe)
 docker compose up -d
 # http://localhost:3000
+```
+No secret in `docker-compose.yml` has a default (v21.30). Postgres and Redis are reachable only on the private compose network, and MinIO's API and console (9000/9001) listen on `127.0.0.1` only — use an SSH tunnel to reach them from elsewhere.
+
+**Upgrading a compose install from before v21.30:** its `pg-data` volume still has the old password `dab`, and Postgres only reads `POSTGRES_PASSWORD` when it creates the database. After setting the new value in `.env`, change it inside the database once, then start the rest:
+```bash
+docker compose up -d postgres
+docker compose exec postgres psql -U dab -c "ALTER USER dab PASSWORD '<your POSTGRES_PASSWORD>'"
+docker compose up -d
 ```
 
 ---
@@ -548,6 +562,8 @@ This is an npm **workspaces** monorepo. Run `npm install` **once at the root** �
 
 1. `cp .env.example .env` — set **real** `JWT_SECRET` / `JWT_REFRESH_SECRET` (`openssl rand -hex 32` each) and `ANTHROPIC_API_KEY`. The app refuses to boot in production without the secrets, and refuses `AI_MOCK=1`.
 2. Set `AI_DAILY_BUDGET` (default 300). This is the hard ceiling on your daily Anthropic bill: anonymous visitors **never** trigger AI calls (they get the instant Insights Engine on their own files), signed-in users share the daily pool, and when it runs out the product degrades to stats-only instead of going down.
-3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml`; leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
+3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml` (set `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` in `.env` first — there are no defaults); leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
+   - Set `STORAGE_ENCRYPTION_KEY` (`openssl rand -base64 32`, and keep a copy) so saved files are encrypted at rest; files saved before it was set are encrypted in place with `npm run storage-encrypt -w backend` (try `-- --dry-run` first).
+   - On a managed Postgres, set `DATABASE_SSL_CA` (your provider's CA certificate) or `DATABASE_SSL_VERIFY=1` so the database's TLS certificate is verified. Production logs a warning at boot while either protection is off.
 4. Put TLS in front (Caddy: two lines, or your PaaS does it). Rate limits, helmet, and upload caps are already on.
 5. Watch what arrives: `npm run telemetry -w backend` — the segment table is the vertical decision.

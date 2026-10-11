@@ -274,8 +274,9 @@ export async function shareDataset(datasetId, userId, role, invitedBy) {
     [uuid(), datasetId, userId, role, invitedBy, now()]
   );
 }
+/* v21.30: no email — a collaborator sees who else has access by username only. */
 export async function getDatasetCollaborators(datasetId) {
-  return query(`SELECT u.id,u.username,u.email,u.avatar_url,dp.role,dp.created_at FROM dataset_permissions dp JOIN users u ON u.id=dp.user_id WHERE dp.dataset_id=$1 ORDER BY dp.created_at`, [datasetId]);
+  return query(`SELECT u.id,u.username,u.avatar_url,dp.role,dp.created_at FROM dataset_permissions dp JOIN users u ON u.id=dp.user_id WHERE dp.dataset_id=$1 ORDER BY dp.created_at`, [datasetId]);
 }
 export async function removeCollaborator(datasetId, userId) {
   await query(`DELETE FROM dataset_permissions WHERE dataset_id=$1 AND user_id=$2`, [datasetId, userId]);
@@ -319,13 +320,17 @@ export async function getVersionBytes(version) {
     try {
       return await storage.get(version.storage_key);
     } catch (err) {
+      // v21.30: an object that is there but cannot be decrypted is not "gone" —
+      // a wrong or missing STORAGE_ENCRYPTION_KEY must surface as itself.
+      if (/^STORAGE_/.test(err.code || "")) throw err;
       // The object is gone (pruned volume, restored DB without its bucket, a
       // key written under a different DATA_DIR). Fall back to the legacy
       // column when the row still has one rather than 500-ing the request —
       // for CSV that content is intact, and for xlsx nothing was recoverable
       // anyway. Callers get bytes or a clear error, never a crash.
       if (version.file_content) return Buffer.from(version.file_content, "utf-8");
-      const e = new Error(`stored object missing for version ${version.id}: ${version.storage_key}`);
+      // No key in the message: keys written before v21.30 end in the user's filename.
+      const e = new Error(`stored object missing for version ${version.id}`);
       e.status = 410;   // Gone — the row exists, the bytes do not
       throw e;
     }

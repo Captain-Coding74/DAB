@@ -52,9 +52,13 @@ describe("object storage", () => {
     await assert.rejects(() => storage.put("../../escape", Buffer.from("x")), /escapes root/);
   });
 
-  test("Thai filenames are preserved in the key", () => {
-    const key = storage.buildKey({ datasetId: "d", versionNum: 2, fileName: "ยอดขาย ม.ค..xlsx" });
-    assert.match(key, /ยอดขาย/, "Thai characters stripped from the key");
-    assert.match(key, /^datasets\/d\/2-/);
+  // v21.30: keys used to end in the filename, so a bucket listing or backup
+  // manifest told anyone who uploaded what. Only a known file type is kept.
+  test("keys carry no part of the user's filename — only a known file type", () => {
+    assert.equal(storage.buildKey({ datasetId: "d", versionNum: 2, fileName: "รายชื่อนักเรียน ม.3.xlsx" }), "datasets/d/2.xlsx");
+    assert.equal(storage.buildKey({ datasetId: "d", versionNum: 1, fileName: "Patients_2026.CSV" }), "datasets/d/1.csv");
+    assert.equal(storage.buildKey({ datasetId: "d", versionNum: 1, fileName: "../../etc/passwd" }), "datasets/d/1");
+    assert.equal(storage.buildKey({ datasetId: "d", versionNum: 1, fileName: "notes.secret-name" }), "datasets/d/1");
+    assert.match(storage.buildKey({ versionNum: 3, fileName: "x.csv" }), /^datasets\/[0-9a-f-]{36}\/3\.csv$/);
   });
 });

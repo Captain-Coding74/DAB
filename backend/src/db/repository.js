@@ -127,8 +127,11 @@ export async function updateWorkspaceBranding({ id, brandLogo, brandColor, brand
   await query(`UPDATE workspaces SET brand_logo=$1,brand_color=$2,brand_name=$3 WHERE id=$4`,
     [brandLogo||null,brandColor||DEFAULT_BRAND_COLOR,brandName||null,id]);
 }
-export async function getWorkspaceMembers(wsId) {
-  return query(`SELECT u.id,u.username,u.email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId]);
+/* v21.30: a member's email reached every other member of the workspace. Now
+   only `viewerId`'s own row carries it — the masking happens in SQL, so other
+   people's addresses never leave the database. No viewer → no emails. */
+export async function getWorkspaceMembers(wsId, { viewerId = null } = {}) {
+  return query(`SELECT u.id,u.username,CASE WHEN u.id=$2 THEN u.email ELSE NULL END AS email,u.avatar_url,wm.role,wm.joined_at FROM workspace_members wm JOIN users u ON u.id=wm.user_id WHERE wm.workspace_id=$1 ORDER BY wm.joined_at`,[wsId, viewerId]);
 }
 export async function addWorkspaceMember(wsId, userId, role="member", invitedBy=null) {
   // Duplicate invites stay a no-op via the UNIQUE(workspace_id,user_id)

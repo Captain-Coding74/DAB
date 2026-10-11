@@ -192,10 +192,8 @@ export default function WorkspacePanel() {
                       <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-sm font-medium text-brand-600 dark:text-brand-300">
                         {m.username[0].toUpperCase()}
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{m.username}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.email || "—"}</p>
-                      </div>
+                      {/* v21.30: username only — members no longer see each other's email. */}
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{m.username}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={m.role==="owner"?"green":m.role==="admin"?"blue":"gray"}>{m.role}</Badge>

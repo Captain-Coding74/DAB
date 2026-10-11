@@ -14,6 +14,7 @@ import pg                from "pg";
 import fs                from "fs";
 import path              from "path";
 import { fileURLToPath } from "url";
+import { pgSslOptions }  from "./pgSsl.js";
 
 const log       = serviceLogger("db");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,14 +28,15 @@ let _backend = null;   // "postgres" | "sqlite"
 export async function initPool() {
   if (process.env.DATABASE_URL) {
     _backend = "postgres";
+    // v21.30: certificate verification is opt-in — see pgSsl.js. The URL comes
+    // back without its sslmode=… when an explicit CA setting replaces it.
+    const tls = pgSslOptions();
     _pool    = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: tls.connectionString,
       max:              10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: process.env.DATABASE_URL.includes("localhost")
-        ? false
-        : { rejectUnauthorized: false },   // Railway / Supabase
+      ssl: tls.ssl,
     });
 
     // Verify connection

@@ -1,6 +1,15 @@
 # v21.1: `minio` provides an S3-compatible endpoint so STORAGE_DRIVER=s3 can be
 # exercised locally without an AWS or Cloudflare account. Production points
 # S3_ENDPOINT at R2/S3 instead; nothing else changes.
+#
+# v21.30: no secret has a default any more. The file used to ship working
+# passwords (dab / dabsecret123) for Postgres and MinIO, so every deployment
+# that did not override them shared the same credentials — and MinIO's API
+# and console were published on every network interface. Each secret is now
+# ${VAR:?…}: `docker compose` refuses to start until it is set in .env (see
+# .env.example for how to generate them), and MinIO listens on 127.0.0.1 only.
+# Postgres and Redis are not published at all; the app reaches them on the
+# private compose network, which is why DATABASE_URL says sslmode=disable.
 version: '3.9'
 services:
   app:
@@ -19,15 +28,18 @@ services:
       # nginx/Caddy/Traefik in front, set TRUST_PROXY=1 in .env.
       TRUST_PROXY: ${TRUST_PROXY:-0}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      DATABASE_URL: postgresql://dab:dab@postgres:5432/dab
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env}"
+      JWT_REFRESH_SECRET: "${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}"
+      DATABASE_URL: "postgresql://dab:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/dab?sslmode=disable"
       REDIS_URL: redis://redis:6379
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      # Optional: seals saved files with AES-256-GCM (see .env.example).
+      STORAGE_ENCRYPTION_KEY: ${STORAGE_ENCRYPTION_KEY:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_BUCKET: ${S3_BUCKET:-dab}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-dab}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-dabsecret123}
+      # For the bundled MinIO, the same values as MINIO_ROOT_USER / MINIO_ROOT_PASSWORD.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
     # No dist bind-mount: the image builds the frontend and ships it at
     # /app/frontend/dist. The old mount pointed at /app/public, which app.js
     # never read, so the container served no UI.
@@ -51,7 +63,7 @@ services:
     environment:
       POSTGRES_DB: dab
       POSTGRES_USER: dab
-      POSTGRES_PASSWORD: dab
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
     volumes:
     - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -78,11 +90,13 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: dab
-      MINIO_ROOT_PASSWORD: dabsecret123
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}"
+    # Loopback only: reachable from this machine (or an SSH tunnel), not from
+    # the network. The app talks to MinIO over the compose network instead.
     ports:
-    - 9000:9000
-    - 9001:9001
+    - 127.0.0.1:9000:9000
+    - 127.0.0.1:9001:9001
     volumes:
     - minio-data:/data
 volumes:
