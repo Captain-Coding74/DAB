@@ -16,6 +16,7 @@ import { useAppStore } from "../store";
 import { getJSON } from "../lib/api";
 import { Card, Button } from "../components/ui";
 import { useLang } from "../lib/i18n";
+import "../lib/strings/account.js";   // v21.30: this page's strings load with it (lib/i18n.js addStrings)
 import {
   canDelete, acceptedLegalVersion, fetchDownload, exportUrl, exportFallbackName,
   filesIn, saveBlob, deleteMyAccount, deleteErrorKey,

@@ -15,6 +15,7 @@ import { Modal, Button } from "../ui";
 import { useAppStore } from "../../store";
 import { getJSON, postJSON } from "../../lib/api";
 import { useLang } from "../../lib/i18n";
+import "../../lib/strings/auth.js";   // v21.30: this dialog's strings load with it (lib/i18n.js addStrings)
 import { fetchLegal } from "../../lib/legal.js";
 import { LegalText } from "./LegalText.jsx";
 

@@ -8,6 +8,7 @@ import {
   filesIn, saveBlob, deleteMyAccount, deleteErrorKey,
 } from "./account.js";
 import { STRINGS } from "./i18n.js";
+import "./strings/account.js";   // the page's string pack (lib/i18n.js addStrings)
 
 const response = (status, body, headers = {}) => ({
   ok: status >= 200 && status < 300, status,

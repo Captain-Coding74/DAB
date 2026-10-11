@@ -3,12 +3,18 @@
  * The six result panels, split out of the old god-component. Each is a
  * small, focused, presentational piece driven by the analysis object.
  */
-import React, { useState } from "react";
+import React, { useState, Suspense, lazy } from "react";
 import { Link } from "react-router-dom";
 import { Download, Share2, FileText, Upload } from "lucide-react";
 import { Card, Badge, Button, QualityRing, GradeStamp, Eyebrow, AiLabel, Modal, Input } from "../ui";
-import { FixPanel } from "./FixPanel";
 import { useLang } from "../../lib/i18n";
+
+/* v21.30: the fixes panel (with the AI-edit confirmation and its strings)
+   loads when the Quality tab first opens, not with the first paint — the
+   privacy release's dialogs had pushed perf:bundle's initial payload over
+   its budget. */
+const LazyFixPanel = lazy(() => import("./FixPanel").then((m) => ({ default: m.FixPanel })));
+const FixPanel = (props) => <Suspense fallback={null}><LazyFixPanel {...props}/></Suspense>;
 
 /* Findings as auditor's marginalia: mark · red rule · entry */
 const SEVERITY = {

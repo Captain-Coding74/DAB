@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAppStore } from "../store";
 import { postJSON } from "../lib/api";
 import { useLang } from "../lib/i18n";
+import "../lib/strings/auth.js";   // v21.30: this page's strings load with it (lib/i18n.js addStrings)
 import { consentGiven } from "../lib/legal.js";
 import { Button, Input, Wordmark } from "../components/ui";
 import { ConsentBoxes } from "../components/legal/LegalText.jsx";

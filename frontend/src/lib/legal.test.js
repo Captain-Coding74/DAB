@@ -6,6 +6,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { needsAcceptance, consentGiven, fillSlots, fetchLegal } from "./legal.js";
 import { STRINGS } from "./i18n.js";
+import "./strings/auth.js";   // the click-wrap string pack (lib/i18n.js addStrings)
 
 describe("needsAcceptance", () => {
   test("an older or never-given acceptance needs the dialog", () => {

@@ -2,7 +2,7 @@ import React, { useState, useEffect , useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2, ChevronLeft, ChevronRight, FileText, Clock } from "lucide-react";
 import { apiFetch, useAppStore } from "../store";
-import { Card, Badge, Button, Spinner , Skeleton } from "../components/ui";
+import { Card, Badge, Button, Spinner , Skeleton, AiLabel } from "../components/ui";
 
 export default function HistoryPage() {
   const { user, toast, dismissToast } = useAppStore();
@@ -121,8 +121,12 @@ export default function HistoryPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{item.file_name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{item.prompt}</p>
+                      {/* v21.30: the preview is the AI report's opening — labelled like every other AI text. */}
                       {item.preview && (
-                        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.preview}...</p>
+                        <>
+                          <p className="text-xs text-gray-400 mt-1 line-clamp-2">{item.preview}...</p>
+                          <AiLabel className="mt-1"/>
+                        </>
                       )}
                     </div>
                   </div>

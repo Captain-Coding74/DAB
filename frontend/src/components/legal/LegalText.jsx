@@ -9,6 +9,7 @@
  */
 import React from "react";
 import { useLang } from "../../lib/i18n";
+import "../../lib/strings/auth.js";   // the click-wrap sentences load with the sign-up form and the re-accept dialog
 import { fillSlots } from "../../lib/legal.js";
 
 const LINK = "underline underline-offset-2 hover:text-brand-600 dark:hover:text-brand-300";

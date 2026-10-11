@@ -16,6 +16,7 @@
 import React, { useState } from "react";
 import { Modal, Button } from "../ui";
 import { useLang } from "../../lib/i18n";
+import "../../lib/strings/save.js";   // v21.30: this dialog's strings load with it (lib/i18n.js addStrings)
 
 const LINK = "inline-block text-xs underline underline-offset-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200";
 

@@ -17,6 +17,7 @@
 import React from "react";
 import { Modal, Button } from "../ui";
 import { useLang } from "../../lib/i18n";
+import "../../lib/strings/aiEdit.js";   // v21.30: loads with the dialog (lib/i18n.js addStrings)
 
 const CHIP = "num text-[11px] px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700";
 

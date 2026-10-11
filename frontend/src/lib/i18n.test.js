@@ -3,7 +3,18 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
 import { STRINGS, t } from "./i18n.js";
+
+/* v21.30: string packs (lib/strings/*.js) add their keys to STRINGS when a
+   lazy screen imports them. Capture the core table first, then load every
+   pack, so the checks below cover all of them and collisions can be seen. */
+const CORE = { ...STRINGS };
+const PACK_DIR = new URL("./strings/", import.meta.url);
+const PACKS = {};
+for (const f of readdirSync(PACK_DIR).filter((f) => f.endsWith(".js"))) {
+  PACKS[f] = Object.values(await import(new URL(f, PACK_DIR).href)).find((v) => v && typeof v === "object");
+}
 
 describe("i18n", () => {
   test("every key has both English and Thai", () => {
@@ -60,6 +71,34 @@ describe("i18n", () => {
     assert.match(t("share.warning", "th"), /จนกว่าลิงก์จะหมดอายุ/);
     // The generic title — never the file name — in both languages.
     assert.equal(t("share.defaultTitle", "en"), "Analysis report");
+  });
+
+  test("v21.30: no key is defined twice — not in one table, not across packs", () => {
+    // A JS object literal silently keeps the LAST of two equal keys, and
+    // addStrings would silently replace a core string, so both are errors.
+    const dupes = [];
+    for (const file of ["i18n.js", ...Object.keys(PACKS).map((f) => `strings/${f}`)]) {
+      const seen = new Set();
+      for (const [, key] of readFileSync(new URL(file, import.meta.url), "utf8").matchAll(/^\s*"([\w.]+)"\s*:\s*\{/gm)) {
+        if (seen.has(key)) dupes.push(`${file}: ${key}`);
+        seen.add(key);
+      }
+    }
+    const owner = new Map(Object.keys(CORE).map((k) => [k, "i18n.js"]));
+    for (const [file, pack] of Object.entries(PACKS)) {
+      for (const key of Object.keys(pack)) {
+        if (owner.has(key)) dupes.push(`${key}: ${owner.get(key)} and strings/${file}`);
+        owner.set(key, `strings/${file}`);
+      }
+    }
+    assert.deepEqual(dupes, []);
+    assert.ok(Object.keys(PACKS).length >= 4, "the packs were found");
+  });
+
+  test("v21.30: every component that renders AI text carries the AI label", () => {
+    const files = ["../components/dashboard/tabs.jsx", "../components/chat/index.jsx",
+      "../components/dashboard/AgentPanel.jsx", "../pages/SharePage.jsx", "../pages/HistoryPage.jsx"];
+    for (const f of files) assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /<AiLabel\b/, f);
   });
 
   test("an explicit language is honoured", () => {
