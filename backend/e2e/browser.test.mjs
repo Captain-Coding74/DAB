@@ -561,6 +561,35 @@ describe("Critical flow: the public landing page", () => {
   });
 });
 
+describe("Critical flow: the legal pages (v21.30)", () => {
+  // /privacy and /terms are server documents (backend/src/legalPages.js), not
+  // SPA routes. They promise "no third-party scripts" and carry their own
+  // small script (legal.js, the language toggle) — so the same three checks
+  // as the landing page: nothing external, no CSP violation, a clean console.
+  for (const path of ["/privacy", "/terms"]) {
+    btest(`${path}: no console errors, no CSP violations, no third-party requests`, async () => {
+      const external = [], errors = [];
+      const onReq = (r) => { const url = r.url(); if (!url.startsWith(BASE) && !url.startsWith("data:")) external.push(url); };
+      const onMsg = (m) => { if (m.type() === "error" || /Content Security Policy/i.test(m.text())) errors.push(m.text()); };
+      const onErr = (e) => errors.push(`uncaught: ${e.message}`);
+      page.on("request", onReq); page.on("console", onMsg); page.on("pageerror", onErr);
+      try {
+        await page.goto(`${BASE}${path}`, { waitUntil: "load" });
+        await page.evaluate(() => document.fonts.ready);
+        // legal.js really ran: the TH toggle switches the document language.
+        await page.locator('[data-set-lang="th"]').click();
+        await page.waitForFunction(() => document.body.dataset.lang === "th");
+        await page.waitForTimeout(300);
+      } finally {
+        page.off("request", onReq); page.off("console", onMsg); page.off("pageerror", onErr);
+      }
+      assert.deepEqual(external, [], `${path} made third-party requests: ${external.join(", ")}`);
+      assert.deepEqual(errors, [], `${path} console errors or CSP violations:\n${errors.join("\n")}`);
+      assert.equal(await page.locator("h1").count(), 1);
+    });
+  }
+});
+
 describe("Critical flow: dark mode", () => {
   btest("toggling theme flips the root class and persists", async () => {
     await visit();
@@ -620,5 +649,100 @@ describe("Critical flow: auth", () => {
     await page.getByText(/ตรวจแล้ว \d+ ขั้น/).waitFor({ timeout: 30_000 });
     const steps = await page.getByText(/ตรวจแล้ว \d+ ขั้น/).textContent();
     assert.match(steps, /ตรวจแล้ว [1-9]/, "agent ran at least one tool check");
+  });
+});
+
+
+/* v21.30 — the privacy controls, driven like a user would. These follow the
+   auth flow above: the same signed-in page, with the uploaded file's
+   analysis on screen. */
+describe("Critical flow: privacy controls (v21.30)", () => {
+  btest("Save dataset asks first, then stores the file", async () => {
+    await page.getByRole("tab", { name: "analysis" }).click();
+    const save = page.getByRole("button", { name: "บันทึกชุดข้อมูล", exact: true });
+    await save.waitFor({ timeout: 10_000 });
+    await save.click();
+    const dialog = page.getByRole("dialog", { name: "บันทึกชุดข้อมูลนี้หรือไม่" });
+    await dialog.waitFor({ timeout: 10_000 });
+    assert.match(await dialog.textContent(), /365/, "the dialog says how long the file is kept");
+    await dialog.getByRole("button", { name: "บันทึก", exact: true }).click();
+    await dialog.waitFor({ state: "detached", timeout: 15_000 });
+    // Saved: the action is gone and the owner's AI switch appears.
+    await page.getByText("AI สำหรับชุดข้อมูลนี้").waitFor({ timeout: 15_000 });
+    assert.equal(await save.count(), 0, "a saved result no longer offers Save");
+  });
+
+  btest("AI edit sends nothing until the confirmation dialog's Send", async () => {
+    const sends = [];
+    // The confirmation is what is under test. The AI mock cannot produce a
+    // table, so the send itself is answered here — after recording it.
+    await page.route("**/api/fixes/*/ai-edit", async (route) => {
+      sends.push(route.request().postDataJSON());
+      await route.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ applied: false, instruction: "trim", changes: [], changeCount: 0, rows: [], headers: [], protectedColumns: [], sensitiveColumns: [] }) });
+    });
+    try {
+      await page.getByRole("tab", { name: "quality" }).click();
+      const box = page.getByPlaceholder(/แปลงคอลัมน์วันที่/);
+      await box.waitFor({ timeout: 15_000 });   // the fixes panel loads with the tab
+      await box.fill("ตัดช่องว่างหน้าหลังทุกช่อง");
+      await page.getByRole("button", { name: "ให้ AI เสนอการแก้ไข" }).click();
+      const dialog = page.getByRole("dialog", { name: "ส่งข้อมูลเหล่านี้ให้ AI หรือไม่" });
+      await dialog.waitFor({ timeout: 10_000 });
+      assert.match(await dialog.textContent(), /Anthropic/, "the dialog names the recipient");
+      assert.equal(sends.length, 0, "opening the dialog sent nothing");
+      await dialog.getByRole("button", { name: "ส่ง", exact: true }).click();
+      await page.getByText("รายการเปลี่ยนแปลงที่เสนอ").waitFor({ timeout: 15_000 });
+      assert.equal(sends.length, 1, "one send, after the click");
+      assert.equal(sends[0].confirmSend, true);
+    } finally {
+      await page.unroute("**/api/fixes/*/ai-edit");
+    }
+  });
+
+  btest("a share link is made only through the dialog, with a warning and an expiry", async () => {
+    await page.getByRole("tab", { name: "analysis" }).click();
+    await page.getByRole("button", { name: "แชร์", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "แชร์รายงานนี้" });
+    await dialog.waitFor({ timeout: 10_000 });
+    assert.match(await dialog.textContent(), /ทุกคนที่มีลิงก์/, "says who can see it");
+    assert.equal(await dialog.locator("#share-title").inputValue(), "รายงานผลการวิเคราะห์", "generic title, not the file name");
+    assert.equal(await dialog.locator("#share-expiry").inputValue(), "30", "30 days by default");
+    await dialog.locator("#share-expiry").selectOption("7");
+    await dialog.getByRole("button", { name: "สร้างลิงก์และคัดลอก" }).click();
+    const link = await dialog.locator("#share-url");
+    await link.waitFor({ timeout: 15_000 });
+    const url = await link.inputValue();
+    assert.match(url, /\/share\/[^/]+$/);
+    await dialog.getByRole("button", { name: "ปิด", exact: true }).click();
+
+    // The public page: no file name, a way to report it, kept out of search.
+    await page.goto(url, { waitUntil: "load" });
+    await page.getByRole("link", { name: "แจ้งปัญหาหน้านี้" }).waitFor({ timeout: 15_000 });
+    assert.equal(await page.locator('meta[name="robots"][content*="noindex"]').count(), 1);
+    assert.ok(!(await page.content()).includes("browser-e2e"), "the file name is not on the public page");
+  });
+
+  btest("after a Terms/Privacy update, the app asks to accept before going on", async () => {
+    // Pretend the account accepted an older version: /api/auth/me reports it.
+    await page.route("**/api/auth/me", async (route) => {
+      const res = await route.fetch();
+      const body = await res.json();
+      await route.fulfill({ response: res, json: { ...body, legal: { ...body.legal, accepted: "2000-01-01" } } });
+    });
+    try {
+      await page.goto(BASE, { waitUntil: "load" });
+      const dialog = page.getByRole("dialog", { name: "เราได้ปรับปรุงข้อกำหนดการใช้งานและประกาศความเป็นส่วนตัว" });
+      await dialog.waitFor({ timeout: 15_000 });
+      await page.keyboard.press("Escape");
+      assert.ok(await dialog.isVisible(), "Esc does not dismiss it");
+      const accept = dialog.getByRole("button", { name: "ยอมรับและใช้งานต่อ" });
+      assert.ok(await accept.isDisabled(), "Accept waits for the box");
+      await dialog.locator('input[name="acceptTerms"]').check();
+      await accept.click();
+      await dialog.waitFor({ state: "detached", timeout: 15_000 });
+    } finally {
+      await page.unroute("**/api/auth/me");
+    }
   });
 });
