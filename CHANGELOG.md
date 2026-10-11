@@ -69,25 +69,59 @@ lawyer (open questions in `docs/privacy/README.md`).
   panel loads with its tab). The History preview carries the AI label, the
   phone nav fits again, and `docker-compose.yml` passes the `LEGAL_*` and
   `*_RETENTION_DAYS` settings through.
-- **Tests and budgets.** 574 backend unit, 375 integration, 67 frontend,
-  25 HTTP e2e and 37 browser/geometry tests pass; the browser suites now
+- **Review fixes.** Four reviews of the merged tree found gaps, now closed.
+  `/account` lists every stored file (copies earlier versions stored
+  without asking are marked so, and the notices disclose them) and every
+  share link, each with a delete, and "Analyse again" reopens a file;
+  `/account` stays open behind the re-accept dialog, which nothing can act
+  behind any more (shortcuts, palette, Tab). Listing or filing datasets in
+  a workspace needs membership. A storage delete that fails now fails the
+  erasure instead of reporting it done, sessions are revoked first, and an
+  erased id cannot refresh. A wrong password at deletion is
+  `403 WRONG_PASSWORD`, not a 401 the SPA re-sent. `storage-encrypt` also
+  seals pre-v21.1 file copies left in the database, and reads check the
+  stored sha256. Legal templates are unreachable under any spelling of
+  their file names. A CSV quote error is a 400 and never puts a cell in the
+  error log. Old analyses: numeric card columns are re-detected, and their
+  pre-v21.30 AI report and chat are neither re-sent to the AI nor shown on
+  share pages; Thai file names are kept out of old share titles, and new
+  uploads store them as UTF-8. Re-analysing after Save keeps the dataset's
+  AI switch; "Statistics only" keeps Share and the exports; recent comments
+  and restores count as dataset activity. The notices name the contact
+  mailbox's provider among recipients, print the hosting transfer
+  safeguard (`LEGAL_HOSTING_TRANSFER_BASIS`), describe how a new version
+  takes effect, and say the traffic log is sent on request rather than in
+  the download.
+- **Tests and budgets.** 593 backend unit, 399 integration, 79 frontend,
+  25 HTTP e2e and 39 browser/geometry tests pass; the browser suites now
   drive sign-up, Save dataset, the share dialog, the AI-edit confirmation,
-  the re-accept dialog and the legal pages. They run on the bundled
-  Chromium again (without its `--single-process` flag). Initial payload
-  100.7 / 101 kB, total code 244.0 / 244 kB. The coverage run reads its
+  the `/account` file and link deletes, a Statistics-only result, the
+  re-accept dialog (and its keyboard guards) and the legal pages. They run
+  on the bundled Chromium again (without its `--single-process` flag).
+  Initial payload 100.9 / 101 kB; total code 246.4 / 247 kB (raised from
+  244 for the `/account` lists, reason in `frontend/perf-budget.json`). The coverage run reads its
   suite lists from `backend/package.json`; `maxFilesUncounted` 29 → 38 for
   eight lazily loaded privacy components and two operator CLIs (reason in
   `quality-budget.json`). `npm run audit:gate` still fails on advisories in
   the unchanged dependency tree (it fails the same on 21.29).
 
 **Before deploying**, configure:
-- `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` (PDPA s.23; production
-  warns at boot while they are empty, and the pages say "being set up"),
-  `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION`, and
-  `LEGAL_OPERATOR_NAME` if the operator is not the default.
+- `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` (PDPA s.23),
+  `LEGAL_HOSTING_PROVIDER`, `LEGAL_HOSTING_REGION` and
+  `LEGAL_HOSTING_TRANSFER_BASIS` (ss.28–29: the safeguard for keeping data
+  with a host outside Thailand, as confirmed with the host and counsel), and
+  `LEGAL_OPERATOR_NAME` if the operator is not the default. Production
+  warns at boot while any of the five is empty, and the pages say "being
+  set up".
 - `STORAGE_ENCRYPTION_KEY` (keep a copy: nothing can read a file without
   it), then run `npm run storage-encrypt -w backend` once to encrypt files
-  stored before it was set (`-- --dry-run` counts them first).
+  stored before it was set (`-- --dry-run` counts them first). It also
+  moves pre-v21.1 copies still in `dataset_versions.file_content` into
+  sealed storage and clears the column.
+- The first retention run, about a minute after the first boot, deletes
+  every saved dataset with no recorded activity (edit, version, analysis,
+  comment, activity-feed entry) in 365 days — including copies earlier
+  versions stored automatically. Take a backup first if you need one.
 - On a managed Postgres, `DATABASE_SSL_CA` or `DATABASE_SSL_VERIFY=1`.
 - Docker Compose: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `POSTGRES_PASSWORD`,
   `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` have no defaults any more; an

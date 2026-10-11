@@ -50,7 +50,7 @@ The Notification counts 30 days from verification and allows a further 30 for co
 | Right | What to do | Tool |
 |---|---|---|
 | Access and a copy (s.30); portability (s.31) | Give the JSON export, and the original files of any saved datasets (the export lists each one's download path). Add, in the reply, the purposes, recipients and retention periods — link the Privacy Notice | `/account`, or the script's export command |
-| Correction (s.35) | DAB has no screen to edit a profile. Email address: change or remove it on the database. Content of analyses and datasets is the user's own: they can delete it and upload a corrected file | `UPDATE users SET email = '<new address>' WHERE username = '<username>';` (or `email = NULL`) |
+| Correction (s.35) | DAB has no screen to edit a profile. Email address: change or remove it on the database. Content of analyses and datasets is the user's own: they can delete a stored file on `/account` (or an analysis in History) and upload a corrected file | `UPDATE users SET email = '<new address>' WHERE username = '<username>';` (or `email = NULL`) |
 | Erasure (s.33) | Delete the account. Everything it owns goes at once. What stays, and why, is in template C | `/account`, or the script's delete command |
 | Restriction (s.34) | Suspend the account: sign-in and token renewal stop at once; an access token already issued works until it expires (up to 15 minutes). The daily deletion jobs keep running; if the person needs data kept for a legal claim, export it as a legal hold (`retention-schedule.md` section 5). Undo with `is_active = 1` | `UPDATE users SET is_active = 0 WHERE username = '<username>';` |
 | Objection (s.32) | Telemetry: unlink the user's rows at once (`legitimate-interests.md`, LIA 2). Security logs: continue only where there are compelling grounds, and record them (LIA 1). DAB does no direct marketing | `UPDATE upload_metadata SET user_id = NULL WHERE user_id = '<user id>';` |
@@ -58,7 +58,7 @@ The Notification counts 30 days from verification and allows a further 30 for co
 
 The SQL above works on both SQLite and Postgres. Find a user id with `SELECT id FROM users WHERE username = '<username>';`. Cached copies of the profile and History expire within two minutes, so a change made on the database shows in the app after that.
 
-**Not in the export:** traffic-log entries. No API exposes them. Whether a requester may have a copy of their own entries is a question for counsel (`README.md`, further questions). Until it is answered, tell the requester the log exists, what it holds (event, time, IP address, user id) and that it is kept 90 days.
+**Not in the self-service export:** traffic-log entries. No API exposes them, and the `/account` download says so. The Privacy Notice (sections 3 and 12) offers a requester their own entries by email or post: add `--traffic-log` to the script's export command, which includes their event, time, IP address and reference. Whether they should be in the self-service download, or withheld, is still a question for counsel (`README.md`, further questions).
 
 ## 6. Data inside someone else's upload
 

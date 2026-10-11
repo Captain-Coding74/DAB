@@ -40,7 +40,8 @@ cp .env.example .env
 #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
 # Recommended:
 #   STORAGE_ENCRYPTION_KEY           openssl rand -base64 32 (keep a copy somewhere safe)
-#   LEGAL_CONTACT_EMAIL, LEGAL_POSTAL_ADDRESS, LEGAL_HOSTING_PROVIDER, LEGAL_HOSTING_REGION
+#   LEGAL_CONTACT_EMAIL, LEGAL_POSTAL_ADDRESS, LEGAL_HOSTING_PROVIDER, LEGAL_HOSTING_REGION,
+#   LEGAL_HOSTING_TRANSFER_BASIS
 #                                    printed on /privacy, /terms and /contact (PDPA s.23)
 docker compose up -d
 # http://localhost:3000
@@ -75,7 +76,7 @@ docker compose up -d
 | **🌙 Dark Mode (v9)** | Class-based Tailwind dark theme across every screen, charts included (was a dead toggle before v9) |
 | **🛡️ Security (v9)** | helmet CSP headers, global API rate limiting (was imported-but-unused), rate-limited exports, share passwords via header, JWT fail-fast in prod, file-type filter on dataset uploads |
 | **Multi-file** | Upload up to 10 files as one dataset |
-| **Shareable Reports** | Public links made from a warning dialog: expiry required (1, 7, 30 or 90 days), optional password, generic title (never the file name), `noindex`, personal-data column values withheld; revoking deletes the link |
+| **Shareable Reports** | Public links made from a warning dialog: expiry required (1, 7, 30 or 90 days), optional password, generic title (never the file name), `noindex`, personal-data column values withheld; revoking (on `/account`) deletes the link |
 | **Custom Branding** | Per-workspace color, logo, name |
 | **Scheduled Reports** | Coming soon — switched off in v21.30. The runner was a stub that never sent anything, so creating a schedule now answers `501 FEATURE_UNAVAILABLE` and stored schedules (with their recipient addresses) were purged |
 | **Team Workspaces** | Owner / Admin / Member roles |
@@ -99,7 +100,7 @@ What DAB does with data is set out in its public notices, served by the app itse
 - `/terms` — Terms of Service
 - [`docs/privacy/README.md`](docs/privacy/README.md) — the operator's back-office privacy documents: records of processing (as controller and as processor), legitimate-interest assessments, the retention schedule, the breach plan, the data-request procedure, the vendor register, the DPO assessment, the evidence behind each public claim, and the owner's to-do list. Drafts for review by a Thai data-protection lawyer, not legal advice
 
-In short: try mode (signed out) reads a file in memory and stores none of its contents. Signed in, analyses go to History, and the original file is stored only when the user presses Save. The AI (Anthropic's Claude API) gets the question, column names and statistics, not raw rows — the one exception is an AI Edit the user explicitly confirms — and nothing from columns detected as personal data beyond their name and kind. Users can download their data or delete their account at `/account`. The notices name the operator from `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS`; set them in production.
+In short: try mode (signed out) reads a file in memory and stores none of its contents. Signed in, analyses go to History, and the original file is stored only when the user presses Save (the copies versions before 21.30 stored automatically are listed on `/account`, marked as such, and can be deleted there). The AI (Anthropic's Claude API) gets the question, column names and statistics, not raw rows — the one exception is an AI Edit the user explicitly confirms — and nothing from columns detected as personal data beyond their name and kind. Users can download their data, delete each stored file or share link, or delete their account at `/account`. The notices name the operator from `LEGAL_OPERATOR_NAME`, `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS`; set them in production.
 
 ---
 
@@ -577,8 +578,8 @@ This is an npm **workspaces** monorepo. Run `npm install` **once at the root** �
 1. `cp .env.example .env` — set **real** `JWT_SECRET` / `JWT_REFRESH_SECRET` (`openssl rand -hex 32` each) and `ANTHROPIC_API_KEY`. The app refuses to boot in production without the secrets, and refuses `AI_MOCK=1`.
 2. Set `AI_DAILY_BUDGET` (default 300). This is the hard ceiling on your daily Anthropic bill: anonymous visitors **never** trigger AI calls (they get the instant Insights Engine on their own files), signed-in users share the daily pool, and when it runs out the product degrades to stats-only instead of going down.
 3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml` (set `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` in `.env` first — there are no defaults); leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
-   - Set `STORAGE_ENCRYPTION_KEY` (`openssl rand -base64 32`, and keep a copy) so saved files are encrypted at rest; files saved before it was set are encrypted in place with `npm run storage-encrypt -w backend` (try `-- --dry-run` first).
+   - Set `STORAGE_ENCRYPTION_KEY` (`openssl rand -base64 32`, and keep a copy) so saved files are encrypted at rest; files saved before it was set are encrypted in place with `npm run storage-encrypt -w backend` (try `-- --dry-run` first), which also moves any pre-v21.1 copy still held in the database (`dataset_versions.file_content`) into sealed storage and clears the column.
    - On a managed Postgres, set `DATABASE_SSL_CA` (your provider's CA certificate) or `DATABASE_SSL_VERIFY=1` so the database's TLS certificate is verified. Production logs a warning at boot while either protection is off.
-   - Set `LEGAL_CONTACT_EMAIL`, `LEGAL_POSTAL_ADDRESS`, `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION` (and `LEGAL_OPERATOR_NAME` if the operator is not the default): the Privacy Notice must name a way to reach you (PDPA s.23), and production warns at boot while the contact details are empty. Leave the `*_RETENTION_DAYS` settings at their defaults unless you change the Privacy Notice first — the notice states those periods. The owner's full list is in [`docs/privacy/README.md`](docs/privacy/README.md).
+   - Set `LEGAL_CONTACT_EMAIL`, `LEGAL_POSTAL_ADDRESS`, `LEGAL_HOSTING_PROVIDER`, `LEGAL_HOSTING_REGION` and `LEGAL_HOSTING_TRANSFER_BASIS` (and `LEGAL_OPERATOR_NAME` if the operator is not the default): the Privacy Notice must name a way to reach you (PDPA s.23) and the safeguard for keeping data with a host outside Thailand (ss.28–29), and production warns at boot while any of them is empty. Leave the `*_RETENTION_DAYS` settings at their defaults unless you change the Privacy Notice first — the notice states those periods. The owner's full list is in [`docs/privacy/README.md`](docs/privacy/README.md).
 4. Put TLS in front (Caddy: two lines, or your PaaS does it). Rate limits, helmet, and upload caps are already on.
 5. Watch what arrives: `npm run telemetry -w backend` — the segment table is the vertical decision.

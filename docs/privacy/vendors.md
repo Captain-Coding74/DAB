@@ -2,7 +2,7 @@ Status: draft for review by a Thai data-protection lawyer — not legal advice. 
 
 # Vendor and sub-processor register
 
-Every outside company that receives personal data from DAB, what it receives, under which terms, and what is still to be confirmed. The Terms of Service (section 6) promise users that DAB uses only the listed sub-processors and updates the list before adding another; the Privacy Notice (section 8) says personal data is received only by Anthropic, the hosting provider, people the user chooses, and authorities when the law requires. Keep all three consistent.
+Every outside company that receives personal data from DAB, what it receives, under which terms, and what is still to be confirmed. The Terms of Service (section 6) promise users that DAB uses only the listed sub-processors and updates the list before adding another; the Privacy Notice (section 8) says personal data is received only by Anthropic, the hosting provider, the provider that hosts the contact mailbox, people the user chooses, and authorities when the law requires. Keep all three consistent.
 
 File a copy (PDF or a dated screenshot) of each vendor's terms next to this register when you confirm them, and note the date.
 
@@ -41,7 +41,7 @@ File a copy (PDF or a dated screenshot) of each vendor's terms next to this regi
 **To confirm (owner):**
 
 - [ ] Provider and region (and whether the region is in Thailand). Then set `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION`; the legal pages print them.
-- [ ] The provider's DPA and its transfer clauses; accept it in the account if it must be accepted; file a copy.
+- [ ] The provider's DPA and its transfer clauses; accept it in the account if it must be accepted; file a copy. Then set `LEGAL_HOSTING_TRANSFER_BASIS` to the safeguard it gives (for example "the provider's data-processing agreement, with standard contractual clauses"), as counsel confirms: the Privacy Notice (section 8) and the Terms print it as the transfer safeguard, and say "being set up" until it is set. Production warns at boot while it is empty.
 - [ ] Disk or volume encryption at rest.
 - [ ] Backups and snapshots: whether they exist, how long they are kept, and whether an erased account can be removed from them within 90 days.
 - [ ] Log retention for standard output (the request logs).
@@ -66,7 +66,7 @@ Each becomes a sub-processor the day it is used. Before that day: add it here, a
 | What it holds | Privacy requests, reports about shared pages, security reports and other mail sent to `LEGAL_CONTACT_EMAIL`, and the replies |
 | Who and where | **To fill** (the provider behind `LEGAL_CONTACT_EMAIL`) |
 
-The Privacy Notice's list of recipients (section 8) does not mention an email provider. If the contact mailbox is hosted by a third party, ask counsel whether the notice should name it.
+The Privacy Notice's list of recipients (section 8) includes "the provider that hosts our contact mailbox" without naming it. Fill in the row above, and ask counsel whether the notice should name the provider.
 
 DAB itself sends no email: there is no mail library in the backend, and the email address on an account is never used to send anything.
 

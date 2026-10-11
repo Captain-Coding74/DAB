@@ -34,10 +34,10 @@ The operator's internal records under Thailand's Personal Data Protection Act B.
 
 - [ ] `LEGAL_OPERATOR_NAME` — the controller's name as it should appear (default "Phatcharaphong Siriphatcharakul").
 - [ ] `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` — PDPA s.23 requires them, and so do the two request channels. Production logs a warning at boot while either is empty, and the pages show a "being set up" line instead.
-- [ ] `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION` — printed in the Privacy Notice and the Terms' sub-processor list.
+- [ ] `LEGAL_HOSTING_PROVIDER`, `LEGAL_HOSTING_REGION` and `LEGAL_HOSTING_TRANSFER_BASIS` — printed in the Privacy Notice (section 8) and the Terms' sub-processor list. The last is the PDPA s.28 exception or s.29 safeguard for keeping data with a host outside Thailand (for example the provider's DPA with standard contractual clauses), once confirmed with the host and counsel. A release prerequisite: production warns at boot while any of the three is empty, and the pages say "being set up".
 - [ ] `STORAGE_ENCRYPTION_KEY` — encrypts stored files at rest (AES-256-GCM); production warns while it is unset. Keep a copy of the key somewhere other than the server: files encrypted with it cannot be read without it. The Privacy Notice describes encryption as "when the operator has enabled it", so this is what makes that sentence true for your deployment.
 - [ ] `DATABASE_SSL_CA` (your provider's CA certificate, PEM text or a file path) or `DATABASE_SSL_VERIFY=1` (system CAs) — if you use Postgres, turn on certificate verification; production warns at boot while neither is set.
-- [ ] Run `npm run storage-encrypt -w backend` once after setting `STORAGE_ENCRYPTION_KEY`, to encrypt files saved before it was set (`-- --dry-run` counts them first).
+- [ ] Run `npm run storage-encrypt -w backend` once after setting `STORAGE_ENCRYPTION_KEY`, to encrypt files saved before it was set (`-- --dry-run` counts them first). It also moves pre-v21.1 copies still held in the database (`dataset_versions.file_content`) into sealed storage and clears the column; a "kept" count means a stored object is missing — look at those rows.
 - [ ] Docker Compose: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` have no defaults — set them in `.env` (see README, Docker).
 - [ ] `TRUST_PROXY` — must match the number of proxies in front of the server, or the traffic log and audit log record the wrong IP address.
 - [ ] `TELEMETRY_ADMINS` — only your own username, or unset. `METRICS_TOKEN` if a monitor reads `/api/metrics`.
@@ -53,10 +53,11 @@ The operator's internal records under Thailand's Personal Data Protection Act B.
 ### Gaps in the public pages found while writing these drafts
 
 - [x] The Privacy Notice states no retention period for correspondence (requests, reports, feedback). Done in v21.30: the periods in `retention-schedule.md` section 4 are in the notice's retention table and on `/contact`.
-- [ ] The Privacy Notice's list of recipients does not name an email provider for the contact mailbox; ask counsel whether it should.
+- [x] The Privacy Notice's list of recipients did not mention an email provider for the contact mailbox. Done in v21.30: section 8 lists "the provider that hosts our contact mailbox"; record which one in `vendors.md` (and ask counsel whether the notice must name it).
 - [x] The Privacy Notice (section 3, "Saved datasets") does not say that the time a teacher confirmed the school's authority is kept with a saved class roster (`datasets.school_attested_at`). Done in v21.30.
 - [x] The notices promised announcements "in the app" (material changes, breaches, closing the service), but DAB has no announcement feature. Done in v21.30: they now promise a notice on the legal pages (linked from every page of the app), posted with its effective date in advance, and signed-in users must accept a material change before carrying on.
 - [ ] DAB cannot tell a share link's owner that their link was disabled, and has no password change or reset; both matter in a breach.
+- [ ] Files earlier versions stored without asking. Before v21.30 the app saved a copy of every file analysed while signed in. v21.30 discloses them (Privacy Notice sections 2, 3 and 9; `/account` marks each "stored automatically" and can delete it) and they follow the 365-day inactivity rule. Decide whether to purge them sooner — for example a one-off deletion after a notice period — and change the notice first if so.
 
 ### Take to counsel
 
@@ -80,7 +81,7 @@ Further questions raised by these drafts:
 | Question | Where it comes up |
 |---|---|
 | For personal data inside uploads, the people concerned are not party to DAB's contract. Can the s.28 contract exception still cover sending it to Anthropic, or is a s.29 safeguard needed? | `ropa-processor.md`, transfers |
-| May a requester have a copy of their own traffic-log entries, given that no feature of DAB shows the log to anyone? | `data-requests.md` section 5 |
+| May a requester have a copy of their own traffic-log entries? v21.30 leaves them out of the `/account` download and offers them on request (Privacy Notice sections 3 and 12; `privacy-request.mjs export --traffic-log`). Should they be in the self-service download instead, or withheld? | `data-requests.md` section 5 |
 | Does the 30-day answer period run from receipt (as the public pages promise) or from identity verification (as the Notification counts), and may it pause while identity information is awaited? | `data-requests.md` section 2 |
 | In a high-risk breach, may DAB email affected users, although the Privacy Notice says the email address is never used to send anything? | `breach-response.md` step 5 |
 | Should a hashed acceptance record outlive a deleted account for the limitation period, and how long should the breach register and correspondence be kept? | `legitimate-interests.md` LIA 4; `retention-schedule.md` section 4 |

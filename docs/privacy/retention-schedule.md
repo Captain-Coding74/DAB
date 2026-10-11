@@ -15,7 +15,7 @@ Why this matters: PDPA s.37(3) requires a system that deletes personal data when
 | Data | Table | Default | Setting | Job | Counted from |
 |---|---|---|---|---|---|
 | Items in Trash | `datasets` (in Trash) | 30 days | `TRASH_RETENTION_DAYS` | `trash` | when the item was moved to Trash |
-| Saved datasets with no activity | `datasets` | 365 days | `DATASET_RETENTION_DAYS` | `datasets` | the last activity: opened, analysed, tested, edited or given a new version |
+| Saved datasets with no activity (and the copies versions before v21.30 stored automatically, `saved_on_request = 0`) | `datasets` (not in Trash) | 365 days | `DATASET_RETENTION_DAYS` | `datasets` | the last activity: opened, analysed, tested, edited, given a new version, restored from Trash, commented on, or any activity-feed entry |
 | Analyses (History), with their chat and share links | `analyses` | 365 days | `ANALYSIS_RETENTION_DAYS` | `analyses` | when the analysis was created |
 | Telemetry | `upload_metadata` | 395 days | `TELEMETRY_RETENTION_DAYS` | `telemetry` | when the row was written |
 | Security audit log | `audit_log` | 365 days | `AUDIT_RETENTION_DAYS` | `audit` | when the row was written |

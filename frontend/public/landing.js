@@ -48,7 +48,7 @@
       h2B: "โหมดลองใช้ ไม่แตะ AI", h2T: "ผลตรวจฟรีคำนวณจากสถิติล้วน — เร็ว ตรวจซ้ำได้ และไม่เผางบใคร",
       h3B: "ความเป็นส่วนตัวเป็นค่าเริ่มต้น",
       h3T: 'โหมดลองใช้อ่านไฟล์ในหน่วยความจำและไม่เก็บเนื้อหาไว้เลย — บันทึกเพียงรูปทรงของไฟล์ ' +
-        "เมื่อเข้าสู่ระบบ ผลวิเคราะห์จะอยู่ในประวัติของคุณ ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกดบันทึกเท่านั้น " +
+        "เมื่อเข้าสู่ระบบ ผลวิเคราะห์จะอยู่ในประวัติของคุณ ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกดบันทึกเท่านั้น (สำเนาที่ DAB รุ่นก่อนเก็บไว้โดยอัตโนมัติ ดูและลบได้ที่หน้าบัญชี) " +
         "และ AI เห็นคำถาม ชื่อคอลัมน์ และค่าสถิติ — ไม่เห็นแถวข้อมูล เว้นแต่คุณยืนยันคำสั่งให้ AI แก้ไขข้อมูล และไม่เห็นข้อมูลส่วนบุคคลที่ระบบตรวจพบ " +
         'ดาวน์โหลดข้อมูลหรือลบบัญชีได้ทุกเมื่อ · <a href="/privacy">ประกาศความเป็นส่วนตัว</a>',
       ctaEyebrow: "พร้อมเมื่อคุณพร้อม", ctaH2: "เอาไฟล์ที่เละที่สุดของคุณมา",
@@ -92,7 +92,7 @@
       h2B: "Try-mode never touches AI", h2T: "Free inspection is pure statistics — fast, reproducible, and burns nobody's budget.",
       h3B: "Privacy by default",
       h3T: "Try mode reads your file in memory and keeps none of its contents — only its shape is recorded. " +
-        "Signed in, results go to your History, the original file is kept only if you press Save, " +
+        "Signed in, results go to your History, the original file is kept only if you press Save (copies earlier versions kept automatically can be deleted on your Account page), " +
         "and the AI sees your question, column names and statistics — not your rows unless you confirm an AI Edit, and never detected personal data. " +
         'Download your data or delete your account any time · <a href="/privacy">Privacy Notice</a>',
       ctaEyebrow: "Ready when you are", ctaH2: "Bring us your messiest file",
