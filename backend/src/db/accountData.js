@@ -8,6 +8,9 @@
  * out on purpose: secrets (the password hash, refresh-token hashes, share-link
  * tokens and passwords), internal storage keys, and other people's ids —
  * a version someone else uploaded to your dataset says "not you", not who.
+ * Also left out: the traffic log (services/trafficLog.js), which holds user
+ * ids but which no API exposes; erasure leaves it to its own 90-day
+ * retention, as the Computer-Related Crime Act s.26 requires.
  * Saved files are listed with the API path that downloads each original
  * (owner only), not inlined: a file can be megabytes and the export must stay
  * a document a person can open and read.

@@ -13,8 +13,9 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Modal, Button } from "../ui";
 import { useAppStore } from "../../store";
-import { postJSON } from "../../lib/api";
+import { getJSON, postJSON } from "../../lib/api";
 import { useLang } from "../../lib/i18n";
+import { fetchLegal } from "../../lib/legal.js";
 import { LegalText } from "./LegalText.jsx";
 
 export default function ReacceptDialog({ legal }) {
@@ -36,6 +37,11 @@ export default function ReacceptDialog({ legal }) {
     } catch {
       setError(t("legal.acceptFailed"));
       setBusy(false);
+      // A release can bump the version while this dialog is open; the server
+      // then refuses the one shown, and retrying it would fail every time.
+      // Take the status afresh: LegalGate shows the new version with the box
+      // cleared (it keys this dialog by version), or closes if already accepted.
+      fetchLegal(getJSON).then((l) => { if (l) setLegal(l); });
     }
   }
 

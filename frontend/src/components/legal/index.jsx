@@ -10,7 +10,7 @@
 import React, { useEffect, Suspense, lazy } from "react";
 import { useAppStore } from "../../store";
 import { getJSON } from "../../lib/api";
-import { needsAcceptance } from "../../lib/legal.js";
+import { needsAcceptance, fetchLegal } from "../../lib/legal.js";
 
 const ReacceptDialog = lazy(() => import("./ReacceptDialog"));
 
@@ -23,10 +23,12 @@ export default function LegalGate() {
   useEffect(() => {
     if (!user || legal) return undefined;
     let live = true;
-    getJSON("/api/auth/me").then((p) => { if (live && p?.legal) setLegal(p.legal); }).catch(() => {});
+    fetchLegal(getJSON).then((l) => { if (live && l) setLegal(l); });
     return () => { live = false; };
   }, [user, legal, setLegal]);
 
   if (!user || !needsAcceptance(legal)) return null;
-  return <Suspense fallback={null}><ReacceptDialog legal={legal}/></Suspense>;
+  // Keyed by version: a newer text arriving while the dialog is open starts
+  // it afresh, so a tick given for the old text never carries over.
+  return <Suspense fallback={null}><ReacceptDialog key={legal.current} legal={legal}/></Suspense>;
 }

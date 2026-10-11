@@ -4,7 +4,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { needsAcceptance, consentGiven, fillSlots } from "./legal.js";
+import { needsAcceptance, consentGiven, fillSlots, fetchLegal } from "./legal.js";
 import { STRINGS } from "./i18n.js";
 
 describe("needsAcceptance", () => {
@@ -56,4 +56,19 @@ describe("fillSlots", () => {
 
 test("the age line is the one the Privacy Notice and Terms quote", () => {
   assert.equal(STRINGS["legal.age"].en, "I am at least 18 years old, and if I am under 20 my parent or guardian agrees");
+});
+
+describe("fetchLegal", () => {
+  const LEGAL = { accepted: "2026-01-01", current: "2026-10-10" };
+  test("reads the legal block of GET /api/auth/me", async () => {
+    const asked = [];
+    const getJSON = async (path) => { asked.push(path); return { username: "a", legal: LEGAL }; };
+    assert.deepEqual(await fetchLegal(getJSON), LEGAL);
+    assert.deepEqual(asked, ["/api/auth/me"]);
+  });
+  test("null when there is no block or the request fails — never a throw", async () => {
+    assert.equal(await fetchLegal(async () => ({ username: "a" })), null);
+    assert.equal(await fetchLegal(async () => null), null);
+    assert.equal(await fetchLegal(async () => { throw new Error("offline"); }), null);
+  });
 });
