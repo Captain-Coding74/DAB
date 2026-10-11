@@ -48,7 +48,11 @@ async function launchBrowser() {
     const { default: sparticuz } = await import("@sparticuz/chromium");
     return await chromium.launch({
       executablePath: await sparticuz.executablePath(),
-      args: sparticuz.args,
+      /* Not --single-process: that Lambda flag puts every context in one
+         process, and closing any context then takes the whole browser down
+         ("Target page, context or browser has been closed") — this suite
+         opens and closes several. */
+      args: sparticuz.args.filter((a) => a !== "--single-process"),
       headless: true,
     });
   } catch (err) {

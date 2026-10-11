@@ -114,7 +114,11 @@ async function launchBrowser() {
     const { default: sparticuz } = await import("@sparticuz/chromium");
     return await chromium.launch({
       executablePath: await sparticuz.executablePath(),
-      args: sparticuz.args,
+      /* Not --single-process: that Lambda flag puts every context in one
+         process, and closing any context then takes the whole browser down
+         ("Target page, context or browser has been closed") — this suite
+         opens and closes several. */
+      args: sparticuz.args.filter((a) => a !== "--single-process"),
       headless: true,
     });
   } catch (err) {
@@ -401,6 +405,18 @@ describe("Critical flow: the public landing page", () => {
         await new Promise(r => setTimeout(r, 120));
       }
       window.scrollTo(0, document.body.scrollHeight);
+    });
+    /* A software-rendered browser (the bundled Chromium) can paint slower
+       than the walk scrolls, so an element can pass through the viewport
+       between two IntersectionObserver checks. Bring any such element into
+       view on its own — still landing.js revealing it on scroll — before
+       counting. */
+    await page.evaluate(async () => {
+      for (const el of document.querySelectorAll(".rv")) {
+        if (getComputedStyle(el).opacity !== "0") continue;
+        el.scrollIntoView({ block: "center", behavior: "instant" });
+        await new Promise(r => setTimeout(r, 250));
+      }
     });
     await page.waitForTimeout(900);
 
