@@ -207,7 +207,9 @@ export async function suggestFixes(ai, { headers, colAnalysis, totalRows, dupeCo
     }
     return { suggestions: clean, source: "ai" };
   } catch (err) {
-    log.warn({ err: err.message }, "AI suggest failed — using deterministic rules");
+    // v21.30: the error's name only — a JSON.parse message quotes the model's
+    // reply, which names the user's columns.
+    log.warn({ err: err.name }, "AI suggest failed — using deterministic rules");
     return fallback();
   }
 }

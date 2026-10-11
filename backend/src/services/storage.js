@@ -137,6 +137,10 @@ async function writeRaw(key, buffer) {
 /** Store bytes. Returns { key, bytes, sha256 } — bytes and sha256 of the PLAINTEXT. */
 export async function put(key, buffer) {
   if (!Buffer.isBuffer(buffer)) throw new TypeError("storage.put expects a Buffer");
+  // v21.30: unsealed bytes that start with the sealed-object magic could never
+  // be read back (get() would try to decrypt them). Uploads that begin with it
+  // are refused at the gate (fileMagic.js); this is the backstop.
+  if (!KEY && isSealed(buffer)) throw Object.assign(new Error("storage: content starts with the reserved encrypted-object marker"), { code: "STORAGE_RESERVED_PREFIX", status: 400 });
   const sha256 = createHash("sha256").update(buffer).digest("hex");
   await writeRaw(key, KEY ? seal(buffer, KEY) : buffer);
   log.debug({ key, bytes: buffer.length, driver: DRIVER, encrypted: Boolean(KEY) }, "object stored");
@@ -159,21 +163,34 @@ export async function exists(key) {
   return existsSync(localPath(key));
 }
 
+/**
+ * Delete an object. One that is already gone counts as deleted — callers
+ * (permanent delete, account erasure, the retention jobs) must stay
+ * idempotent. v21.30: ANY other failure throws. It used to be swallowed at
+ * debug level, so a network blip or a bucket credential without
+ * s3:DeleteObject let the cascade go on to delete the version rows — the only
+ * record of the key — and report the erasure done while the user's file stayed
+ * in storage for good. Thrown before a row is touched, the delete stays
+ * retryable. The error carries a code, never the key or an fs message: a key
+ * written before v21.30 holds the uploaded file name.
+ */
 export async function remove(key) {
   try {
     if (DRIVER === "s3") {
       const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
       const c = await s3Client();
-      await c.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+      await c.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));   // a missing key is a success on S3
     } else {
       await unlink(localPath(key));
     }
   } catch (err) {
-    // Deleting an object that is already gone is not an error worth raising:
-    // callers delete during cleanup paths that must stay idempotent.
-    // v21.30: the error code only — a key written before v21.30 holds the
-    // uploaded file name, and an fs error message repeats the full path.
-    log.debug({ code: err.code || err.name }, "object delete skipped");
+    const reason = err.code || err.name;
+    if (reason === "ENOENT" || reason === "NoSuchKey") { log.debug({ code: reason }, "object already gone"); return; }
+    log.warn({ code: reason, driver: DRIVER }, "object delete failed");
+    const e = new Error("storage: a stored object could not be deleted");
+    e.code = "STORAGE_DELETE_FAILED";
+    e.reason = reason;
+    throw e;
   }
 }
 

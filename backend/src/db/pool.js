@@ -20,6 +20,10 @@ const log       = serviceLogger("db");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR  = process.env.SQLITE_DIR || path.join(__dirname, "../../data");
 
+/** v21.30: the SQLite file the pool would open (or create), for operator
+ *  scripts that must refuse to run against a brand-new empty database. */
+export const sqliteFile = () => path.join(DATA_DIR, "app.db");
+
 let _pool    = null;   // pg.Pool when using Postgres
 let _sqlite  = null;   // @libsql/client when using SQLite
 let _backend = null;   // "postgres" | "sqlite"
@@ -48,7 +52,7 @@ export async function initPool() {
   } else {
     _backend = "sqlite";
     fs.mkdirSync(DATA_DIR, { recursive: true });
-    _sqlite = createClient({ url: `file:${path.join(DATA_DIR, "app.db")}` });
+    _sqlite = createClient({ url: `file:${sqliteFile()}` });
     log.info({ backend: "sqlite", path: DATA_DIR }, "Connected to SQLite");
   }
 }

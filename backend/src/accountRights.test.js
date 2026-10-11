@@ -24,6 +24,9 @@ import * as storage from "./services/storage.js";
 import { runRetention } from "./services/retention.js";
 import { trafficSettled } from "./services/trafficLog.js";
 import { eraseAccount, ERASED_USER } from "./db/accountErase.js";
+import { collectAccountData } from "./db/accountData.js";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SALES = fs.readFileSync(new URL("../sample-data/sales.csv", import.meta.url));
 const PASSWORD = "Test1234!";
@@ -175,6 +178,25 @@ describe("GET /api/auth/me/export", () => {
     assert.ok(data.sharedWithYou.some((p) => p.dataset_id === fx.dDataset && p.role === "editor"));
   });
 
+  /* v21.30: the export claimed "everything" while leaving out the traffic
+     log and the versions A added to other people's datasets. */
+  test("says what it leaves out, and lists the version added to someone else's dataset", async () => {
+    assert.match(data.about, /Not included: your entries in the traffic log/);
+    const added = data.versionsYouAddedToOthers.filter((v) => v.dataset_id === fx.dDataset);
+    assert.equal(added.length, 1);
+    assert.equal(added[0].file_name, "from-a.csv");
+    assert.ok(!("download" in added[0]) && !("storage_key" in added[0]), "the file stays the owner's to hand out");
+    assert.ok(!("trafficLog" in data));
+  });
+
+  test("the operator's export for an email or post request adds the traffic-log entries", async () => {
+    await trafficSettled();
+    const full = await collectAccountData(id.a, new Date(), { trafficLog: true });
+    assert.ok(full.trafficLog.some((r) => r.event === "register" && r.ip), JSON.stringify(full.trafficLog).slice(0, 200));
+    assert.ok(full.trafficLog.every((r) => !("user_id" in r) && !("id" in r)));
+    assert.doesNotMatch(full.about, /Not included/);
+  });
+
   test("is logged as a completed self-service export under sha256(user id)", async () => {
     const rows = await query(`SELECT type, channel, status, completed_at FROM privacy_requests WHERE subject_hash=$1`, [sha256(id.a)]);
     assert.deepEqual(rows.map((r) => [r.type, r.channel, r.status]), [["export", "self-service", "completed"]]);
@@ -202,20 +224,23 @@ describe("GET /api/auth/me/export", () => {
 describe("DELETE /api/auth/me", () => {
   const deleteRequests = () => count(`SELECT COUNT(*) AS n FROM privacy_requests WHERE type='delete' AND subject_hash=$1`, [sha256(id.a)]);
 
-  test("400 PASSWORD_REQUIRED without a password, 401 with a wrong one — nothing erased", async () => {
+  test("400 PASSWORD_REQUIRED without a password, 403 WRONG_PASSWORD with a wrong one — nothing erased", async () => {
     for (const body of [{}, { password: "" }, { password: 123 }]) {
       const res = await as(agent.delete("/api/auth/me"), "a").send(body);
       assert.equal(res.status, 400);
       assert.equal(res.body.code, "PASSWORD_REQUIRED");
     }
-    assert.equal((await as(agent.delete("/api/auth/me"), "a").send({ password: "wrong-password" })).status, 401);
+    // Not 401: the SPA reads a 401 as an expired session and re-sends the request.
+    const wrong = await as(agent.delete("/api/auth/me"), "a").send({ password: "wrong-password" });
+    assert.equal(wrong.status, 403);
+    assert.equal(wrong.body.code, "WRONG_PASSWORD");
     assert.equal(await count(`SELECT COUNT(*) AS n FROM users WHERE id=$1`, [id.a]), 1);
     assert.equal(await deleteRequests(), 0);
   });
 
   test("cannot delete another user: the password is checked against the caller's own account", async () => {
     const res = await as(agent.delete("/api/auth/me"), "b").send({ password: "wrong-for-b", userId: id.a, username: name.a });
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 403);
     assert.equal(await count(`SELECT COUNT(*) AS n FROM users WHERE id IN ($1,$2)`, [id.a, id.b]), 2);
   });
 
@@ -295,5 +320,63 @@ describe("privacy-request retention", () => {
     assert.ok(result["privacy-requests"] >= 1);
     assert.equal(await count(`SELECT COUNT(*) AS n FROM privacy_requests WHERE id=$1`, [old]), 0);
     assert.equal(await count(`SELECT COUNT(*) AS n FROM privacy_requests WHERE id=$1`, [recent]), 1);
+  });
+});
+
+/* v21.30: storage.remove swallowed every failure, so an erasure whose file
+   delete failed (a network blip, a bucket credential without DeleteObject)
+   answered 200, logged the request "completed" and dropped the only rows
+   recording the key — the file stayed in storage for good. Now the failure
+   stops the cascade with its rows intact and the request stays open. Sessions
+   are revoked before the slow part, so no refresh mints a token meanwhile. */
+describe("an erasure whose stored file cannot be deleted", () => {
+  const OBJECTS = path.join(process.env.SQLITE_DIR || fileURLToPath(new URL("../data", import.meta.url)), "objects");
+  const who = `ar_stuck_${u}`;
+  let session, userId, datasetId, objectPath;
+
+  before(async () => {
+    session = (await agent.post("/api/auth/register").send({ username: who, password: PASSWORD, ...TERMS })).body;
+    userId = (await one(`SELECT id FROM users WHERE username=$1`, [who])).id;
+    datasetId = (await agent.post("/api/datasets").set("Authorization", `Bearer ${session.accessToken}`).attach("file", SALES, "sales.csv")).body.id;
+    const { storage_key } = await one(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1`, [datasetId]);
+    objectPath = path.join(OBJECTS, storage_key);
+    fs.rmSync(objectPath);
+    fs.mkdirSync(objectPath);   // unlink() now fails, as a refused S3 DeleteObject would
+  });
+
+  test("permanent delete fails and keeps the rows that record the file", async () => {
+    const res = await agent.delete(`/api/datasets/${datasetId}/permanent`).set("Authorization", `Bearer ${session.accessToken}`);
+    assert.equal(res.status, 500);
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM dataset_versions WHERE dataset_id=$1`, [datasetId]), 1);
+  });
+
+  test("account deletion fails, stays an open request, and has already revoked the sessions", async () => {
+    const res = await agent.delete("/api/auth/me").set("Authorization", `Bearer ${session.accessToken}`).send({ password: PASSWORD });
+    assert.equal(res.status, 500);
+    const [request] = await query(`SELECT status FROM privacy_requests WHERE type='delete' AND subject_hash=$1`, [sha256(userId)]);
+    assert.equal(request.status, "received");
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM dataset_versions WHERE dataset_id=$1`, [datasetId]), 1);
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM refresh_tokens WHERE user_id=$1`, [userId]), 0);
+    assert.equal((await agent.post("/api/auth/refresh").send({ refreshToken: session.refreshToken })).status, 401);
+  });
+
+  test("once storage works again, the user signs in and the deletion completes", async () => {
+    fs.rmdirSync(objectPath);
+    const login = (await agent.post("/api/auth/login").send({ username: who, password: PASSWORD })).body;
+    const res = await agent.delete("/api/auth/me").set("Authorization", `Bearer ${login.accessToken}`).send({ password: PASSWORD });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await rowsHolding(userId), {});
+    const statuses = (await query(`SELECT status FROM privacy_requests WHERE type='delete' AND subject_hash=$1`, [sha256(userId)])).map((r) => r.status);
+    assert.ok(statuses.includes("completed"), statuses.join());
+  });
+
+  test("an erased id is refused a new access token even with a live refresh token", async () => {
+    const { markErased, clearErased } = await import("./auth.js");
+    const other = (await agent.post("/api/auth/register").send({ username: `${who}_r`, password: PASSWORD, ...TERMS })).body;
+    const otherId = (await one(`SELECT id FROM users WHERE username=$1`, [`${who}_r`])).id;
+    markErased(otherId);
+    try {
+      assert.equal((await agent.post("/api/auth/refresh").send({ refreshToken: other.refreshToken })).status, 401);
+    } finally { clearErased(otherId); }
   });
 });

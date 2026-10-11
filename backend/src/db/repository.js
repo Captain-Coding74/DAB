@@ -170,7 +170,7 @@ export async function getWorkspaceDatasets(wsId) {
    AI_DISABLED (services/aiGate.js). */
 export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, fileType, totalRows, totalCols, prompt, analysis, statsJson, chartConfig, qualityScore, durationMs, ipAddress, aiDisabled = false }) {
   const id=uuid();
-  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at,ai_disabled) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+  await query(`INSERT INTO analyses (id,user_id,workspace_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,quality_score,duration_ms,ip_address,created_at,ai_disabled,ai_minimised) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1)`,
     [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now(),aiDisabled?1:0]);
   return { id };
 }
@@ -226,7 +226,7 @@ export async function createSharedReport({ analysisId, userId, title, passwordHa
 }
 /* v21.30: no a.file_name — a public page never shows it (services/shareView.js). */
 export async function getSharedReport(token) {
-  const r = await query(`SELECT sr.*,a.analysis,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
+  const r = await query(`SELECT sr.*,a.analysis,a.ai_minimised,a.file_name,a.total_rows,a.stats_json,a.chart_config,w.brand_color,w.brand_name,w.brand_logo FROM shared_reports sr JOIN analyses a ON a.id=sr.analysis_id LEFT JOIN workspaces w ON w.id=a.workspace_id WHERE sr.token=$1 AND sr.is_active=1`,[token]);
   if (!r[0]) return null;
   if (r[0].expires_at && new Date(r[0].expires_at) < new Date()) return null;
   return r[0];

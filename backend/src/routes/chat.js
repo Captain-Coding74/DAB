@@ -8,7 +8,7 @@ import { analyzeLimiter } from "../middleware/rateLimiter.js";
 import { runAgent } from "../services/agent.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
 import { cache } from "../services/cache.js";
-import { aiSafeColumns } from "../services/aiSafe.js";
+import { aiSafeColumns, legacyAiText } from "../services/aiSafe.js";
 import { analysisAiEnabled, AI_DISABLED } from "../services/aiGate.js";
 import { AI_MODEL } from "../config.js";
 
@@ -47,13 +47,19 @@ async function loadForAi(req, res) {
    two copies. v21.30: the column summary is the aiSafe view, so a detected
    personal-data column contributes its name and kind and nothing else (stored stats carry the masked-for-display frequency tables,
    and s.26 values are kept readable there for the owner — not for the AI). */
+/* v21.30: an analysis made before this release keeps its report and its
+   earlier chat out of the conversation (aiSafe.js legacyAiText) — both may
+   quote raw values from the old prompts. The model answers from the
+   statistics and the new question. */
 function chatMessages(analysis, history, message) {
   const statsJson = analysis.stats_json ? JSON.parse(analysis.stats_json) : {};
   const cols = aiSafeColumns((statsJson.colAnalysis || []).slice(0, 5));
+  const legacy = legacyAiText(analysis);
+  const context = legacy ? "Context — the statistics of a dataset the user analysed:" : `Context — you previously analysed this dataset:\n${analysis.analysis}`;
   return [
-    { role: "user", content: `Context — you previously analysed this dataset:\n${analysis.analysis}\n\nStats summary:\n${JSON.stringify(cols, null, 1)}\n\nAnswer follow-up questions about this data concisely in Thai.` },
+    { role: "user", content: `${context}\n\nStats summary:\n${JSON.stringify(cols, null, 1)}\n\nAnswer follow-up questions about this data concisely in Thai.` },
     { role: "assistant", content: "เข้าใจแล้วครับ พร้อมตอบคำถามเกี่ยวกับข้อมูลนี้" },
-    ...history.map(m => ({ role: m.role, content: m.content })),
+    ...(legacy ? [] : history.map(m => ({ role: m.role, content: m.content }))),
     { role: "user", content: message },
   ];
 }
@@ -89,7 +95,8 @@ export function mountChatRoutes(app, { ai }) {
       const statsJson = analysis.stats_json ? JSON.parse(analysis.stats_json) : {};
 
       // runTool answers from the aiSafe view of statsJson (services/agent.js).
-      const { reply, steps } = await runAgent({ client: ai, statsJson, analysisText: analysis.analysis, question });
+      const analysisText = legacyAiText(analysis) ? "" : analysis.analysis;   // v21.30: see chatMessages
+      const { reply, steps } = await runAgent({ client: ai, statsJson, analysisText, question });
 
       await R.saveChatMessage({ analysisId: req.params.id, userId: req.user.userId, role: "user",      content: question });
       await R.saveChatMessage({ analysisId: req.params.id, userId: req.user.userId, role: "assistant", content: reply });

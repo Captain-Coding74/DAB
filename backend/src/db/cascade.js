@@ -80,8 +80,11 @@ export async function deleteAnalysisCascade(analysisId) {
  */
 export async function deleteDatasetCascade(datasetId) {
   // The stored bytes go first, as permanent delete always did: the rows below
-  // are the only record of these keys. storage.remove is idempotent (an
-  // already-missing object is skipped); legacy file_content rows have no key.
+  // are the only record of these keys. storage.remove skips an object that is
+  // already gone and THROWS on any other failure, which stops the cascade
+  // here with every row intact — the delete can be run again, and the caller
+  // reports a failure instead of an erasure that left the file behind.
+  // Legacy file_content rows have no key.
   const versions = await query(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1 AND storage_key IS NOT NULL`, [datasetId]);
   if (versions.length) {
     const storage = await import("../services/storage.js");

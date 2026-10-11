@@ -20,6 +20,11 @@ import { query } from "./db/pool.js";
 import { migrate } from "./db/migrate.js";
 import * as storage from "./services/storage.js";
 import { runRetention, registerRetentionJob } from "./services/retention.js";
+import { sealLegacyContent } from "./db/legacyContent.js";
+import { isSealed } from "./services/storageCrypto.js";
+import { createHash, randomBytes } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const sample = (name) => fs.readFileSync(new URL(`../sample-data/${name}`, import.meta.url));
 const CLASSROOM = sample("classroom.csv");
@@ -93,6 +98,15 @@ describe("opt-in save", () => {
     assert.equal(await count(`SELECT COUNT(*) AS n FROM analyses WHERE ip_address IS NOT NULL`), 0);
   });
 
+  test("a dataset saved now is marked as saved on request (/account tells those apart from older automatic copies)", async () => {
+    const res = await saveDataset(SALES, "asked.csv");
+    assert.equal(res.status, 201);
+    const [row] = await query(`SELECT saved_on_request FROM datasets WHERE id=$1`, [res.body.id]);
+    assert.equal(Number(row.saved_on_request), 1);
+    const listed = (await as(agent.get("/api/datasets"))).body.find((d) => d.id === res.body.id);
+    assert.equal(Number(listed.saved_on_request), 1);
+  });
+
   test("the explicit save stores the file as a dataset", async () => {
     const res = await saveDataset(SALES, "sales.csv");
     assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
@@ -145,6 +159,24 @@ describe("Save dataset links the analysis and keeps a Statistics-only choice", (
     const re = await as(agent.post(`/api/datasets/${ds}/analyze`)).send({});
     assert.equal(re.body.aiDisabled, true, "re-analysing the saved copy stays statistics-only");
     assert.equal(re.body.analysis, null);
+  });
+
+  /* v21.30 C2: re-analysing after Save sends the dataset id (lib/saveDataset.js
+     analyzeForm) — the server then applies the dataset's switch and links the
+     new analysis, so the dataset's deletion takes it too. */
+  test("re-analysing the file after Save, with its datasetId: the switch holds and the analysis is linked", async () => {
+    const { mockRequests } = await import("./services/aiClient.js");
+    const an = await analyze();
+    const ds = (await saveDataset(SALES, "sales.csv", { analysisId: an.body.savedId })).body.id;
+    assert.equal((await as(agent.patch(`/api/datasets/${ds}/ai`)).send({ aiEnabled: false })).status, 200);
+    mockRequests.length = 0;
+    const again = await analyze({ datasetId: ds });
+    assert.equal(again.status, 200);
+    assert.equal(again.body.aiDisabled, true);
+    assert.equal(mockRequests.length, 0, "no AI call");
+    assert.equal(await linkOf(again.body.savedId), ds);
+    await as(agent.delete(`/api/datasets/${ds}/permanent`));
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM analyses WHERE id IN ($1,$2)`, [an.body.savedId, again.body.savedId]), 0);
   });
 
   test("the server reads the choice off the analysis even when the client omits noAi", async () => {
@@ -376,6 +408,18 @@ describe("retention jobs delete exactly what is past its period", () => {
     await backdate(fx.analysed, OLD);
     fx.recentAnalysis = (await as(agent.post(`/api/datasets/${fx.analysed}/analyze`)).send({})).body.savedId;
     await backdate(fx.analysed, OLD);   // analyze touched last_used_at; the recent ANALYSIS alone must keep it
+    // v21.30 C3/E4: a collaborator's comment last week is activity; so is
+    // restoring from Trash; and a dataset in Trash is the trash rule's alone.
+    fx.commented = (await saveDataset(SALES, "commented.csv")).body.id;
+    await backdate(fx.commented, OLD, { lastUsed: null });   // as a pre-v21.30 row: nothing recorded its opens
+    await query(`INSERT INTO comments (id,dataset_id,user_id,content,created_at) VALUES ($1,$2,$3,'still using this',$4)`, [randomUUID(), fx.commented, ids.other, daysAgo(10)]);
+    fx.restored = (await saveDataset(SALES, "restored.csv")).body.id;
+    await backdate(fx.restored, OLD);
+    await as(agent.delete(`/api/datasets/${fx.restored}`));
+    await as(agent.post(`/api/datasets/${fx.restored}/restore`));
+    fx.trashedIdle = (await saveDataset(SALES, "trashed-idle.csv")).body.id;
+    await backdate(fx.trashedIdle, OLD);
+    await as(agent.delete(`/api/datasets/${fx.trashedIdle}`));
     fx.idleAnalysis = (await query(`INSERT INTO analyses (id,user_id,dataset_id,file_name,file_type,total_rows,total_cols,prompt,analysis,created_at) VALUES ($1,$2,$3,'f','csv',1,1,'p','a',$4) RETURNING id`, [randomUUID(), ids.owner, fx.idle, OLD]))[0].id;
 
     // Analyses: 400 days old (with chat + share) → deleted; 300 days → kept.
@@ -405,6 +449,12 @@ describe("retention jobs delete exactly what is past its period", () => {
     assert.equal(await exists("datasets", fx.trashNew), true);
     for (const k of fx.trashKeys) assert.equal(await storage.exists(k), false);
     assert.ok(fx.result.trash >= 1);
+  });
+
+  test("activity is also a recent comment or a restore from Trash; a dataset in Trash gets its 30 days there", async () => {
+    assert.equal(await exists("datasets", fx.commented), true, "commented on 10 days ago");
+    assert.equal(await exists("datasets", fx.restored), true, "restored just now");
+    assert.equal(await exists("datasets", fx.trashedIdle), true, "in Trash for less than 30 days");
   });
 
   test("saved datasets: deleted after 365 days without activity, with their analyses", async () => {
@@ -451,5 +501,64 @@ describe("retention jobs delete exactly what is past its period", () => {
     assert.equal(out["broken-for-test"], null);
     assert.equal(await exists("audit_log", id), false);
     registerRetentionJob("broken-for-test", async () => 0);
+  });
+});
+
+/* v21.30: what is stored must be what the row says it is, and no file may
+   stay in the clear in the database once encryption is switched on. */
+describe("stored files at rest", () => {
+  const OBJECTS = path.join(process.env.SQLITE_DIR || fileURLToPath(new URL("../data", import.meta.url)), "objects");
+  const sha = (b) => createHash("sha256").update(b).digest("hex");
+
+  test("a plaintext object swapped into storage is refused, not passed off as the user's file", async () => {
+    const saved = await saveDataset(SALES, "swap.csv");
+    assert.equal(saved.status, 201);
+    const [v] = await query(`SELECT storage_key FROM dataset_versions WHERE dataset_id=$1`, [saved.body.id]);
+    fs.writeFileSync(path.join(OBJECTS, v.storage_key), "name,score\nMallory,0\n");
+    const res = await as(agent.get(`/api/datasets/${saved.body.id}/preview`));
+    assert.equal(res.status, 500);
+    assert.ok(!JSON.stringify(res.body).includes("Mallory"));
+  });
+
+  test("an upload that starts with the encrypted-object marker is refused before it is stored", async () => {
+    const before = await count(`SELECT COUNT(*) AS n FROM datasets WHERE owner_id=$1`, [ids.owner]);
+    const res = await saveDataset(Buffer.from("DABENC1,score\na,1\n"), "marker.csv");
+    assert.equal(res.status, 400);
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM datasets WHERE owner_id=$1`, [ids.owner]), before);
+    await assert.rejects(storage.put("datasets/x/marker.csv", Buffer.from("DABENC1 then text")), { code: "STORAGE_RESERVED_PREFIX" });
+  });
+
+  test("storage-encrypt moves pre-v21.1 file_content into sealed storage and clears what is already stored", async () => {
+    const before = process.env.STORAGE_ENCRYPTION_KEY;
+    process.env.STORAGE_ENCRYPTION_KEY = randomBytes(32).toString("base64");
+    const keyed = await import(`./services/storage.js?legacy=${u}`);
+    if (before === undefined) delete process.env.STORAGE_ENCRYPTION_KEY; else process.env.STORAGE_ENCRYPTION_KEY = before;
+
+    const PLAIN = "citizen_id,name\n1103700012345,Somchai Jaidee\n";
+    const ds = randomUUID();
+    const row = (n, key = null, sum = null) => query(
+      `INSERT INTO dataset_versions (id,dataset_id,version_num,file_name,file_content,storage_key,storage_sha256,file_type,total_rows,total_cols,uploaded_by,created_at)
+       VALUES ($1,$2,$3,'roster.csv',$4,$5,$6,'csv',1,2,$7,$8)`, [`${ds}-${n}`, ds, n, PLAIN, key, sum, ids.owner, daysAgo(0)]);
+    await row(1);                                               // never backfilled: the DB holds the only copy
+    const copied = keyed.buildKey({ datasetId: ds, versionNum: 2, fileName: "roster.csv" });
+    await keyed.put(copied, Buffer.from(PLAIN));
+    await row(2, copied, sha(Buffer.from(PLAIN)));              // backfilled, column never cleared
+    await row(3, `datasets/${ds}/gone.csv`, sha(Buffer.from(PLAIN)));   // object missing: keep the only copy
+
+    const dry = await sealLegacyContent({ dryRun: true, store: keyed });
+    assert.ok(dry.moved >= 1 && dry.cleared >= 1 && dry.kept >= 1, JSON.stringify(dry));
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM dataset_versions WHERE dataset_id=$1 AND file_content<>''`, [ds]), 3, "dry run wrote");
+
+    await sealLegacyContent({ store: keyed });
+    const rows = await query(`SELECT version_num, file_content, storage_key, storage_sha256 FROM dataset_versions WHERE dataset_id=$1 ORDER BY version_num`, [ds]);
+    assert.deepEqual(rows.map((r) => r.file_content === ""), [true, true, false]);
+    assert.ok(isSealed(fs.readFileSync(path.join(OBJECTS, rows[0].storage_key))), "moved into SEALED storage");
+    assert.equal((await keyed.get(rows[0].storage_key)).toString(), PLAIN);
+    assert.equal(rows[0].storage_sha256, sha(Buffer.from(PLAIN)));
+    const again = await sealLegacyContent({ store: keyed });
+    assert.equal(again.moved + again.cleared, 0, "a second run has nothing left to do");
+
+    await query(`DELETE FROM dataset_versions WHERE dataset_id=$1`, [ds]);
+    for (const r of rows) await keyed.remove(r.storage_key);
   });
 });

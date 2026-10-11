@@ -109,6 +109,12 @@ async function deleteFolders(userId) {
 /** Erase the account. Safe to run again on a partly erased account. Returns a count summary (no ids). */
 export async function eraseAccount(userId) {
   const [user] = await query(`SELECT username FROM users WHERE id=$1`, [userId]);
+  // Sessions go FIRST (v21.30). The cascades below remove one stored object
+  // per version and can take a while; a refresh from another tab during that
+  // time used to mint a fresh access token that outlived the erased-account
+  // guard (auth.js markErased) and could store a file under the gone id. A
+  // failure part-way leaves an account that signs in with its password again.
+  await query(`DELETE FROM refresh_tokens WHERE user_id=$1`, [userId]);
   const summary = { workspaces: await handOverWorkspaces(userId), datasets: 0, analyses: 0 };
 
   for (const id of idsOf(await query(`SELECT id FROM datasets WHERE owner_id=$1`, [userId]))) {
@@ -131,7 +137,7 @@ export async function eraseAccount(userId) {
   await query(`UPDATE workspace_members SET invited_by=NULL WHERE invited_by=$1`, [userId]);
   await query(`UPDATE dataset_versions SET uploaded_by=$1 WHERE uploaded_by=$2`, [ERASED_USER, userId]);
   await query(`UPDATE upload_metadata SET user_id=NULL WHERE user_id=$1`, [userId]);
-  await query(`DELETE FROM refresh_tokens WHERE user_id=$1`, [userId]);
+  await query(`DELETE FROM refresh_tokens WHERE user_id=$1`, [userId]);   // again: a login during the erasure
   await query(`DELETE FROM audit_log WHERE user_id=$1`, [userId]);
   await query(`DELETE FROM users WHERE id=$1`, [userId]);
 

@@ -24,10 +24,12 @@
  *   complete <request-id> [--status completed|refused] [--note <text>]
  *       Close a request logged as received.
  *
- *   export <username> --channel <email|post> [--out <file>]
+ *   export <username> --channel <email|post> [--out <file>] [--traffic-log]
  *       Write everything DAB holds about the user to dab-export-<username>-<date>.json
  *       (or --out) — the same JSON as the in-app download — and log it.
  *       Send the original files too: the export lists each one's download path.
+ *       --traffic-log adds the user's traffic-log entries, which the in-app
+ *       download leaves out and the Privacy Notice offers on request.
  *
  *   delete <username> --channel <email|post> --confirm <username>
  *       Erase the account exactly as the in-app deletion does, and log it.
@@ -41,10 +43,18 @@
  *
  * The traffic log is never touched; like the in-app deletion this keeps it
  * until its own 90-day retention ends.
+ *
+ * v21.30: .env is read first (loadEnv, as server.js does). Without it the
+ * documented .env deployment ran this against a fresh, empty SQLite file —
+ * "no requests logged", "no user named …" — and, with STORAGE_DRIVER=s3 in
+ * .env, `delete` erased the rows while the files stayed in the bucket. With
+ * no DATABASE_URL it now also refuses a SQLite file that does not exist yet,
+ * instead of creating one.
  */
-import { writeFileSync } from "node:fs";
+import "../loadEnv.js";   // MUST be first: pool.js and storage.js read the env at import
+import { writeFileSync, existsSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { initPool, closePool, query } from "../db/pool.js";
+import { initPool, closePool, query, sqliteFile } from "../db/pool.js";
 import { migrate } from "../db/migrate.js";
 import { initCache, cache } from "../services/cache.js";
 import { collectAccountData, exportFileName } from "../db/accountData.js";
@@ -55,6 +65,7 @@ const OPTIONS = {
   type: { type: "string" }, channel: { type: "string" }, username: { type: "string" },
   subject: { type: "string" }, status: { type: "string" }, note: { type: "string" },
   out: { type: "string" }, confirm: { type: "string" }, limit: { type: "string" },
+  "traffic-log": { type: "boolean" },
 };
 
 function fail(message) {
@@ -97,7 +108,7 @@ const COMMANDS = {
     const channel = manualChannel(opts.channel);
     const userId = channel && await userIdFor(username);
     if (!userId) return;
-    const data = await collectAccountData(userId);
+    const data = await collectAccountData(userId, new Date(), { trafficLog: Boolean(opts["traffic-log"]) });
     const file = opts.out || exportFileName(username);
     writeFileSync(file, JSON.stringify(data, null, 2));
     const { id } = await PR.logPrivacyRequest({ subject: userId, type: "export", channel, note: opts.note });
@@ -134,6 +145,8 @@ const [command, ...rest] = positionals;
 
 if (!COMMANDS[command]) {
   fail(`unknown command "${command ?? ""}" — one of: ${Object.keys(COMMANDS).join(", ")}`);
+} else if (!process.env.DATABASE_URL && !existsSync(sqliteFile())) {
+  fail(`no database at ${sqliteFile()} — run this with the server's .env (DATABASE_URL or SQLITE_DIR)`);
 } else {
   await initPool();
   await migrate();

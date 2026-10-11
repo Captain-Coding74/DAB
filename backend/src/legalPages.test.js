@@ -9,11 +9,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { LEGAL_VERSION, legalInfo } from "./services/legal.js";
-import { LEGAL_PAGES, escapeHtml, legalValues, renderLegal, warnMissingLegalContacts } from "./legalPages.js";
+import { LEGAL_PAGES, escapeHtml, legalValues, renderLegal, warnMissingLegalContacts, templateFor } from "./legalPages.js";
 
 const PUBLIC = new URL("../../frontend/public/", import.meta.url);
 const source = (name) => readFileSync(new URL(`${name}.html`, PUBLIC), "utf8");
-const KNOWN = ["OPERATOR_NAME", "CONTACT_EMAIL", "POSTAL_ADDRESS", "HOSTING_PROVIDER", "HOSTING_REGION", "LEGAL_VERSION"];
+const KNOWN = ["OPERATOR_NAME", "CONTACT_EMAIL", "POSTAL_ADDRESS", "HOSTING_PROVIDER", "HOSTING_REGION", "HOSTING_TRANSFER_BASIS", "LEGAL_VERSION"];
 
 describe("legalInfo (services/legal.js)", () => {
   test("names the default operator and leaves contact details empty until configured", () => {
@@ -88,19 +88,32 @@ describe("renderLegal", () => {
 describe("warnMissingLegalContacts", () => {
   const spy = () => { const calls = []; return { calls, warn: (...a) => calls.push(a) }; };
 
-  test("production with no email or address warns, naming both", () => {
+  const ALL = ["LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS", "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION", "LEGAL_HOSTING_TRANSFER_BASIS"];
+
+  test("production with nothing set warns, naming the contact details and the hosting facts", () => {
     const log = spy();
-    assert.deepEqual(warnMissingLegalContacts({ NODE_ENV: "production", LEGAL_CONTACT_EMAIL: " " }, log),
-      ["LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS"]);
+    assert.deepEqual(warnMissingLegalContacts({ NODE_ENV: "production", LEGAL_CONTACT_EMAIL: " " }, log), ALL);
     assert.equal(log.calls.length, 1);
-    assert.deepEqual(log.calls[0][0], { missing: ["LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS"] });
+    assert.deepEqual(log.calls[0][0], { missing: ALL });
   });
 
-  test("production with both set is silent", () => {
+  // v21.30: where data is hosted, and the safeguard for taking it out of Thailand, are release prerequisites too.
+  test("contact details alone are not enough: the hosting facts are still named", () => {
     const log = spy();
-    assert.deepEqual(warnMissingLegalContacts({ NODE_ENV: "production", LEGAL_CONTACT_EMAIL: "a@b.th",
-                                                LEGAL_POSTAL_ADDRESS: "1 Road" }, log), []);
+    assert.deepEqual(warnMissingLegalContacts({ NODE_ENV: "production", LEGAL_CONTACT_EMAIL: "a@b.th", LEGAL_POSTAL_ADDRESS: "1 Road" }, log),
+      ["LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION", "LEGAL_HOSTING_TRANSFER_BASIS"]);
+  });
+
+  test("production with everything set is silent", () => {
+    const log = spy();
+    assert.deepEqual(warnMissingLegalContacts({ NODE_ENV: "production", LEGAL_CONTACT_EMAIL: "a@b.th", LEGAL_POSTAL_ADDRESS: "1 Road",
+      LEGAL_HOSTING_PROVIDER: "Railway", LEGAL_HOSTING_REGION: "Singapore", LEGAL_HOSTING_TRANSFER_BASIS: "DPA with SCCs" }, log), []);
     assert.equal(log.calls.length, 0);
+  });
+
+  test("the transfer safeguard fills its placeholder, escaped, or says it is being set up", () => {
+    assert.equal(legalValues(legalInfo({}), { LEGAL_HOSTING_TRANSFER_BASIS: "DPA <SCC>" }).HOSTING_TRANSFER_BASIS, "DPA &lt;SCC&gt;");
+    assert.match(legalValues(legalInfo({}), {}).HOSTING_TRANSFER_BASIS, /being set up/);
   });
 
   test("silent outside production, so tests and dev never see it", () => {
@@ -188,5 +201,20 @@ describe("legal.js (the language toggle)", () => {
     assert.equal(typeof links[1].handlers.click, "function", "click handler attached");
     links[1].handlers.click({ preventDefault() {} });
     assert.equal(document.body.dataset.lang, "th");
+  });
+});
+
+describe("templateFor", () => {
+  test("every spelling of a template's file name, decoded and normalised", () => {
+    for (const [p, page] of [["/privacy.html", "privacy"], ["/privacy%2Ehtml", "privacy"], ["//contact.html", "contact"],
+                             ["/a/../terms.html", "terms"], ["/./Storage.HTML", "storage"], ["/%6Cicenses.html", "licenses"]]) {
+      assert.equal(templateFor(p), page, p);
+    }
+  });
+
+  test("anything else is left to static and the SPA", () => {
+    for (const p of ["/privacy", "/landing.html", "/index.html", "/assets/privacy.html", "/privacy.html/", "/%E0%A4%A", "/privacy.htm"]) {
+      assert.equal(templateFor(p), null, p);
+    }
   });
 });

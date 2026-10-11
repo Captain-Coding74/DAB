@@ -26,16 +26,28 @@
  * column NAME (header patterns) and on the stored top values (the value
  * tests: checksum, Luhn, email shape). Any detection hides the column; a
  * kind already stored is kept as the name for it.
+ *
+ * A NUMERIC column has no top values: a column of 16-digit card numbers
+ * under a plain header ("ref") parses as numbers, and what was stored is its
+ * min, quartiles, median and max — each one a real card number from the file.
+ * Those stored values go through the same tests (storedValues below).
  */
 import { classifySensitiveColumns } from "./sensitive.js";
+
+const AGGREGATES = ["min", "q1", "median", "q3", "max"];
+
+/** The values a stored column entry still holds, as one-cell rows for the value tests. */
+function storedValues(c) {
+  if (Array.isArray(c.top) && c.top.length) return c.top.map((t) => [t?.value]);
+  return AGGREGATES.map((k) => c[k]).filter(Number.isInteger).map((v) => [String(v)]);
+}
 
 /** Column name → kind for every column the AI must not see values of. */
 export function detectedKinds(colAnalysis = []) {
   const kinds = new Map();
   for (const c of colAnalysis) {
     if (!c?.col) continue;
-    const topRows = Array.isArray(c.top) ? c.top.map((t) => [t?.value]) : [];
-    const kind = c.sensitive || classifySensitiveColumns([c.col], topRows)[0]?.kind;
+    const kind = c.sensitive || classifySensitiveColumns([c.col], storedValues(c))[0]?.kind;
     if (kind) kinds.set(c.col, kind);
   }
   return kinds;
@@ -85,3 +97,13 @@ export function aiSafeInsights(insights = [], hidden = new Set()) {
   const about = (id, col) => id.endsWith(`:${col}`) || id.startsWith(`corr:${col}:`);
   return insights.filter((i) => ![...hidden].some((col) => about(String(i?.id ?? ""), col)));
 }
+
+/**
+ * Was this analysis's stored AI text written before v21.30? Its prompt then
+ * carried five raw rows and every column's top values, so the report — and
+ * the chat that followed it — can quote an email address, a street address
+ * or a diagnosis. Such text is not re-sent to the model (chat, the agent) or
+ * published (share pages); the statistics, filtered as above, still are.
+ * analyses.ai_minimised is 1 on every analysis made since (db/repository.js).
+ */
+export const legacyAiText = (analysis) => Number(analysis?.ai_minimised) !== 1;

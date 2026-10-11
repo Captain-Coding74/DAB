@@ -10,7 +10,10 @@
  *   trash      datasets in Trash longer than TRASH_RETENTION_DAYS
  *   datasets   saved datasets with no activity for DATASET_RETENTION_DAYS —
  *              activity is the latest of created, updated, last used
- *              (opened, analysed, tested), newest version, newest analysis
+ *              (opened, analysed, tested, restored), newest version, newest
+ *              analysis, newest comment and newest activity-feed entry. A
+ *              dataset in Trash is left to the trash rule, so it always gets
+ *              its 30 days there.
  *   analyses   analyses older than ANALYSIS_RETENTION_DAYS, with their chat
  *              and share links (db/cascade.js)
  *   telemetry  upload_metadata rows older than TELEMETRY_RETENTION_DAYS
@@ -129,13 +132,19 @@ registerRetentionJob("trash", async (ctx) => {
   return deleteEach("trash", rows.map((r) => r.id), deleteDatasetCascade);
 });
 
+/* Comments and activity-feed rows count as activity: before v21.30 nothing
+   set last_used_at, so on the first run after the upgrade a dataset whose
+   collaborators were still commenting looked idle and was deleted with its
+   thread. */
 registerRetentionJob("datasets", async (ctx) => {
   const rows = await query(
     `SELECT d.id FROM datasets d
-      WHERE d.created_at < $1 AND d.updated_at < $1
+      WHERE d.is_trashed = 0 AND d.created_at < $1 AND d.updated_at < $1
         AND (d.last_used_at IS NULL OR d.last_used_at < $1)
         AND NOT EXISTS (SELECT 1 FROM dataset_versions v WHERE v.dataset_id = d.id AND v.created_at >= $1)
-        AND NOT EXISTS (SELECT 1 FROM analyses a WHERE a.dataset_id = d.id AND a.created_at >= $1)`,
+        AND NOT EXISTS (SELECT 1 FROM analyses a WHERE a.dataset_id = d.id AND a.created_at >= $1)
+        AND NOT EXISTS (SELECT 1 FROM comments c WHERE c.dataset_id = d.id AND c.created_at >= $1)
+        AND NOT EXISTS (SELECT 1 FROM activity_feed f WHERE f.dataset_id = d.id AND f.created_at >= $1)`,
     [cutoffOf("DATASET_RETENTION_DAYS", ctx)]);
   return deleteEach("datasets", rows.map((r) => r.id), deleteDatasetCascade);
 });

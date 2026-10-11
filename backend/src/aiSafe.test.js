@@ -107,3 +107,19 @@ describe("aiSafeInsights — in step with insights.js ids", () => {
     assert.equal(aiSafeInsights(list, new Set()), list);
   });
 });
+
+/* v21.30: numeric columns store no top values, so value detection on an old
+   analysis has to look at the aggregates it did store. */
+describe("detectedKinds — numeric columns from old analyses", () => {
+  test("Luhn-valid card numbers stored as min/quartiles/max are a card column", () => {
+    const col = { col: "ref", type: "numeric", min: 4532015110000004, q1: 4532015110237572, median: 4532015110475130, q3: 4532015110712715, max: 4532015110871099 };
+    assert.equal(detectedKinds([col]).get("ref"), "card");
+    const safe = aiSafeColumns([col])[0];
+    assert.deepEqual(safe, { col: "ref", sensitive: "card" });
+  });
+
+  test("ordinary measurements are not flagged", () => {
+    const col = { col: "amount", type: "numeric", min: 100, q1: 250, median: 400, q3: 900, max: 12000 };
+    assert.equal(detectedKinds([col]).size, 0);
+  });
+});

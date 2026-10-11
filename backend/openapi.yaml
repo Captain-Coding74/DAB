@@ -347,7 +347,8 @@ paths:
       responses:
         "200": { description: Account erased }
         "400": { description: "`PASSWORD_REQUIRED` — no password in the body" }
-        "401": { description: Wrong password }
+        "401": { description: Not signed in }
+        "403": { description: "`WRONG_PASSWORD` — the password does not match" }
         "429": { description: Too many account requests }
 
   /api/auth/accept-terms:

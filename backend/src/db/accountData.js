@@ -8,9 +8,13 @@
  * out on purpose: secrets (the password hash, refresh-token hashes, share-link
  * tokens and passwords), internal storage keys, and other people's ids —
  * a version someone else uploaded to your dataset says "not you", not who.
- * Also left out: the traffic log (services/trafficLog.js), which holds user
- * ids but which no API exposes; erasure leaves it to its own 90-day
- * retention, as the Computer-Related Crime Act s.26 requires.
+ * Also left out of the self-service download: the traffic log
+ * (services/trafficLog.js), which holds user ids but which no API exposes;
+ * erasure leaves it to its own 90-day retention, as the Computer-Related
+ * Crime Act s.26 requires. v21.30: the export SAYS so (`about`, and the
+ * /account and Privacy Notice text), and a user who asks by email or post
+ * gets their entries from the operator (privacy-request.mjs export
+ * --traffic-log, which passes { trafficLog: true }).
  * Saved files are listed with the API path that downloads each original
  * (owner only), not inlined: a file can be megabytes and the export must stay
  * a document a person can open and read.
@@ -92,6 +96,13 @@ const activity = async (userId) => parseFields(await query(
   `SELECT id,workspace_id,dataset_id,action,target_type,target_id,metadata,created_at FROM activity_feed WHERE user_id=$1 ORDER BY created_at`,
   [userId]), ["metadata"]);
 
+/* v21.30: a version you uploaded to someone else's dataset stays with its
+   owner (db/accountErase.js), but it is still your upload: its details are
+   yours to see. No download path — the file is the owner's to hand out. */
+const versionsYouAdded = byUser(
+  `SELECT v.dataset_id,v.version_num,v.file_name,v.file_type,v.total_rows,v.total_cols,v.size_bytes,v.change_note,v.created_at
+     FROM dataset_versions v JOIN datasets d ON d.id=v.dataset_id WHERE v.uploaded_by=$1 AND d.owner_id<>$1 ORDER BY v.created_at`);
+
 const telemetry = async (userId) =>
   parseFields(await query(`SELECT * FROM upload_metadata WHERE user_id=$1 ORDER BY created_at`, [userId]), ["categories"])
     .map(({ user_id: _u, ...row }) => row);
@@ -99,6 +110,7 @@ const telemetry = async (userId) =>
 const READERS = {
   workspaces,
   datasets,
+  versionsYouAddedToOthers: versionsYouAdded,
   sharedWithYou: byUser(`SELECT dataset_id,role,created_at FROM dataset_permissions WHERE user_id=$1 ORDER BY created_at`),
   folders:       byUser(`SELECT id,workspace_id,name,parent_id,created_at FROM dataset_folders WHERE owner_id=$1 ORDER BY created_at`),
   analyses,
@@ -116,16 +128,21 @@ const READERS = {
   privacyRequests: (userId) => privacyRequestsFor(userId),
 };
 
-/** The whole export, or null when there is no such user. */
-export async function collectAccountData(userId, now = new Date()) {
+const ABOUT = "What Data Analysis Bot holds about this account. Each saved original file is listed under datasets[].versions[].download: download it from the /account page, or GET that path while signed in.";
+const NO_TRAFFIC = " Not included: your entries in the traffic log the Computer-Related Crime Act requires — ask by email or post (see /privacy#rights) and we send them.";
+
+/** The whole export, or null when there is no such user. trafficLog: the
+ *  operator's export for a request by email or post includes those rows. */
+export async function collectAccountData(userId, now = new Date(), { trafficLog = false } = {}) {
   const user = await profile(userId);
   if (!user) return null;
   const out = {
     format: EXPORT_FORMAT,
     exportedAt: now.toISOString(),
-    about: "Everything Data Analysis Bot holds about this account. Each saved original file is listed under datasets[].versions[].download: download it from the /account page, or GET that path while signed in.",
+    about: trafficLog ? ABOUT : ABOUT + NO_TRAFFIC,
     profile: user,
   };
   for (const [key, read] of Object.entries(READERS)) out[key] = await read(userId);
+  if (trafficLog) out.trafficLog = await query(`SELECT event,ip,ref,created_at FROM traffic_log WHERE user_id=$1 ORDER BY created_at`, [userId]);
   return out;
 }

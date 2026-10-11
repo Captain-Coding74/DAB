@@ -187,3 +187,74 @@ describe("permission matrix", () => {
       `these routes resolve a dataset but are not in the permission matrix:\n  ${missing.join("\n  ")}`);
   });
 });
+
+/* v21.30: the collection routes are scoped by WORKSPACE, not by a dataset id,
+   so the matrix above (which skips paths without :id) never probed them. A
+   collaborator on one dataset learns its workspace_id from GET
+   /api/datasets/:id; listing that workspace, or filing a new dataset into it
+   or into someone else's folder, must still need membership. */
+describe("workspace-scoped dataset routes", () => {
+  let app, member, stranger, wsId, folderId, sharedId;
+  const csv = () => Buffer.from("a,b\nx,1\ny,2\n");
+
+  before(async () => {
+    process.env.RATE_LIMIT_MAX = "1000";
+    app = await buildApp();
+    const u = Date.now().toString(36);
+    const reg = async (name) => (await request(app).post("/api/auth/register")
+      .send({ username: name, password: "password123", ...TERMS })).body;
+    member = await reg(`ws_m_${u}`);
+    stranger = await reg(`ws_s_${u}`);
+    const auth = (who) => ({ Authorization: `Bearer ${who.accessToken}` });
+    wsId = (await request(app).post("/api/workspaces").set(auth(member)).send({ name: `ws ${u}` })).body.id;
+    folderId = (await request(app).post("/api/datasets/folders").set(auth(member)).send({ name: "private", workspaceId: wsId })).body.id;
+    const up = await request(app).post("/api/datasets").set(auth(member))
+      .field("workspaceId", wsId).field("description", "counselling notes, private").attach("file", csv(), "roster.csv");
+    assert.equal(up.status, 201, JSON.stringify(up.body));
+    sharedId = up.body.id;
+    // The stranger is a collaborator on this ONE dataset, which tells them the workspace id.
+    await request(app).post(`/api/datasets/${sharedId}/share`).set(auth(member)).send({ username: `ws_s_${u}`, role: "viewer" });
+  });
+
+  after(async () => { await closeApp(); });
+
+  const as = (who, r) => r.set("Authorization", `Bearer ${who.accessToken}`);
+
+  test("a collaborator sees the workspace id but cannot list the workspace", async () => {
+    const one = await as(stranger, request(app).get(`/api/datasets/${sharedId}`));
+    assert.equal(one.status, 200);
+    assert.equal(one.body.workspace_id, wsId);
+    const list = await as(stranger, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(list.status, 403, JSON.stringify(list.body).slice(0, 120));
+    assert.ok(!JSON.stringify(list.body).includes("counselling"));
+  });
+
+  test("a member still lists it", async () => {
+    const list = await as(member, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(list.status, 200);
+    assert.ok(list.body.some((d) => d.id === sharedId));
+  });
+
+  test("a non-member cannot file a dataset into the workspace, single or multi", async () => {
+    const one = await as(stranger, request(app).post("/api/datasets")).field("workspaceId", wsId).attach("file", csv(), "x.csv");
+    assert.equal(one.status, 403);
+    const multi = await as(stranger, request(app).post("/api/datasets/multi")).field("workspaceId", wsId).attach("files", csv(), "x.csv");
+    assert.equal(multi.status, 403);
+    const listed = await as(member, request(app).get(`/api/datasets?workspaceId=${wsId}`));
+    assert.equal(listed.body.length, 1, "nothing was stored by the refused uploads");
+  });
+
+  test("nor into, or move a dataset into, someone else's folder", async () => {
+    const one = await as(stranger, request(app).post("/api/datasets")).field("folderId", folderId).attach("file", csv(), "x.csv");
+    assert.equal(one.status, 403);
+    const own = await as(stranger, request(app).post("/api/datasets")).attach("file", csv(), "mine.csv");
+    assert.equal(own.status, 201);
+    const move = await as(stranger, request(app).patch(`/api/datasets/${own.body.id}/move`)).send({ folderId });
+    assert.equal(move.status, 403);
+  });
+
+  test("a member files into the workspace and its folder", async () => {
+    const r = await as(member, request(app).post("/api/datasets")).field("workspaceId", wsId).field("folderId", folderId).attach("file", csv(), "y.csv");
+    assert.equal(r.status, 201, JSON.stringify(r.body).slice(0, 120));
+  });
+});

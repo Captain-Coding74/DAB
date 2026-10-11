@@ -198,10 +198,12 @@ describe("DATA_FIXES bring older links up to the rules", () => {
       `INSERT INTO shared_reports (id,analysis_id,user_id,token,title,expires_at,is_active,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [id, analysisId, a.user_id, `tok-${id}`, title, expires, active, now]);
     const ids = { named: `fix-named-${Date.now()}`, untitled: `fix-untitled-${Date.now()}`,
-                  custom: `fix-custom-${Date.now()}`, revoked: `fix-revoked-${Date.now()}` };
+                  custom: `fix-custom-${Date.now()}`, revoked: `fix-revoked-${Date.now()}`, apiOld: `fix-api-${Date.now()}` };
+    const later = new Date(Date.now() + 5 * DAY).toISOString();
     await ins(ids.named, FILE, null, 1);
     await ins(ids.untitled, null, null, 1);
-    await ins(ids.custom, "Board pack", null, 1);
+    await ins(ids.custom, "Board pack", later, 1);     // a v21.30 link: it carries an expiry
+    await ins(ids.apiOld, "Q3 pack", null, 1);        // no expiry: made before v21.30
     await ins(ids.revoked, "Old", null, 0);
 
     await migrate();
@@ -212,8 +214,10 @@ describe("DATA_FIXES bring older links up to the rules", () => {
     assert.ok(d > 29 && d <= 30, `backfilled expiry is ${d} days out`);
     assert.equal((await get(ids.untitled)).title, "Analysis report");
     const custom = await get(ids.custom);
-    assert.equal(custom.title, "Board pack", "an owner's own title is kept");
-    assert.ok(custom.expires_at, "every link now expires");
+    assert.equal(custom.title, "Board pack", "an owner's own title on a v21.30 link is kept");
+    const apiOld = await get(ids.apiOld);
+    assert.equal(apiOld.title, "Analysis report", "the old SPA only ever sent a file name as the title");
+    assert.ok(apiOld.expires_at, "every link now expires");
     assert.equal(await get(ids.revoked), undefined, "soft-revoked rows are deleted");
 
     // Idempotent: a second boot changes nothing.
@@ -221,6 +225,47 @@ describe("DATA_FIXES bring older links up to the rules", () => {
     assert.deepEqual(await get(ids.named), named);
     const [{ n }] = await query(`SELECT COUNT(*) AS n FROM shared_reports WHERE expires_at IS NULL OR is_active=0`);
     assert.equal(Number(n), 0);
+  });
+});
+
+/* v21.30: multer stored analyses.file_name decoded as latin1, the old SPA
+   sent the real (Unicode) name as the title, so the file-name data fix and
+   the runtime guard both missed every Thai name. */
+describe("Thai file names", () => {
+  const THAI = "รายชื่อนักเรียน ม.3.csv";
+  let thaiId;
+
+  before(async () => {
+    const res = await auth(agent.post("/api/analyze")).attach("file", Buffer.from(CSV), THAI);
+    thaiId = res.body.savedId;
+  });
+
+  test("an upload's Thai name is stored as itself, not as latin1 mojibake", async () => {
+    const [a] = await query(`SELECT file_name FROM analyses WHERE id=$1`, [thaiId]);
+    assert.equal(a.file_name, THAI);
+  });
+
+  test("a link from before v21.30 titled with the Thai name loses it, whatever the stored encoding", async () => {
+    const mojibake = Buffer.from(THAI, "utf8").toString("latin1");   // how earlier releases stored the name
+    const [a] = await query(`SELECT user_id FROM analyses WHERE id=$1`, [thaiId]);
+    await query(`UPDATE analyses SET file_name=$1 WHERE id=$2`, [mojibake, thaiId]);
+    const ins = (id, expires) => query(
+      `INSERT INTO shared_reports (id,analysis_id,user_id,token,title,expires_at,is_active,created_at) VALUES ($1,$2,$3,$4,$5,$6,1,$7)`,
+      [id, thaiId, a.user_id, `tok-${id}`, THAI, expires, new Date().toISOString()]);
+    const old = `thai-old-${Date.now()}`, apiMade = `thai-api-${Date.now()}`;
+    await ins(old, null);                                                   // what the old SPA made
+    await ins(apiMade, new Date(Date.now() + 5 * DAY).toISOString());       // an API client's, with an expiry
+    await migrate();
+    const [row] = await query(`SELECT title FROM shared_reports WHERE id=$1`, [old]);
+    assert.equal(row.title, "Analysis report");
+    const page = await agent.get(`/api/public/share/tok-${apiMade}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.body.title, "Analysis report", "the public page checks the title against both encodings");
+    assert.doesNotMatch(JSON.stringify(page.body), /รายชื่อ/);
+    // A cached old bundle still sending file.name as the title.
+    const fresh = await auth(agent.post(`/api/analyses/${thaiId}/share`)).send({ title: THAI, expiresInDays: 1 });
+    assert.equal(fresh.status, 201);
+    assert.equal(fresh.body.title, "Analysis report");
   });
 });
 

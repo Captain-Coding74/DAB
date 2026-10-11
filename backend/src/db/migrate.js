@@ -259,12 +259,21 @@ const ADDITIVE = [
   // authority to save a class roster (services/schoolRoster.js).
   { table: "datasets",         column: "last_used_at",       type: "TEXT" },
   { table: "datasets",         column: "school_attested_at", type: "TEXT" },
+  // v21.30: 1 when the user pressed "Save dataset" (every dataset made since,
+  // db/datasetRepository.js createDataset). Rows from before stay 0: the SPA
+  // stored every signed-in analysis's file by itself, and /account and the
+  // Privacy Notice say so rather than calling those copies files "you saved".
+  { table: "datasets",         column: "saved_on_request",   type: "INTEGER NOT NULL DEFAULT 0" },
   // v21.30: click-wrap. Which Terms/Privacy version (services/legal.js) the
   // user accepted, when, and from which IP. NULL on accounts from before this
   // release: the SPA asks those users to accept before carrying on.
   { table: "users",            column: "terms_version",      type: "TEXT" },
   { table: "users",            column: "terms_accepted_at",  type: "TEXT" },
   { table: "users",            column: "terms_accepted_ip",  type: "TEXT" },
+  // v21.30: 1 on every analysis whose AI report came from the statistics-only
+  // prompt (services/aiSafe.js). NULL marks one made before: its report and
+  // chat may quote raw rows, so neither is re-sent to the AI or published.
+  { table: "analyses",         column: "ai_minimised",       type: "INTEGER" },
 ];
 
 /**
@@ -289,15 +298,21 @@ const DATA_FIXES = [
   // (token, title, analysis link) forever; it now deletes, and so do the
   // links revoked before.
   `DELETE FROM shared_reports WHERE is_active=0`,
+  // The SPA titled every link with the uploaded file name, which a public
+  // page then showed to anyone holding the URL. It had no way to type any
+  // other title, and it never sent an expiry — so a link with no expiry IS a
+  // link from before v21.30, and its title is a file name. Matching on that,
+  // not on a.file_name=title, matters for Thai names: multer stored
+  // analyses.file_name decoded as latin1 ("à¸£à¸²à¸¢…") while the SPA sent the
+  // real name, so the two never compared equal. Runs BEFORE the expiry fix
+  // below, which is what makes it a one-off.
+  `UPDATE shared_reports SET title='${DEFAULT_SHARE_TITLE}' WHERE title IS NULL OR expires_at IS NULL
+     OR EXISTS (SELECT 1 FROM analyses a WHERE a.id=shared_reports.analysis_id AND a.file_name=shared_reports.title)`,
   // Links made without an expiry lived forever. Each gets 30 days from the
   // boot that first finds it; new links always carry one (routes/shares.js),
   // so later boots match nothing. The timestamp is computed in JS because
   // SQLite and Postgres share no date-arithmetic syntax.
   `UPDATE shared_reports SET expires_at='${new Date(Date.now() + DEFAULT_SHARE_EXPIRY_DAYS * 86_400_000).toISOString()}' WHERE expires_at IS NULL`,
-  // The SPA titled every link with the uploaded file name, which a public
-  // page then showed to anyone holding the URL.
-  `UPDATE shared_reports SET title='${DEFAULT_SHARE_TITLE}' WHERE title IS NULL
-     OR EXISTS (SELECT 1 FROM analyses a WHERE a.id=shared_reports.analysis_id AND a.file_name=shared_reports.title)`,
 ];
 
 async function existingColumns(table) {

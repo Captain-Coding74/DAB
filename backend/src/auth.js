@@ -76,7 +76,8 @@ export function markErased(userId, now = Date.now()) {
 }
 /** Undo markErased when erasure failed part-way, so the user can sign in and run it again. */
 export function clearErased(userId) { erased.delete(userId); }
-const isErased = (userId, now = Date.now()) => (erased.get(userId) ?? 0) > now;
+/** Also checked by POST /api/auth/refresh: an erased id gets no new access token. */
+export const isErased = (userId, now = Date.now()) => (erased.get(userId) ?? 0) > now;
 
 // ── Middleware ────────────────────────────────────────────
 /** Require valid access token → req.user */

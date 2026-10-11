@@ -649,6 +649,26 @@ describe("Collaboration routes (real router)", () => {
   });
 });
 
+/* v21.30: a quote mark inside a cell used to be a 500 whose error log line
+   carried the cell's text — on every upload route, try mode included. */
+describe("Quote marks in an uploaded CSV (v21.30)", () => {
+  test("a nickname in quotes analyses fine, signed out and in", async () => {
+    const csv = Buffer.from('customer_name,customer_email,amount\nSomchai Kongkaew,s@example.com,100\nNattida "Ploy" Raksatham,ploy.r@example.com,200\n');
+    assert.equal((await agent.post("/api/analyze").attach("file", csv, "c.csv")).status, 200);
+    assert.equal((await auth(agent.post("/api/analyze")).attach("file", csv, "c.csv")).status, 200);
+  });
+
+  test("an unclosed quote is a 400 naming the line, on analyze and on save", async () => {
+    const csv = Buffer.from('name,amount\nSomchai,100\n"Nattida Raksatham,200\n');
+    for (const req of [agent.post("/api/analyze"), auth(agent.post("/api/datasets"))]) {
+      const res = await req.attach("file", csv, "c.csv");
+      assert.equal(res.status, 400, JSON.stringify(res.body).slice(0, 160));
+      assert.match(res.body.error, /line 3/);
+      assert.ok(!JSON.stringify(res.body).includes("Nattida"));
+    }
+  });
+});
+
 describe("Demo routes (public, no auth, no AI)", () => {
   test("lists samples without any auth header", async () => {
     const res = await agent.get("/api/demo/samples");
@@ -823,7 +843,7 @@ describe("Public landing page (v20.4.1)", () => {
 
 describe("Legal pages (v21.30)", () => {
   const LEGAL_ENV = ["LEGAL_OPERATOR_NAME", "LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS",
-                     "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION"];
+                     "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION", "LEGAL_HOSTING_TRANSFER_BASIS"];
   /** Run fn with exactly these LEGAL_* values (a developer's .env must not leak in), then restore. */
   async function withLegalEnv(values, fn) {
     const saved = Object.fromEntries(LEGAL_ENV.map((k) => [k, process.env[k]]));
@@ -856,8 +876,11 @@ describe("Legal pages (v21.30)", () => {
 
   test("operator details are filled in from the environment and HTML-escaped", async () => {
     await withLegalEnv({ LEGAL_CONTACT_EMAIL: "privacy@example.com", LEGAL_POSTAL_ADDRESS: '12 <b>Soi</b> & "Road"',
-                         LEGAL_HOSTING_PROVIDER: "Host <i>Co</i>", LEGAL_HOSTING_REGION: "Singapore" }, async () => {
+                         LEGAL_HOSTING_PROVIDER: "Host <i>Co</i>", LEGAL_HOSTING_REGION: "Singapore",
+                         LEGAL_HOSTING_TRANSFER_BASIS: "the provider's DPA with standard contractual clauses" }, async () => {
       const privacy = (await agent.get("/privacy")).text;
+      assert.ok(privacy.includes("the provider&#39;s DPA with standard contractual clauses"), "the transfer safeguard (v21.30)");
+      assert.ok((await agent.get("/terms")).text.includes("standard contractual clauses"));
       assert.ok(privacy.includes('<a href="mailto:privacy@example.com">privacy@example.com</a>'));
       assert.ok(privacy.includes("12 &lt;b&gt;Soi&lt;/b&gt; &amp; &quot;Road&quot;"));
       assert.ok(!privacy.includes("<b>Soi</b>"), "address markup was injected");
@@ -891,6 +914,17 @@ describe("Legal pages (v21.30)", () => {
       const res = await agent.get(`/${name}.html`);
       assert.equal(res.status, 301, name);
       assert.equal(res.headers.location, `/${name}`);
+    }
+  });
+
+  // v21.30: serve-static decodes and normalises paths the Express route did not.
+  test("…under every spelling static would resolve to the file", async () => {
+    for (const [url, page] of [["/privacy%2Ehtml", "privacy"], ["/contact%2ehtml", "contact"], ["//terms.html", "terms"],
+                               ["/x/../storage.html", "storage"], ["/%6Cicenses.html", "licenses"], ["/PRIVACY.HTML", "privacy"]]) {
+      const res = await agent.get(url);
+      assert.equal(res.status, 301, `${url} → ${res.status}`);
+      assert.equal(res.headers.location, `/${page}`);
+      assert.ok(!res.text.includes("{{"), url);
     }
   });
 

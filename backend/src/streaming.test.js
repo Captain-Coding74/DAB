@@ -8,6 +8,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import { parseFileStreaming } from "./services/streaming.js";
+import { parseAllRows } from "./services/fullRows.js";
 
 async function xlsxBuffer(build) {
   const wb = new ExcelJS.Workbook();
@@ -142,5 +143,33 @@ describe("XLSX parsing (exceljs)", () => {
     const r = await parseFileStreaming(buf, "empty.xlsx");
     assert.equal(r.totalRows, 0);
     assert.deepEqual(r.headers, []);
+  });
+});
+
+/* v21.30: a quote inside an unquoted cell made csv-parse throw an error that
+   quoted the cell; unclassified, it became a 500 and the error log carried
+   the text — in try mode too. Such quotes now parse (as Excel reads them),
+   and what still cannot be read is a 400 naming only the line. */
+describe("quote marks in hand-made CSVs", () => {
+  const NICKNAME = Buffer.from('customer_name,amount\nSomchai Kongkaew,100\nNattida "Ploy" Raksatham,200\n');
+
+  test("a quote inside an unquoted cell is text, in both parsers", async () => {
+    const r = await parseFileStreaming(NICKNAME, "x.csv");
+    assert.equal(r.totalRows, 2);
+    assert.equal(r.headRows[1][0], 'Nattida "Ploy" Raksatham');
+    assert.deepEqual(parseAllRows(NICKNAME, "x.csv").rows[1], ['Nattida "Ploy" Raksatham', "200"]);
+  });
+
+  test("an unclosed quote is a 400 with the line, never the cell", async () => {
+    const broken = Buffer.from('name,amount\nSomchai,100\n"Nattida Raksatham,200\n');
+    for (const attempt of [() => parseFileStreaming(broken, "x.csv"), async () => parseAllRows(broken, "x.csv")]) {
+      await assert.rejects(attempt, (err) => {
+        assert.equal(err.status, 400);
+        assert.equal(err.code, "CSV_PARSE_ERROR");
+        assert.match(err.message, /line 3/);
+        assert.ok(!/Nattida/.test(err.message + JSON.stringify(err)), err.message);
+        return true;
+      });
+    }
   });
 });

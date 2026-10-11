@@ -134,6 +134,42 @@ describe("no raw row and no detected value in ANY AI payload", () => {
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assertClean(drainSent(), "old-analysis chat");
   });
+
+  /* v21.30: the REPORT and CHAT of an old analysis came from prompts that
+     carried raw rows, so they can quote values; re-sending them as chat or
+     agent context, or publishing them on a share page, broke the promise. */
+  test("an analysis made BEFORE v21.30: its stored report and chat are neither re-sent nor published", async () => {
+    const me = (await as(agent.get("/api/auth/me"))).body;
+    const old = await R.saveAnalysis({
+      userId: me.id, fileName: "old.csv", fileType: "csv", totalRows: 12, totalCols: 2, prompt: "x",
+      analysis: "[old report] ลูกค้าหลักคือ user0@example.com ที่ 3 Sukhumvit Rd ส่วนใหญ่เป็น diabetes type 1",
+      statsJson: { colAnalysis: [{ col: "amount", type: "numeric", count: 12, min: 100, max: 177 }] },
+    });
+    const { query } = await import("./db/pool.js");
+    await query(`UPDATE analyses SET ai_minimised=NULL WHERE id=$1`, [old.id]);   // as the migration leaves a pre-v21.30 row
+    await R.saveChatMessage({ analysisId: old.id, userId: me.id, role: "assistant", content: "line_0 asked about asthma" });
+    drainSent();
+
+    assert.equal((await as(agent.post(`/api/analyses/${old.id}/chat`)).send({ message: "สรุป" })).status, 200);
+    assert.equal((await as(agent.post(`/api/analyses/${old.id}/chat/stream`)).send({ message: "สรุป" })).status, 200);
+    assert.equal((await as(agent.post(`/api/analyses/${old.id}/agent`)).send({ question: "สรุป" })).status, 200);
+    const sent = drainSent();
+    assert.match(sent, /amount/, "the statistics still go");
+    assertClean(sent, "old report and chat");
+
+    const share = await as(agent.post(`/api/analyses/${old.id}/share`)).send({ expiresInDays: 1 });
+    const page = await agent.get(`/api/public/share/${share.body.token}`);
+    assert.equal(page.status, 200);
+    assert.equal(page.body.analysis, null);
+    assert.doesNotMatch(JSON.stringify(page.body), /example\.com|Sukhumvit|diabetes/);
+  });
+
+  test("an analysis made now keeps its own report as chat context", async () => {
+    const res = await as(agent.post("/api/analyze")).attach("file", Buffer.from("item,amount\na,1\nb,2\nc,3\n"), "plain.csv");
+    drainSent();
+    await as(agent.post(`/api/analyses/${res.body.savedId}/chat`)).send({ message: "สรุป" });
+    assert.ok(drainSent().includes("you previously analysed this dataset"));
+  });
 });
 
 describe("Statistics only — the per-upload switch", () => {

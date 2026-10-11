@@ -12,7 +12,10 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { errorHandler } from "./middleware/monitoring.js";
+import { errorHandler, loggableError } from "./middleware/monitoring.js";
+import { logger } from "./logger.js";
+import { parse } from "csv-parse/sync";
+import { DuplicateUserError } from "./db/repository.js";
 
 function capture(err) {
   let code = null;
@@ -63,5 +66,47 @@ describe("errorHandler status mapping", () => {
 
   test("an explicit status on the error is respected", () => {
     assert.equal(capture(Object.assign(new Error("nope"), { status: 403 })), 403);
+  });
+});
+
+/* v21.30: the error log holds no value from a user's file. A csv-parse error
+   quoted the offending cell in its message, its stack and its `field`, and
+   errorHandler logged the whole error object; a taken username went into a
+   warn line; JSON.parse quotes the text it choked on. */
+describe("errorHandler log lines", () => {
+  function logged(err) {
+    const lines = [];
+    const saved = { error: logger.error, warn: logger.warn };
+    logger.error = (obj) => lines.push(obj);
+    logger.warn = (obj) => lines.push(obj);
+    try { capture(err); } finally { Object.assign(logger, saved); }
+    return JSON.stringify(lines);
+  }
+  const csvError = () => {
+    try { parse('name,email\nNattida "Ploy" Raksatham,ploy.r@hotmail.com\n'); } catch (err) { return err; }
+    throw new Error("expected csv-parse to refuse the quote");
+  };
+
+  test("an unclassified library error is logged by type, code and frames — never the cell it quoted", () => {
+    const err = csvError();
+    assert.match(err.message, /Nattida/, "the premise: csv-parse quotes the cell");
+    const out = logged(err);
+    assert.ok(!out.includes("Nattida") && !out.includes("ploy.r"), out);
+    assert.match(out, /INVALID_OPENING_QUOTE/);
+    assert.match(out, /at /, "the stack frames are kept for debugging");
+  });
+
+  test("JSON.parse and fs messages lose their quoted text", () => {
+    let parseErr; try { JSON.parse('[x "customer_email"]'); } catch (e) { parseErr = e; }
+    assert.ok(!logged(parseErr).includes("customer_email"));
+    const fsErr = Object.assign(new Error("ENOENT: no such file or directory, open '/data/objects/datasets/d/1-รายชื่อ ม.3.csv'"), { code: "ENOENT" });
+    assert.ok(!logged(fsErr).includes("รายชื่อ"));
+    assert.equal(loggableError(fsErr).code, "ENOENT");
+  });
+
+  test("a rejected request is logged by its code: a taken username is not repeated", () => {
+    const out = logged(new DuplicateUserError("somchai.k"));
+    assert.ok(!out.includes("somchai"), out);
+    assert.match(out, /USERNAME_TAKEN/);
   });
 });

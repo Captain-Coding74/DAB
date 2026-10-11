@@ -145,12 +145,30 @@ export async function metricsHandler(req, res) {
 }
 
 // ── Error tracking ────────────────────────────────────────
+/* v21.30: what an error log line may carry. A message can quote what it
+   choked on — csv-parse repeats the offending cell, JSON.parse a slice of its
+   input, an fs error the path (a key stored before v21.30 ends in the
+   uploaded file name), a duplicate-username error the name — and the Privacy
+   Notice says logs never hold a file name or a value from a file. Everything
+   from the first quote mark to the last is cut — quotes inside a quoted value
+   are not escaped (V8's JSON.parse message), so pairing them is unreliable —
+   and the stack keeps its frames but not the lines that repeat the message. */
+const QUOTED = /["'“‘][\s\S]*["'”’]/;
+export const unquoted = (text) => String(text ?? "").replace(QUOTED, '"…"').slice(0, 300);
+export function loggableError(err) {
+  const frames = String(err?.stack || "").split("\n").filter((l) => /^\s+at /.test(l));
+  return { type: err?.name, code: err?.code, message: unquoted(err?.message), stack: frames.join("\n") };
+}
+/** A rejected request's reason: its code when it has one, else the unquoted message. */
+export const rejectReason = (err) =>
+  err?.type === "entity.parse.failed" ? "malformed JSON body" : (err?.code || unquoted(err?.message));
+
 export function errorHandler(err, req, res, next) {
 
   /* Headers already sent: the status is out of our hands, so record it as a
      server fault — that is what a half-written response is. */
   // v21.30: urls through redactUrl — a share token in a log line is access to the report.
-  if (res.headersSent) { metrics.totalErrors++; logger.error({ err, url: redactUrl(req.url) }, "Error after response started"); return next(err); }
+  if (res.headersSent) { metrics.totalErrors++; logger.error({ err: loggableError(err), url: redactUrl(req.url) }, "Error after response started"); return next(err); }
 
   // v13 (found by E2E): upload rejections are client errors, not server errors.
   // Multer's fileFilter and limit errors were surfacing as 500s in production
@@ -183,11 +201,10 @@ export function errorHandler(err, req, res, next) {
   if (clientFault) {
     // v21.30: a JSON parse error quotes the start of the request body —
     // possibly a password or an uploaded value — so it is logged by type.
-    const reason = err.type === "entity.parse.failed" ? "malformed JSON body" : err.message;
-    logger.warn({ status, url: redactUrl(req.url), method: req.method, reason }, "Request rejected");
+    logger.warn({ status, url: redactUrl(req.url), method: req.method, reason: rejectReason(err) }, "Request rejected");
   } else {
     metrics.totalErrors++;
-    logger.error({ err, url: redactUrl(req.url), method: req.method, userId: req.user?.userId }, "Unhandled error");
+    logger.error({ err: loggableError(err), url: redactUrl(req.url), method: req.method, userId: req.user?.userId }, "Unhandled error");
   }
   res.status(status).json({
     error:     process.env.NODE_ENV === "production" ? "Internal server error" : err.message,

@@ -15,7 +15,8 @@
  * at boot (warnMissingLegalContacts, called by server.js).
  *
  * Mounted BEFORE express.static, which would otherwise serve /privacy.html
- * raw, placeholders and all.
+ * raw, placeholders and all — under ANY spelling static resolves to that
+ * file (templateFor below), not only the one an Express route matches.
  */
 import path from "node:path";
 import { readFile } from "node:fs/promises";
@@ -43,8 +44,15 @@ const clean = (v) => String(v ?? "").trim();
 /** A plain value, escaped, or its fallback. An address may span lines. */
 const textOr = (v, fallback) => (clean(v) ? escapeHtml(clean(v)).replace(/\r?\n/g, "<br>") : fallback);
 
-/** Placeholder name → HTML to put in its place. */
-export function legalValues(info = legalInfo()) {
+/**
+ * Placeholder name → HTML to put in its place. v21.30: HOSTING_TRANSFER_BASIS
+ * is the PDPA s.28/s.29 basis or safeguard for storing data with a host
+ * outside Thailand (for example the provider's data-processing agreement with
+ * standard contractual clauses). It is a fact only the operator can confirm,
+ * so it comes from LEGAL_HOSTING_TRANSFER_BASIS — read here, not in
+ * services/legal.js, whose shape is fixed — and says "being set up" until then.
+ */
+export function legalValues(info = legalInfo(), env = process.env) {
   const email = clean(info.contactEmail);
   return {
     OPERATOR_NAME:    textOr(info.operatorName, NO_NAME),
@@ -52,6 +60,7 @@ export function legalValues(info = legalInfo()) {
     POSTAL_ADDRESS:   textOr(info.postalAddress, NO_ADDRESS),
     HOSTING_PROVIDER: textOr(info.hostingProvider, NO_HOSTING),
     HOSTING_REGION:   textOr(info.hostingRegion, NO_HOSTING),
+    HOSTING_TRANSFER_BASIS: textOr(env.LEGAL_HOSTING_TRANSFER_BASIS, NO_HOSTING),
     LEGAL_VERSION:    escapeHtml(info.version),
   };
 }
@@ -69,6 +78,20 @@ export function renderLegal(template, values, lang = "en") {
     : html;
 }
 
+/**
+ * The legal page whose raw template this request path would reach through
+ * express.static, or null. A route for `/privacy.html` alone was not enough:
+ * serve-static decodes and normalises the path, so `/privacy%2Ehtml`,
+ * `//contact.html` or `/x/../terms.html` reached the file and printed literal
+ * {{CONTACT_EMAIL}} where the PDPA s.23 contact details belong.
+ */
+export function templateFor(urlPath) {
+  let p;
+  try { p = decodeURIComponent(String(urlPath || "")); } catch { return null; }   // static refuses it too
+  const m = /^([a-z]+)\.html$/.exec(path.posix.normalize(`/${p}`).replace(/^\/+/, "").toLowerCase());
+  return m && LEGAL_PAGES.includes(m[1]) ? m[1] : null;
+}
+
 export function mountLegalPages(app, distPath) {
   const templates = new Map();   // read once per process; a failed read is retried
   const load = async (name) => {
@@ -78,8 +101,12 @@ export function mountLegalPages(app, distPath) {
 
   app.get("/api/legal", (_req, res) => res.json(legalInfo()));
 
+  // Every spelling of a template's file name goes to its rendered page.
+  app.use((req, res, next) => {
+    const name = (req.method === "GET" || req.method === "HEAD") && templateFor(req.path);
+    return name ? res.redirect(301, `/${name}`) : next();
+  });
   for (const name of LEGAL_PAGES) {
-    app.get(`/${name}.html`, (_req, res) => res.redirect(301, `/${name}`));
     app.get(`/${name}`, async (req, res, next) => {
       let template;
       try { template = await load(name); }
@@ -91,14 +118,17 @@ export function mountLegalPages(app, distPath) {
 
 /**
  * Production boot warning: the notices are live but cannot say how to reach
- * the controller. Silent outside production (tests, dev). Returns the
- * missing variable names so a test can check the decision without a log.
+ * the controller (PDPA s.23), or where data is hosted and on what basis it
+ * leaves Thailand (ss.28–29 — a release prerequisite since v21.30). Silent
+ * outside production (tests, dev). Returns the missing variable names so a
+ * test can check the decision without a log.
  */
+export const LEGAL_SETTINGS = ["LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS", "LEGAL_HOSTING_PROVIDER", "LEGAL_HOSTING_REGION", "LEGAL_HOSTING_TRANSFER_BASIS"];
 export function warnMissingLegalContacts(env = process.env, log = serviceLogger("legal")) {
   if (env.NODE_ENV !== "production") return [];
-  const missing = ["LEGAL_CONTACT_EMAIL", "LEGAL_POSTAL_ADDRESS"].filter((k) => !clean(env[k]));
+  const missing = LEGAL_SETTINGS.filter((k) => !clean(env[k]));
   if (missing.length) {
-    log.warn({ missing }, "Legal contact details are not set — /privacy and /contact show \"being set up\" instead (PDPA s.23 requires them)");
+    log.warn({ missing }, "Legal details are not set — /privacy, /terms and /contact show \"being set up\" instead (PDPA s.23 requires the contact details; ss.28–29 the hosting facts)");
   }
   return missing;
 }

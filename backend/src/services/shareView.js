@@ -7,7 +7,8 @@
  * name, and the public payload carries only what SharePage renders.
  */
 
-import { detectedKinds } from "./aiSafe.js";
+import { detectedKinds, legacyAiText } from "./aiSafe.js";
+import { classifySensitiveColumns } from "./sensitive.js";
 
 export const SHARE_EXPIRY_DAYS = Object.freeze([1, 7, 30, 90]);
 /* X-Robots-Tag for the share API and the /share/* page document (app.js):
@@ -30,13 +31,21 @@ export function parseExpiryDays(value) {
   return SHARE_EXPIRY_DAYS.includes(value) ? value : null;
 }
 
+/* The spellings a stored file name may have. Before v21.30 multer decoded
+   upload names as latin1, so analyses.file_name holds "à¸£à¸²à¸¢…" for a Thai
+   name while a client sends the real one; each is compared in both forms. */
+function spellings(name) {
+  if (typeof name !== "string" || !name) return [];
+  return [name, Buffer.from(name, "latin1").toString("utf8"), Buffer.from(name, "utf8").toString("latin1")];
+}
+
 /** The stored title: what the owner typed, trimmed — unless it is empty or
  *  the analysis file name. An older SPA sent `title: file.name` on every
  *  share, so the server refuses to copy the name onto a public page even
- *  when a cached bundle still asks it to. */
+ *  when a cached bundle still asks it to — under either encoding of it. */
 export function shareTitle(title, fileName) {
   const t = typeof title === "string" ? title.trim().slice(0, MAX_TITLE) : "";
-  return t && t !== fileName ? t : DEFAULT_SHARE_TITLE;
+  return t && !spellings(fileName).some((n) => n.trim() === t) ? t : DEFAULT_SHARE_TITLE;
 }
 
 /* The only fields a detected personal-data column keeps on a public page:
@@ -60,11 +69,16 @@ function publicColumn(c, kind) {
 /* The saved chart is drawn from the same rows. autoChartConfig never charts
    a column it knew was personal data, but an old analysis's chart may have
    an axis that is only detected now — its category labels are that
-   column's values, so the chart is left off the public page. */
+   column's values, so the chart is left off the public page. The plotted
+   values themselves are tested too: an old scatter of a "ref" column held
+   one point per row, each a card number the column's stats may not reveal. */
 function publicChart(chart, kinds) {
   if (!chart) return null;
-  const axes = [chart.xAxis, ...(Array.isArray(chart.yAxis) ? chart.yAxis : [chart.yAxis])];
-  return axes.some((col) => kinds.has(col)) ? null : chart;
+  const axes = [chart.xAxis, ...(Array.isArray(chart.yAxis) ? chart.yAxis : [chart.yAxis])].filter(Boolean);
+  const points = Array.isArray(chart.data) ? chart.data : [];
+  const plotsPersonalData = (col) => kinds.has(col) ||
+    classifySensitiveColumns([col], points.map((d) => [d?.[col] == null ? null : String(d[col])])).length > 0;
+  return axes.some(plotsPersonalData) ? null : chart;
 }
 
 const parse = (json) => {
@@ -80,14 +94,16 @@ const parse = (json) => {
  * with the link, and any column added to shared_reports later would leak
  * the same way. No file_name: the title stands in for it. stats_json keeps
  * colAnalysis only — the correlations and forecasts are not rendered by
- * SharePage, so they are not published either.
+ * SharePage, so they are not published either. The AI text of an analysis
+ * made before v21.30 is left off (aiSafe.js legacyAiText): its prompt carried
+ * raw rows, and the report can quote them.
  */
 export function publicShareView(row) {
   const colAnalysis = parse(row.stats_json)?.colAnalysis || [];
   const kinds = detectedKinds(colAnalysis);
   return {
-    title:        row.title || DEFAULT_SHARE_TITLE,
-    analysis:     row.analysis,
+    title:        shareTitle(row.title, row.file_name),   // checked again on the way out: rows made before the rule
+    analysis:     legacyAiText(row) ? null : row.analysis,
     total_rows:   row.total_rows,
     stats_json:   { colAnalysis: colAnalysis.map((c) => publicColumn(c, kinds.get(c?.col))) },
     chart_config: publicChart(parse(row.chart_config), kinds),

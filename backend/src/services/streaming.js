@@ -33,7 +33,7 @@ import { guardParsed } from "./sensitive.js";
 import { assertInflatable } from "./zipGuard.js";
 import { PairAccumulator, buildCorrelation } from "./pairwise.js";
 import { cleanCell, parseFlexibleNumber, parseFlexibleDate,
-         decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders } from "./normalize.js";
+         decodeSmart, sniffDelimiter, detectHeaderRow, finalizeHeaders, CSV_OPTIONS, csvClientError } from "./normalize.js";
 
 const log = serviceLogger("streaming");
 
@@ -231,7 +231,7 @@ async function streamCSV(buffer) {
     let pairs = null;   // built once headers are known
     const readable = Readable.from(text);
 
-    const parser = parse({ bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, delimiter });
+    const parser = parse({ ...CSV_OPTIONS, delimiter });
 
     // Ingest one DATA row into stats.
     const ingest = (row) => {
@@ -295,7 +295,7 @@ async function streamCSV(buffer) {
                 normalization: { encoding, delimiter, skippedPreHeaderRows: skipped } });
     });
 
-    parser.on("error", reject);
+    parser.on("error", (err) => reject(csvClientError(err)));   // v21.30: never the cell text
     readable.pipe(parser);
   });
 }

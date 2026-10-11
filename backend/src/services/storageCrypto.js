@@ -8,7 +8,11 @@
  * the bucket (a leaked backup, a mis-set bucket policy, a shared host) read
  * every file in the clear. With STORAGE_ENCRYPTION_KEY set, new objects are
  * sealed with AES-256-GCM before they leave the process, so the storage
- * alone gives up nothing and any change to a stored byte is detected on read.
+ * alone gives up nothing and any change to a sealed object's bytes fails GCM
+ * on read. GCM cannot vouch for an object that is not sealed — a legacy one,
+ * or plaintext swapped in by whoever can write the storage — so the dataset
+ * read (db/datasetRepository.js getVersionBytes) also checks the plaintext
+ * against the sha256 recorded with the version.
  *
  * FORMAT (one self-describing blob, same for the local and s3 drivers)
  * ------
@@ -17,6 +21,8 @@
  * The magic is what lets reads tell a sealed object from a legacy plaintext
  * one: objects written before the key was set stay readable, and
  * scripts/storage-encrypt.mjs seals them in place when the operator is ready.
+ * Plaintext that itself starts with the magic is never stored: uploads that
+ * begin with it are refused (fileMagic.js) and storage.put refuses it unkeyed.
  * The stored sha256 stays the hash of the PLAINTEXT — it identifies the
  * user's file, not one particular encryption of it.
  *

@@ -10,7 +10,12 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
+import { mkdir, rm } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as storage from "./services/storage.js";
+
+const OBJECTS = path.join(process.env.SQLITE_DIR || fileURLToPath(new URL("../data", import.meta.url)), "objects");
 
 describe("object storage", () => {
   test("binary bytes survive a round-trip byte-for-byte", async () => {
@@ -60,5 +65,33 @@ describe("object storage", () => {
     assert.equal(storage.buildKey({ datasetId: "d", versionNum: 1, fileName: "../../etc/passwd" }), "datasets/d/1");
     assert.equal(storage.buildKey({ datasetId: "d", versionNum: 1, fileName: "notes.secret-name" }), "datasets/d/1");
     assert.match(storage.buildKey({ versionNum: 3, fileName: "x.csv" }), /^datasets\/[0-9a-f-]{36}\/3\.csv$/);
+  });
+});
+
+/* v21.30: remove() used to swallow every error at debug level, so a failed
+   delete let the cascade drop the rows that recorded the key and report the
+   erasure done while the file stayed in storage. */
+describe("storage.remove", () => {
+  test("an object that is already gone counts as removed — cleanup stays idempotent", async () => {
+    const key = storage.buildKey({ datasetId: "t-gone", versionNum: 1, fileName: "x.csv" });
+    await storage.put(key, Buffer.from("a\n1\n"));
+    await storage.remove(key);
+    await storage.remove(key);
+    assert.equal(await storage.exists(key), false);
+  });
+
+  test("any other failure throws, with a code and no key or path in the message", async () => {
+    const key = storage.buildKey({ datasetId: "t-stuck-รายชื่อ", versionNum: 1, fileName: "x.csv" });
+    const full = path.join(OBJECTS, key);
+    await mkdir(full, { recursive: true });   // unlink() of a directory fails: EISDIR / EPERM
+    try {
+      await assert.rejects(storage.remove(key), (err) => {
+        assert.equal(err.code, "STORAGE_DELETE_FAILED");
+        assert.ok(!err.message.includes("t-stuck") && !err.message.includes(OBJECTS), err.message);
+        return true;
+      });
+    } finally {
+      await rm(path.dirname(full), { recursive: true, force: true });
+    }
   });
 });

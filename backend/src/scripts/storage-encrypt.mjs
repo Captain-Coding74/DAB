@@ -21,10 +21,19 @@
  * change. Run it at a quiet time — a dataset deleted while it runs can leave
  * its (now encrypted) object behind. KEEP THE KEY: an encrypted object cannot
  * be read without it, and nothing — this script included — can recover it.
+ *
+ * v21.30: files saved before v21.1 can also sit in the DATABASE, in
+ * dataset_versions.file_content — copied to storage by the v21.1 backfill but
+ * never cleared, or never moved at all. Sealing objects alone left those in
+ * the clear, so the script now moves each into sealed storage and clears the
+ * column once the object reads back as the same file (db/legacyContent.js).
  */
 import "../loadEnv.js";   // MUST be first: storage.js reads the key at import
 import { parseArgs } from "node:util";
 import * as storage from "../services/storage.js";
+import { initPool, closePool } from "../db/pool.js";
+import { migrate } from "../db/migrate.js";
+import { sealLegacyContent } from "../db/legacyContent.js";
 
 const { values } = parseArgs({ options: { "dry-run": { type: "boolean" } } });
 const dryRun = Boolean(values["dry-run"]);
@@ -49,6 +58,15 @@ if (!storage.encrypted()) {
     : `  encrypted:     ${counts.sealed}`);
   console.log(`  already encrypted, skipped: ${counts.skipped}`);
   if (counts.failed) console.log(`  failed: ${counts.failed} — see above; run again to retry them`);
+
+  await initPool();
+  await migrate();   // a database from before v21.1 has no storage_key column yet
+  const db = await sealLegacyContent({ dryRun });
+  await closePool();
+  console.log(`\n  plaintext copies in the database (pre-v21.1 file_content)${dryRun ? " — dry run" : ""}`);
+  console.log(`  ${dryRun ? "would move to sealed storage" : "moved to sealed storage"}: ${db.moved}`);
+  console.log(`  ${dryRun ? "would clear (object already stored)" : "cleared (object already stored)"}: ${db.cleared}`);
+  if (db.kept) console.log(`  kept: ${db.kept} — the stored object is missing or does not match; the database copy is the only one`);
   console.log("");
-  if (counts.failed) process.exitCode = 1;
+  if (counts.failed || db.kept) process.exitCode = 1;
 }

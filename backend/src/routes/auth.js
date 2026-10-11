@@ -13,7 +13,7 @@ import bcrypt from "bcryptjs";
 import * as R from "../db/repository.js";
 import { cache } from "../services/cache.js";
 import { LEGAL_VERSION } from "../services/legal.js";
-import { signAccess, signRefresh, verifyRefresh, hashToken, refreshExpiresAt, requireAuth } from "../auth.js";
+import { signAccess, signRefresh, verifyRefresh, hashToken, refreshExpiresAt, requireAuth, isErased } from "../auth.js";
 
 /* Bodies arrive as parsed JSON, so a field can be a number, array or object,
    not just a string. Truthiness + .length checks silently pass a numeric
@@ -77,6 +77,8 @@ export function mountAuthRoutes(app) {
       if (!refreshToken) return res.status(400).json({ error: "refreshToken required" });
       if (typeof refreshToken !== "string") return res.status(400).json({ error: "refreshToken required" });
       let payload; try { payload = verifyRefresh(refreshToken); } catch { return res.status(401).json({ error: "Invalid or expired refresh token" }); }
+      // v21.30: an account being (or just) erased mints nothing — see auth.js markErased.
+      if (isErased(payload.userId)) return res.status(401).json({ error: "Account deleted" });
       const presented = hashToken(refreshToken);
       // v21.10 SECURITY: rotation is now atomic AND reuse-detecting. The revoke
       // is the serialization point — a conditional UPDATE that flips revoked

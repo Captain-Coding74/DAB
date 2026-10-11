@@ -152,10 +152,13 @@ export function createApp() {
 
   const upload = multer({
     storage: multer.memoryStorage(),
+    // v21.30: browsers send the file name as UTF-8 with no charset; multer's
+    // latin1 default stored every Thai name as mojibake ("à¸£à¸²à¸¢…").
+    defParamCharset: "utf8",
     limits:  { fileSize: MAX_UPLOAD_BYTES },
     fileFilter: (_, file, cb) => /\.(csv|xlsx|xls)$/i.test(file.originalname) ? cb(null, true) : cb(new Error("CSV/Excel only")),
   });
-  const uploadMulti = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
+  const uploadMulti = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES } });
 
   // ── Auth routes → src/routes/auth.js (v12) ───────────────
   mountAuthRoutes(app);

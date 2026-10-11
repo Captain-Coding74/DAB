@@ -18,6 +18,7 @@ import * as CR from "../db/collabRepository.js";
 import foldersRouter from "./folders.js";
 import { setDatasetAi, saveSource } from "./datasetAi.js";
 import { downloadVersion } from "./datasetDownload.js";
+import { requirePlacement } from "./datasetScope.js";
 import { schoolAuthority } from "../services/schoolRoster.js";
 import { pageParams } from "../pagination.js";
 
@@ -34,8 +35,8 @@ const csvExcelOnly = (_, file, cb) =>
    was a blacklist that never listed the Windows "MZ" signature, so an .exe
    renamed to .csv walked straight into storage. */
 
-const upload      = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
-const uploadMulti  = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
+const upload      = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
+const uploadMulti  = multer({ storage: multer.memoryStorage(), defParamCharset: "utf8", limits: { fileSize: MAX_UPLOAD_BYTES }, fileFilter: csvExcelOnly });
 
 function canAccess(role) { return role !== null; }
 /**
@@ -58,6 +59,7 @@ router.get("/", requireAuth, async (req, res, next) => {
   try {
     const { folderId, starred, trashed, search, workspaceId, view } = req.query;
     const { limit, offset } = pageParams(req.query, { defaultLimit: 30 });
+    if (!(await requirePlacement(req, res, { workspaceId }))) return;   // v21.30: members only
 
     let items, total;
     if (view === "shared") {
@@ -88,6 +90,7 @@ router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (re
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const { name, description, folderId, workspaceId } = req.body;
+    if (!(await requirePlacement(req, res, { workspaceId, folderId }))) return;
     const source = await saveSource(req, res);   // v21.30: the analysis being saved, and its AI choice
     if (!source) return;
     const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
@@ -144,6 +147,7 @@ router.post("/multi", requireAuth, uploadMulti.array("files", 10), requireFileMa
        entirely. As middleware it cannot be skipped or half-applied. */
 
     const { name, description, folderId, workspaceId } = req.body;
+    if (!(await requirePlacement(req, res, { workspaceId, folderId }))) return;
 
     const first = req.files[0];
     const bundleId = randomUUID();
@@ -265,6 +269,7 @@ router.patch("/:id/ai", requireAuth, setDatasetAi);
 router.patch("/:id/move", requireAuth, async (req, res, next) => {
   try {
     if (!(await requireDatasetRole(req, res, { write: true }))) return;
+    if (!(await requirePlacement(req, res, { folderId: req.body.folderId }))) return;
     await DR.moveDataset(req.params.id, req.body.folderId || null);
     res.json({ success: true });
   } catch (err) { next(err); }
