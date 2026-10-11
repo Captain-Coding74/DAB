@@ -7,6 +7,8 @@
  * name, and the public payload carries only what SharePage renders.
  */
 
+import { detectedKinds } from "./aiSafe.js";
+
 export const SHARE_EXPIRY_DAYS = Object.freeze([1, 7, 30, 90]);
 /* X-Robots-Tag for the share API and the /share/* page document (app.js):
    a crawler that follows a link posted in a forum must not put the report
@@ -45,9 +47,24 @@ export function shareTitle(title, fileName) {
    phone digits) is not enough for strangers holding a forwarded link. */
 const SENSITIVE_KEEP = ["col", "type", "sensitive", "count", "missing", "missingPct", "unique", "uniqueApprox", "semantic"];
 
-function publicColumn(c) {
-  if (!c?.sensitive) return c;
-  return Object.fromEntries(SENSITIVE_KEEP.filter((k) => k in c).map((k) => [k, c[k]]));
+/* `kind` comes from aiSafe.js detectedKinds, not from the stored entry alone:
+   stats_json saved before v21.30 knows only the five School Edition kinds, so
+   an old analysis's "email" or "religion" column carries no `sensitive` and
+   its raw top values. The same re-classification the AI payloads use (column
+   name plus the stored values) decides here too. */
+function publicColumn(c, kind) {
+  if (!kind) return c;
+  return { ...Object.fromEntries(SENSITIVE_KEEP.filter((k) => k in c).map((k) => [k, c[k]])), sensitive: kind };
+}
+
+/* The saved chart is drawn from the same rows. autoChartConfig never charts
+   a column it knew was personal data, but an old analysis's chart may have
+   an axis that is only detected now — its category labels are that
+   column's values, so the chart is left off the public page. */
+function publicChart(chart, kinds) {
+  if (!chart) return null;
+  const axes = [chart.xAxis, ...(Array.isArray(chart.yAxis) ? chart.yAxis : [chart.yAxis])];
+  return axes.some((col) => kinds.has(col)) ? null : chart;
 }
 
 const parse = (json) => {
@@ -66,13 +83,14 @@ const parse = (json) => {
  * SharePage, so they are not published either.
  */
 export function publicShareView(row) {
-  const stats = parse(row.stats_json);
+  const colAnalysis = parse(row.stats_json)?.colAnalysis || [];
+  const kinds = detectedKinds(colAnalysis);
   return {
     title:        row.title || DEFAULT_SHARE_TITLE,
     analysis:     row.analysis,
     total_rows:   row.total_rows,
-    stats_json:   { colAnalysis: (stats?.colAnalysis || []).map(publicColumn) },
-    chart_config: parse(row.chart_config),
+    stats_json:   { colAnalysis: colAnalysis.map((c) => publicColumn(c, kinds.get(c?.col))) },
+    chart_config: publicChart(parse(row.chart_config), kinds),
     view_count:   row.view_count,
     created_at:   row.created_at,
     expires_at:   row.expires_at,

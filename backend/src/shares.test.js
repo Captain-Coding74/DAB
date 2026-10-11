@@ -19,7 +19,7 @@ import request from "supertest";
 import express from "express";
 import pino from "pino";
 import ExcelJS from "exceljs";
-import { buildApp, closeApp } from "./testApp.js";
+import { buildApp, closeApp, TERMS } from "./testApp.js";
 import { query } from "./db/pool.js";
 import { migrate } from "./db/migrate.js";
 import { createHttpLogger } from "./logger.js";
@@ -30,9 +30,9 @@ const FILE = "roster_somchai_private.csv";
 const CSV  = "name,phone,score\nสมชาย ใจดี,0812345678,10\nสมหญิง รักเรียน,0898765432,20\nวิชัย มั่นคง,0811111111,30\nมานี มีนา,0822222222,40\n";
 const DAY  = 86_400_000;
 
-// One place to change if registration grows required fields.
+// One place to change if registration grows required fields (v21.30: the click-wrap boxes).
 const register = async (prefix) =>
-  (await agent.post("/api/auth/register").send({ username: `${prefix}_${Date.now()}`, password: "Test1234!" })).body.accessToken;
+  (await agent.post("/api/auth/register").send({ username: `${prefix}_${Date.now()}`, password: "Test1234!", ...TERMS })).body.accessToken;
 const auth = (req, t = ownerTok) => req.set("Authorization", `Bearer ${t}`);
 const share = (body, t = ownerTok) => auth(agent.post(`/api/analyses/${analysisId}/share`), t).send(body);
 const tokenOf = (res) => res.body.shareUrl.split("/").pop();
@@ -122,6 +122,33 @@ describe("The public share payload", () => {
     // The owner's own saved stats still have the (masked) top values.
     const [row] = await query(`SELECT stats_json FROM analyses WHERE id=$1`, [analysisId]);
     assert.ok(JSON.parse(row.stats_json).colAnalysis.find((c) => c.col === "name").top.length);
+  });
+
+  /* v21.30 integration: an analysis saved before the wider detection —
+     stats_json without `sensitive` on the new kinds — is shared through the
+     real route and re-classified on the way out (services/shareView.js). */
+  test("an OLD analysis's stored stats are re-classified before they go public", async () => {
+    const [a] = await query(`SELECT * FROM analyses WHERE id=$1`, [analysisId]);
+    const oldId = `old-${Date.now()}`;
+    const stats = { colAnalysis: [
+      { col: "customer_email", type: "text", count: 2, unique: 2, top: [{ value: "somchai@example.com", count: 1 }] },
+      { col: "ศาสนา", type: "text", count: 2, unique: 2, top: [{ value: "พุทธ", count: 1 }, { value: "อิสลาม", count: 1 }] },
+      { col: "spend", type: "numeric", count: 2, min: 5, max: 20 },
+    ] };
+    const chart = { type: "bar", xAxis: "ศาสนา", yAxis: ["spend"], data: [{ "ศาสนา": "พุทธ", spend: 5 }] };
+    await query(`INSERT INTO analyses (id,user_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,chart_config,created_at) VALUES ($1,$2,$3,'csv',2,3,'q','old AI text',$4,$5,$6)`,
+      [oldId, a.user_id, "old.csv", JSON.stringify(stats), JSON.stringify(chart), new Date().toISOString()]);
+    const created = await auth(agent.post(`/api/analyses/${oldId}/share`)).send({ expiresInDays: 7 });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const res = await agent.get(`/api/public/share/${tokenOf(created)}`);
+    assert.equal(res.status, 200);
+    const byName = Object.fromEntries(res.body.stats_json.colAnalysis.map((c) => [c.col, c]));
+    assert.equal(byName.customer_email.sensitive, "email");
+    assert.equal(byName["ศาสนา"].sensitive, "religion");
+    assert.equal(byName.spend.max, 20);
+    assert.equal(res.body.chart_config, null, "a chart over a detected column is not published");
+    const json = JSON.stringify(res.body);
+    for (const v of ["somchai@example.com", "พุทธ", "อิสลาม"]) assert.equal(json.includes(v), false, `${v} leaked`);
   });
 
   test("an unknown token is a 404 that also says noindex", async () => {

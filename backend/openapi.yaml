@@ -421,6 +421,12 @@ paths:
         itself is NOT stored — saving it is a separate, explicit
         `POST /api/datasets` (which, for a file detected as a class roster,
         requires `schoolAuthority=1` or answers 400 `SCHOOL_AUTHORITY_REQUIRED`).
+        That save may name the analysis on screen (`analysisId`, the caller's
+        own): it is linked to the new dataset, and a statistics-only analysis
+        (or `noAi=1`) creates the dataset with its AI switch OFF.
+
+        v21.30: `datasetId` and `workspaceId`, when sent, must be a dataset the
+        caller can access and a workspace they belong to — otherwise 403.
 
         v21.30: the AI receives statistics only — never raw rows, and never the
         values of columns detected as personal data (only their name and kind).
@@ -448,6 +454,12 @@ paths:
                   type: string
                   enum: ["1", "true"]
                   description: "Statistics only — don't send anything from this file to the AI (signed-in uploads)"
+                datasetId:
+                  type: string
+                  description: Link the saved analysis to this dataset (one the caller can access)
+                workspaceId:
+                  type: string
+                  description: Workspace the saved analysis belongs to (one the caller is a member of)
       responses:
         "200":
           description: Analysis complete
@@ -456,6 +468,8 @@ paths:
               schema: { $ref: "#/components/schemas/AnalyzeResponse" }
         "400":
           description: No file, wrong format, or empty data
+        "403":
+          description: "`datasetId` or `workspaceId` names one the caller cannot access (v21.30)"
         "429":
           description: Rate limit exceeded (30 req / 15 min)
         "500":

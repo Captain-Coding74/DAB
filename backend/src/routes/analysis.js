@@ -14,6 +14,7 @@ import { computeStatsBundle, buildAnalysisPrompt, analysisResponse } from "../se
 import { recordUpload } from "../services/telemetry.js";
 import { tryConsumeAI } from "../services/aiBudget.js";
 import { flagOn, datasetAiEnabled } from "../services/aiGate.js";
+import { getUserDatasetRole } from "../db/datasetRepository.js";
 import { serviceLogger, requestLogger } from "../logger.js";
 
 /** One place the analysis model is named and called — both endpoints go through here. */
@@ -35,7 +36,7 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
     const t0  = performance.now();
     const log = requestLogger(req);
     try {
-      const { getUserDatasetRole, getDatasetWithContent, getVersionBytes, touchDataset } = await import("../db/datasetRepository.js");
+      const { getDatasetWithContent, getVersionBytes, touchDataset } = await import("../db/datasetRepository.js");
       const role = await getUserDatasetRole(req.params.id, req.user.userId);
       if (!role) return res.status(403).json({ error: "No access to this dataset" });
 
@@ -100,6 +101,15 @@ export function mountAnalysisRoutes(app, { upload, ai }) {
       const fileType   = req.file.originalname.split(".").pop().toLowerCase();
       const workspaceId = req.body.workspaceId || null;
       const datasetId   = req.body.datasetId   || null;
+      /* v21.30: both ids come from the client and land on the saved record.
+         A dataset link decides which AI switch applies, keeps that dataset
+         "in use" for retention and puts the analysis in its cascade; a
+         workspace link puts its branding on share pages. So each must be
+         one the caller can reach — the same 403 as the dataset routes. */
+      if (datasetId && !(req.user && await getUserDatasetRole(datasetId, req.user.userId)))
+        return res.status(403).json({ error: "No access to this dataset" });
+      if (workspaceId && !(req.user && await R.isMember(workspaceId, req.user.userId)))
+        return res.status(403).json({ error: "Not a member of this workspace" });
 
       const { headers, colAnalysis, totalRows, dupeCount, sampleRows, pairwise, normalization, sensitive, headRows } =
         await parseFileStreaming(req.file.buffer, req.file.originalname);

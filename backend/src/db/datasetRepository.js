@@ -42,7 +42,7 @@ export async function deleteFolder(id, ownerId) {
 }
 
 // ── Datasets — Create with first version ────────────────────
-export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes, schoolAttestedAt }) {
+export async function createDataset({ datasetId: providedId, workspaceId, ownerId, name, description, folderId, fileName, fileContent, storageKey, storageSha256, fileType, totalRows, totalCols, colAnalysis, qualityScore, sizeBytes, schoolAttestedAt, aiEnabled = true }) {
   // The caller may supply the id so the storage key it already wrote points
   // at the same dataset; otherwise generate one as before.
   const datasetId = providedId || uuid();
@@ -60,9 +60,9 @@ export async function createDataset({ datasetId: providedId, workspaceId, ownerI
   );
 
   await query(
-    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at,school_attested_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t, schoolAttestedAt||null]
+    `INSERT INTO datasets (id,workspace_id,owner_id,name,description,folder_id,current_version_id,total_rows,total_cols,file_type,size_bytes,quality_score,created_at,updated_at,school_attested_at,ai_enabled)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [datasetId, workspaceId||null, ownerId, name, description||null, folderId||null, versionId, totalRows, totalCols, fileType, sizeBytes||0, qualityScore||null, t, t, schoolAttestedAt||null, aiEnabled ? 1 : 0]
   );
 
   return { id: datasetId, versionId };

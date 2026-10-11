@@ -40,10 +40,19 @@ export function saveStatus({ signedIn, file, analysis }) {
  */
 export const needsSchoolAttestation = (analysis) => !!analysis?.classReport;
 
-export function saveForm(file, { schoolAuthority = false } = {}) {
+/**
+ * analysisId: the saved analysis on screen (its savedId). The server links
+ * it to the new dataset, so the dataset's AI switch and its deletion cover
+ * it. noAi: the upload was "Statistics only" — the dataset is created with
+ * AI off, so chat, the agent, fix-suggest and AI edit on the saved copy
+ * keep that choice (the server also reads it off the analysis).
+ */
+export function saveForm(file, { schoolAuthority = false, analysisId = null, noAi = false } = {}) {
   const fd = new FormData();
   fd.append("file", file, file.name);
   if (schoolAuthority) fd.append("schoolAuthority", "1");
+  if (analysisId) fd.append("analysisId", analysisId);
+  if (noAi) fd.append("noAi", "1");
   return fd;
 }
 
@@ -56,5 +65,5 @@ export async function saveDataset(file, opts = {}, fetcher = apiFetch) {
   const res  = await fetcher("/api/datasets", { method: "POST", headers: {}, body: saveForm(file, opts) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, code: data.code || null, error: data.error || `HTTP ${res.status}`, errorEn: data.errorEn || null };
-  return { ok: true, id: data.id };
+  return { ok: true, id: data.id, aiEnabled: data.aiEnabled !== false };
 }

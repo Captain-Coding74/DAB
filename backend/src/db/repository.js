@@ -174,9 +174,19 @@ export async function saveAnalysis({ userId, workspaceId, datasetId, fileName, f
     [id,userId||null,workspaceId||null,datasetId||null,fileName,fileType,totalRows,totalCols,prompt,analysis,statsJson?JSON.stringify(statsJson):null,chartConfig?JSON.stringify(chartConfig):null,qualityScore||null,durationMs||0,ipAddress||null,now(),aiDisabled?1:0]);
   return { id };
 }
+/* v21.30: the owner only. `OR user_id IS NULL` let any signed-in user open,
+   chat with, comment on or share a legacy ownerless analysis by its id.
+   Every caller is an authenticated route, and anonymous analyses are not
+   saved, so no caller needs ownerless rows. */
 export async function getAnalysis(id, userId) {
-  const r = await query(`SELECT * FROM analyses WHERE id=$1 AND (user_id=$2 OR user_id IS NULL)`,[id,userId]);
+  if (!userId) return null;
+  const r = await query(`SELECT * FROM analyses WHERE id=$1 AND user_id=$2`,[id,userId]);
   return r[0]||null;
+}
+/** v21.30: "Save dataset" links the analysis on screen to the dataset it
+ *  saved — the owner's own analysis, and only one not linked yet. */
+export async function linkAnalysisToDataset(id, datasetId, userId) {
+  await query(`UPDATE analyses SET dataset_id=$1 WHERE id=$2 AND user_id=$3 AND dataset_id IS NULL`,[datasetId,id,userId]);
 }
 export async function getUserAnalyses(userId, { limit=20, offset=0 }={}) {
   return query(`SELECT id,file_name,file_type,total_rows,total_cols,prompt,quality_score,created_at,duration_ms,substr(analysis,1,200) AS preview FROM analyses WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`,[userId,limit,offset]);

@@ -42,13 +42,28 @@ describe("saveForm / saveDataset", () => {
     assert.equal(saveForm(file).get("file").name, "scores.csv");
   });
 
+  test("the save names the analysis on screen and repeats a Statistics-only choice", () => {
+    const plain = saveForm(file);
+    assert.equal(plain.get("analysisId"), null);
+    assert.equal(plain.get("noAi"), null);
+    const linked = saveForm(file, { analysisId: "a7", noAi: true });
+    assert.equal(linked.get("analysisId"), "a7");
+    assert.equal(linked.get("noAi"), "1");
+    assert.equal(saveForm(file, { analysisId: "a7", noAi: false }).get("noAi"), null);
+  });
+
   test("posts to /api/datasets and returns the new id", async () => {
     const calls = [];
     const fetcher = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 201, json: async () => ({ id: "d42" }) }; };
-    assert.deepEqual(await saveDataset(file, {}, fetcher), { ok: true, id: "d42" });
+    assert.deepEqual(await saveDataset(file, {}, fetcher), { ok: true, id: "d42", aiEnabled: true });
     assert.equal(calls[0].url, "/api/datasets");
     assert.equal(calls[0].opts.method, "POST");
     assert.ok(calls[0].opts.body instanceof FormData);
+  });
+
+  test("a dataset saved with AI off says so", async () => {
+    const fetcher = async () => ({ ok: true, status: 201, json: async () => ({ id: "d9", aiEnabled: false }) });
+    assert.deepEqual(await saveDataset(file, { noAi: true }, fetcher), { ok: true, id: "d9", aiEnabled: false });
   });
 
   test("SCHOOL_AUTHORITY_REQUIRED comes back as a code, not a throw", async () => {

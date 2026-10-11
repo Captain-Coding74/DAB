@@ -13,9 +13,10 @@ import { parseFileStreaming } from "../services/streaming.js";
 import * as storage from "../services/storage.js";
 import { computeQualityScore } from "../services/qualityScore.js";
 import * as DR from "../db/datasetRepository.js";
+import * as R from "../db/repository.js";
 import * as CR from "../db/collabRepository.js";
 import foldersRouter from "./folders.js";
-import { setDatasetAi } from "./datasetAi.js";
+import { setDatasetAi, saveSource } from "./datasetAi.js";
 import { downloadVersion } from "./datasetDownload.js";
 import { schoolAuthority } from "../services/schoolRoster.js";
 import { pageParams } from "../pagination.js";
@@ -87,6 +88,8 @@ router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (re
   try {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const { name, description, folderId, workspaceId } = req.body;
+    const source = await saveSource(req, res);   // v21.30: the analysis being saved, and its AI choice
+    if (!source) return;
     const parsed = await parseFileStreaming(req.file.buffer, req.file.originalname);
     const { headers, colAnalysis, totalRows, dupeCount, normalization } = parsed;
     // v21.30: a class roster is saved only with the school's authority — checked before anything is kept.
@@ -114,12 +117,13 @@ router.post("/", requireAuth, upload.single("file"), requireFileMagic, async (re
       fileType: req.file.originalname.split(".").pop().toLowerCase(),
       totalRows, totalCols: headers.length,
       colAnalysis, qualityScore: quality?.score,
-      sizeBytes: req.file.size, schoolAttestedAt,
+      sizeBytes: req.file.size, schoolAttestedAt, aiEnabled: source.aiEnabled,
     });
+    if (source.analysis) await R.linkAnalysisToDataset(source.analysis.id, ds.id, req.user.userId);
 
     await CR.logActivity({ workspaceId, datasetId: ds.id, userId: req.user.userId, action: "dataset_created", targetType: "dataset", targetId: ds.id, metadata: { name: name || req.file.originalname } });
 
-    res.status(201).json({ ...ds, totalRows, totalCols: headers.length, colAnalysis, quality });
+    res.status(201).json({ ...ds, totalRows, totalCols: headers.length, colAnalysis, quality, aiEnabled: source.aiEnabled });
   } catch (err) { next(err); }
 });
 

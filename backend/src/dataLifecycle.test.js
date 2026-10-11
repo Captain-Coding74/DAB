@@ -102,6 +102,102 @@ describe("opt-in save", () => {
   });
 });
 
+/* v21.30 integration of A1's switches with A2's save: the dataset a result
+   is saved as covers that analysis, and "Statistics only" survives the save. */
+describe("Save dataset links the analysis and keeps a Statistics-only choice", () => {
+  const analyze = (fields = {}, who = "owner") => {
+    let req = as(agent.post("/api/analyze"), who).attach("file", SALES, "sales.csv");
+    for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
+    return req;
+  };
+  const aiEnabledOf = async (id) => Number((await query(`SELECT ai_enabled FROM datasets WHERE id=$1`, [id]))[0].ai_enabled);
+  const linkOf = async (id) => (await query(`SELECT dataset_id FROM analyses WHERE id=$1`, [id]))[0].dataset_id;
+
+  test("an ordinary save links the analysis and leaves AI on", async () => {
+    const an = await analyze();
+    const res = await saveDataset(SALES, "sales.csv", { analysisId: an.body.savedId });
+    assert.equal(res.status, 201, JSON.stringify(res.body).slice(0, 200));
+    assert.equal(res.body.aiEnabled, true);
+    assert.equal(await aiEnabledOf(res.body.id), 1);
+    assert.equal(await linkOf(an.body.savedId), res.body.id);
+  });
+
+  test("a Statistics-only upload saves a dataset with AI off, and the server enforces it everywhere", async () => {
+    const an = await analyze({ noAi: "1" });
+    assert.equal(an.body.aiDisabled, true);
+    const res = await saveDataset(SALES, "sales.csv", { analysisId: an.body.savedId, noAi: "1" });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.aiEnabled, false);
+    const ds = res.body.id;
+    assert.equal(await aiEnabledOf(ds), 0);
+    assert.equal(await linkOf(an.body.savedId), ds);
+
+    const chat = await as(agent.post(`/api/analyses/${an.body.savedId}/chat`)).send({ message: "x" });
+    assert.equal(chat.body.code, "AI_DISABLED");
+    const agentRun = await as(agent.post(`/api/analyses/${an.body.savedId}/agent`)).send({ question: "x" });
+    assert.equal(agentRun.body.code, "AI_DISABLED");
+    const edit = await as(agent.post(`/api/fixes/${ds}/ai-edit`)).send({ instruction: "trim", confirmSend: true });
+    assert.equal(edit.status, 403);
+    assert.equal(edit.body.code, "AI_DISABLED");
+    const sug = await as(agent.post(`/api/fixes/${ds}/suggest`)).send({});
+    assert.equal(sug.status, 200);
+    assert.equal(sug.body.source, "rules", "rule-based suggestions, no AI call");
+    const re = await as(agent.post(`/api/datasets/${ds}/analyze`)).send({});
+    assert.equal(re.body.aiDisabled, true, "re-analysing the saved copy stays statistics-only");
+    assert.equal(re.body.analysis, null);
+  });
+
+  test("the server reads the choice off the analysis even when the client omits noAi", async () => {
+    const an = await analyze({ noAi: "1" });
+    const res = await saveDataset(SALES, "sales.csv", { analysisId: an.body.savedId });
+    assert.equal(res.status, 201);
+    assert.equal(await aiEnabledOf(res.body.id), 0);
+  });
+
+  test("someone else's analysis cannot be named: 404, and nothing is stored", async () => {
+    const theirs = await analyze({}, "other");
+    const before = await count(`SELECT COUNT(*) AS n FROM datasets WHERE owner_id=$1`, [ids.owner]);
+    const res = await saveDataset(SALES, "sales.csv", { analysisId: theirs.body.savedId });
+    assert.equal(res.status, 404);
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM datasets WHERE owner_id=$1`, [ids.owner]), before);
+    assert.equal(await linkOf(theirs.body.savedId), null);
+  });
+});
+
+/* v21.30: two ids the client chooses, and a legacy row nobody owns. */
+describe("access checks on linked records", () => {
+  test("POST /api/analyze refuses a datasetId or workspaceId the caller cannot reach", async () => {
+    const theirs = (await saveDataset(SALES, "sales.csv", {}, "other")).body.id;
+    const ws = (await as(agent.post("/api/workspaces"), "other").send({ name: `dl_ws_${u}` })).body.id;
+    assert.ok(theirs && ws);
+    const before = await count(`SELECT COUNT(*) AS n FROM analyses WHERE user_id=$1`, [ids.owner]);
+    const byDs = await as(agent.post("/api/analyze")).attach("file", SALES, "sales.csv").field("datasetId", theirs);
+    assert.equal(byDs.status, 403);
+    const byWs = await as(agent.post("/api/analyze")).attach("file", SALES, "sales.csv").field("workspaceId", ws);
+    assert.equal(byWs.status, 403);
+    const anon = await agent.post("/api/analyze").attach("file", SALES, "sales.csv").field("datasetId", theirs);
+    assert.equal(anon.status, 403, "signed out, no dataset is reachable");
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM analyses WHERE user_id=$1`, [ids.owner]), before, "nothing saved");
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM analyses WHERE dataset_id=$1`, [theirs]), 0);
+
+    const mine = (await saveDataset(SALES, "sales.csv")).body.id;
+    const ok = await as(agent.post("/api/analyze")).attach("file", SALES, "sales.csv").field("datasetId", mine);
+    assert.equal(ok.status, 200);
+    assert.equal((await query(`SELECT dataset_id FROM analyses WHERE id=$1`, [ok.body.savedId]))[0].dataset_id, mine);
+  });
+
+  test("a legacy analysis with no owner is not open to every signed-in user", async () => {
+    const id = randomUUID();
+    await query(`INSERT INTO analyses (id,user_id,file_name,file_type,total_rows,total_cols,prompt,analysis,stats_json,created_at) VALUES ($1,NULL,'legacy.csv','csv',1,1,'q','legacy text','{}',$2)`, [id, daysAgo(1)]);
+    assert.equal((await as(agent.get(`/api/history/${id}`))).status, 404);
+    assert.equal((await as(agent.post(`/api/analyses/${id}/share`)).send({})).status, 404);
+    assert.equal((await as(agent.post(`/api/analyses/${id}/chat`)).send({ message: "x" })).status, 404);
+    assert.equal((await as(agent.get(`/api/analyses/${id}/chat`))).status, 404);
+    assert.equal(await count(`SELECT COUNT(*) AS n FROM shared_reports WHERE analysis_id=$1`, [id]), 0);
+    await query(`DELETE FROM analyses WHERE id=$1`, [id]);
+  });
+});
+
 describe("school attestation (SCHOOL_AUTHORITY_REQUIRED)", () => {
   test("analyze shows a class report for the classroom sample — the dialog's cue", async () => {
     const res = await as(agent.post("/api/analyze")).attach("file", CLASSROOM, "classroom.csv");

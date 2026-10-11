@@ -12,6 +12,8 @@
  */
 import * as DR from "../db/datasetRepository.js";
 import * as CR from "../db/collabRepository.js";
+import { getAnalysis } from "../db/repository.js";
+import { flagOn } from "../services/aiGate.js";
 
 export async function setDatasetAi(req, res, next) {
   try {
@@ -34,4 +36,26 @@ export async function setDatasetAi(req, res, next) {
       action: aiEnabled ? "dataset_ai_on" : "dataset_ai_off" });
     res.json({ success: true, aiEnabled });
   } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/datasets from the result on screen — "Save dataset" (v21.30).
+ *
+ * The SPA names the analysis it is saving (`analysisId`) and repeats the
+ * upload's "Statistics only" choice (`noAi`). The analysis is linked to the
+ * new dataset, so the dataset's AI switch and its deletion cover it. And a
+ * statistics-only upload makes a dataset with AI OFF: otherwise chat, the
+ * agent, fix-suggest and AI edit on the saved copy would send what the user
+ * chose to keep from the AI. The server reads the choice off the analysis
+ * too, so an older client that sends only the id cannot undo it.
+ *
+ * Returns { analysis, aiEnabled }, or answers 404 (not the caller's
+ * analysis) and returns null — before anything is stored.
+ */
+export async function saveSource(req, res) {
+  const id = req.body?.analysisId || null;
+  const analysis = id ? await getAnalysis(id, req.user.userId) : null;
+  if (id && !analysis) { res.status(404).json({ error: "Analysis not found" }); return null; }
+  const aiEnabled = !flagOn(req.body?.noAi) && Number(analysis?.ai_disabled ?? 0) === 0;
+  return { analysis, aiEnabled };
 }

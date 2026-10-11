@@ -171,8 +171,11 @@ export function useAnalysis() {
   const saveCurrentDataset = useCallback(async ({ schoolAuthority = false } = {}) => {
     if (!file) return { ok: false };
     const runId = runRef.current;
+    const shown = useAppStore.getState().currentAnalysis;
     try {
-      const r = await saveDataset(file, { schoolAuthority });
+      // The analysis on screen is linked to the dataset, and a Statistics-only
+      // upload saves a dataset with AI off (lib/saveDataset.js saveForm).
+      const r = await saveDataset(file, { schoolAuthority, analysisId: shown?.savedId, noAi: !!shown?.noAi });
       const cur = useAppStore.getState().currentAnalysis;
       if (r.ok && cur && runId === runRef.current) {
         setCurrentAnalysis({ ...cur, datasetId: r.id });
