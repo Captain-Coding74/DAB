@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# v21.31: a newer push to the same branch or PR cancels the run it supersedes.
+# Never on main: a run there may be pushing the image.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   # 22, not 20: scripts/coverage.mjs uses --test-coverage-exclude, which does
   # not exist before Node 22 ("node: bad option"). Local dev runs 22.x, so this
@@ -60,23 +66,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
       - run: npm ci
       # Real server, real HTTP, real SQLite, real PDF/XLSX. AI_MOCK=1 → no key needed.
       - run: npm run test:e2e
 
-  quality-gates:
-    name: Browser Suite + Perf Budgets + Quality Gates
+  # v21.31: this used to be one 3.5-minute job — browser suite, perf, coverage
+  # (70 s on its own) and the audit (35 s) in series — that everything else
+  # waited for. They now run side by side; the gate job below keeps the old
+  # name, reads their metrics, and passes only when all three did.
+  browser:
+    name: Browser Suite + Perf
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: npm
       - run: npm ci
-
-      # Dependency gating is `npm run audit:gate` (below, v15). Raw `npm audit`
-      # is deliberately NOT used: it fails on dev-only tooling and on advisories
-      # with no fix, which trains everyone to ignore the gate. See ADR-0008.
 
       # System libs Chromium needs. The browser binary itself ships inside the
       # @sparticuz/chromium npm package, so no browser-CDN access is required.
@@ -102,14 +110,76 @@ jobs:
       - run: npm run perf:api -w backend
         env:
           PERF_CPU_FACTOR: "4"  # server p95 + throughput
+
+      # One file per artifact, so it unpacks at a fixed path in the gate job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-metrics
+          path: metrics/browser.json
+      - name: Upload failure artifacts (screenshots, traces)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures
+          path: artifacts/browser/
+          if-no-files-found: ignore
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w frontend    # the suites include /welcome (see backend-tests)
       - run: npm run coverage
-      # Gates complexity, duplication, coverage, AND browser pass rate +
-      # console errors (which is why the browser suite must run first).
-      - run: npm run quality
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-metrics
+          path: metrics/coverage.json
+
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Dependency gating is `npm run audit:gate` (v15). Raw `npm audit` is
+      # deliberately NOT used: it fails on dev-only tooling and on advisories
+      # with no fix, which trains everyone to ignore the gate. See ADR-0008.
       - run: npm run audit:gate
+
+  quality-gates:
+    name: Browser Suite + Perf Budgets + Quality Gates
+    runs-on: ubuntu-latest
+    needs: [browser, coverage, audit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # quality.mjs and dashboard.mjs use only Node built-ins: no npm ci.
+      - uses: actions/download-artifact@v4
+        with:
+          name: browser-metrics
+          path: metrics
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-metrics
+          path: metrics
+      # Gates complexity, duplication, coverage, AND browser pass rate +
+      # console errors from the two jobs above.
+      - run: npm run quality
       - run: npm run dashboard
 
-      - name: Upload cockpit (dashboard, history, failure artifacts)
+      - name: Upload cockpit (dashboard, history; failures are in browser-failures)
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -118,12 +188,12 @@ jobs:
             metrics/dashboard.html
             metrics/history.jsonl
             metrics/browser.json
-            artifacts/browser/
 
+  # v21.31: builds alongside the tests instead of after them (it needs none
+  # of their output); Deploy still waits for every test job.
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-build, e2e, quality-gates]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -139,7 +209,7 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    needs: [docker-build]
+    needs: [backend-tests, frontend-build, e2e, quality-gates, docker-build]
     # Publishing is opt-in. docker/login-action fails with "Username and
     # password required" when DOCKERHUB_* are unset, which turned an
     # unconfigured publish target into a red pipeline. Secrets are NOT
@@ -168,3 +238,5 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/dab:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/dab:${{ github.sha }}
+          # v21.31: the layers Docker Build just cached — no second full build.
+          cache-from: type=gha
