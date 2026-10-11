@@ -22,7 +22,7 @@ The PDPC access-request Notification (in force 14 September 2026) asks for at le
 |---|---|
 | Day 0 (the day it arrives) | Log it (section 3, step 1) |
 | Within 3 business days | Acknowledge it (template A) |
-| Within 15 days | Finish checking identity; if information is missing, ask for it and give at least 15 days to provide it |
+| Within 15 days | Finish checking identity; if information is missing, ask for it and give at least 15 days to provide it (the sources say 10 or 15; 15 meets both — lawyer question 3) |
 | Within 30 days of receipt | Answer: done, partly done, or refused with the reason (templates B–E) |
 | Within 90 days | Erasure reaches every copy, including any backups the host keeps (PDPC deletion Notification) |
 
@@ -84,7 +84,7 @@ Always say which ground, what you did do, and that the person may complain to th
 
 ## 8. Reports about shared pages (`/contact#report`)
 
-Every share page has a "Report this page" link to the contact page. The contact page promises to acknowledge reports within 3 business days, to act promptly on unlawful content (possibly disabling the link at once), and to record every notice and what was done. A working notice-and-takedown procedure is DAB's defence under the Computer-Related Crime Act s.15.
+Every share page has a "Report this page" link to the contact page. The contact page says DAB aims to acknowledge reports within 3 business days and acts promptly on unlawful content (possibly disabling the link at once), and promises to record every notice and what was done. A working notice-and-takedown procedure is DAB's defence under the Computer-Related Crime Act s.15.
 
 1. **Record** the report in the takedown register the day it arrives.
 2. **Assess.** Clearly unlawful, or exposes someone's personal data: disable now. A formal notice under the Act (with a police report), an official request or a court order: disable at once — target within 24 hours of receipt — and keep a copy of the notice. Unclear: ask counsel, and disable meanwhile if the harm could be serious.

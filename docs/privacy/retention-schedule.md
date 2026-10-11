@@ -26,7 +26,7 @@ Why this matters: PDPA s.37(3) requires a system that deletes personal data when
 
 Notes:
 
-- **Traffic log.** The Act makes 90 days a minimum, so never set a lower value. An official may order a longer period for particular data, up to 2 years. Handle such an order as a legal hold (section 5) rather than by raising the setting for everyone.
+- **Traffic log.** The Act makes 90 days a minimum, so never set a lower value; the server ignores one, keeps 90 days and logs a warning. An official may order a longer period for particular data, up to 2 years. Handle such an order as a legal hold (section 5) rather than by raising the setting for everyone.
 - **Datasets and analyses** are deleted through the same cascades as a user's own deletion (`backend/src/db/cascade.js`), so expiry removes as much as erasure does.
 - **Share links** stop working when they expire. The row itself is deleted when the owner revokes it, or when its analysis is deleted, which happens at the latest 365 days after the analysis was created.
 

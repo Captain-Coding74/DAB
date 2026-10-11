@@ -40,7 +40,7 @@ Lawful bases use the PDPA s.24 numbering: contract (s.24(3)), legal obligation (
 | | |
 |---|---|
 | Data subjects | Account holders |
-| Personal data | What the account holder did and made: analyses in History (file name, question, AI report, statistics), saved datasets and their names, chat, share links (token, title, expiry, optional password hash, view count), workspaces (name, branding, members and roles), dataset permissions, comments and @mentions, notifications, activity feed entries |
+| Personal data | What the account holder did and made: analyses in History (file name, question, AI report, statistics), saved datasets and their names (for a class roster, also the time the account holder confirmed the school's authority: `datasets.school_attested_at`), chat, share links (token, title, expiry, optional password hash, view count), workspaces (name, branding, members and roles), dataset permissions, comments and @mentions, notifications, activity feed entries |
 | Where | `analyses`, `chat_messages`, `datasets`, `dataset_versions`, `shared_reports`, `workspaces`, `workspace_members`, `dataset_permissions`, `comments`, `mentions`, `notifications`, `activity_feed`; stored files in object storage |
 | Purpose | Provide the features the account holder uses |
 | Lawful basis | Contract |
@@ -72,7 +72,7 @@ Lawful bases use the PDPA s.24 numbering: contract (s.24(3)), legal obligation (
 | Lawful basis | Legitimate interests (`legitimate-interests.md`, LIA 1) |
 | Recipients | Hosting provider; officials entitled to it by law. An account holder sees their own audit rows in their data export |
 | Transfers abroad | Hosting region only |
-| Retention | Audit log 365 days; rate-limit counters up to 15 minutes |
+| Retention | Audit log 365 days, and the account holder's rows are deleted with the account; rate-limit counters up to 15 minutes |
 | Security | No feature shows the audit log to anyone else; database access is the operator's only |
 
 ## C5. Traffic log (Computer-Related Crime Act B.E. 2550, s.26)
@@ -118,6 +118,7 @@ The IP address in the traffic log and the audit log is derived through `TRUST_PR
 | Recipients | Only operators listed in `TELEMETRY_ADMINS` can read the aggregate summary |
 | Transfers abroad | Hosting region only |
 | Retention | 395 days. On account deletion the user id on these rows is removed |
+| Security | No file name, column name or value is ever written (`backend/src/telemetry.test.js`). The summary endpoint (`/api/telemetry/summary`) is closed to everyone unless `TELEMETRY_ADMINS` names the reader. Deleted daily after 395 days (`telemetry` job) |
 
 ## C8. Privacy requests
 
@@ -129,7 +130,9 @@ The IP address in the traffic log and the audit log is derived through `TRUST_PR
 | Purpose | Handle requests and show that each was handled |
 | Lawful basis | Legal obligation (PDPA ss.30–36 and the PDPC access-request Notification's record-keeping duty) |
 | Recipients | Hosting provider (log); email provider (mailbox, see `vendors.md`) |
+| Transfers abroad | Hosting region only for the log. The mailbox provider's location — **to confirm** (`vendors.md` section 4) |
 | Retention | Log: 3 years. Correspondence: proposed 3 years after closing; ID copies deleted once identity is confirmed (`retention-schedule.md` section 4) |
+| Security | The log holds a SHA-256 hash, not the user id. It is still pseudonymous personal data: anyone who holds the id, or guesses the identifier, can match it. Notes are kept free of personal data. Correspondence: the mailbox behind two-factor sign-in and the paper file under lock — **to put in place** (`README.md` checklist) |
 | Procedure | `data-requests.md` |
 
 ## C9. Contact, reports about shared pages, security reports
@@ -142,7 +145,9 @@ The IP address in the traffic log and the audit log is derived through `TRUST_PR
 | Purpose | Answer messages; remove unlawful content under the Computer-Related Crime Act's notice-and-takedown procedure (s.15); fix security problems |
 | Lawful basis | Legitimate interests (LIA 3); legal obligation where a formal notice or a court order under the Act applies |
 | Recipients | Email provider; officials or a court where the law requires |
+| Transfers abroad | The mailbox provider's location — **to confirm** (`vendors.md` section 4) |
 | Retention | Proposed: takedown reports 3 years after closing; other mail 12 months (`retention-schedule.md` section 4) |
+| Security | The mailbox behind two-factor sign-in — **to put in place** (`README.md` checklist). The register holds only the fields in its template. A reporter's details are not passed to the link owner without the reporter's agreement, unless the law requires it |
 
 ## C10. Browser storage
 

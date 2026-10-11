@@ -37,7 +37,7 @@ The Terms (section 5) ask users not to upload PDPA s.26 sensitive data without a
 |---|---|---|---|
 | P1 | Analyse a file | The file is parsed in memory into statistics, a quality score, findings, charts and, for class rosters, the class report | The file is discarded after the response |
 | P2 | Keep the analysis in History | File name, the user's question, the AI report, column names, per-column statistics including the most frequent values (detected personal data masked), chart data, quality score. No IP address | Until deleted, at most 365 days |
-| P3 | Save a dataset (opt-in) | The original file, exactly as uploaded, with its versions and column statistics. Saving is a separate "Save dataset" step with its own notice. A file that looks like a class roster can only be saved after the user confirms "I am authorised by my school to process these students' data" | Until deleted; 365 days without activity; Trash 30 days |
+| P3 | Save a dataset (opt-in) | The original file, exactly as uploaded, with its versions and column statistics. Saving is a separate "Save dataset" step with its own notice. A file that looks like a class roster can only be saved after the user confirms "I am authorised by my school to process these students' data"; the time of that confirmation is kept with the dataset | Until deleted; 365 days without activity; Trash 30 days |
 | P4 | Work on a saved dataset | Previews, hypothesis tests, data fixes and AI Edit, which create new versions | As P3 |
 | P5 | AI features (sub-processing by Anthropic) | See below | Not kept by DAB beyond P2 and chat |
 | P6 | Chat and the deep-dive agent | The user's questions and the AI's answers, stored with the analysis | With the analysis |
@@ -77,7 +77,7 @@ Users can avoid the AI transfer completely by switching AI off.
 
 As `retention-schedule.md`. In short: an unsaved upload is not kept; analyses are deleted 365 days after creation; saved datasets when the user deletes them or after 365 days without activity; Trash after 30 days; everything an account owns when the account is deleted. Deleting a dataset deletes its analyses, chat, share links, comments and activity rows.
 
-If DAB stops, or closes an account for a reason other than a breach of the Terms, the Terms promise an in-app announcement at least 30 days ahead so users can download their data, and deletion afterwards as the Privacy Notice describes.
+If DAB stops, or closes an account for any reason other than a breach of the Terms, a risk to DAB or other people, or a legal requirement, the Terms (section 11) promise an in-app announcement at least 30 days ahead so users can download their data, and deletion afterwards as the Privacy Notice describes.
 
 ## Security measures
 

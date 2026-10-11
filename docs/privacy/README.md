@@ -52,6 +52,7 @@ The operator's internal records under Thailand's Personal Data Protection Act B.
 
 - [ ] The Privacy Notice states no retention period for correspondence (requests, reports, feedback). Adopt the proposed periods in `retention-schedule.md` section 4 and add them.
 - [ ] The Privacy Notice's list of recipients does not name an email provider for the contact mailbox; ask counsel whether it should.
+- [ ] The Privacy Notice (section 3, "Saved datasets") does not say that the time a teacher confirmed the school's authority is kept with a saved class roster (`datasets.school_attested_at`). Add it to the list of what is kept with the file.
 - [ ] The notices promise announcements "in the app" (material changes, breaches, closing the service), but DAB has no announcement feature: today that means shipping a release with a banner.
 - [ ] DAB cannot tell a share link's owner that their link was disabled, and has no password change or reset; both matter in a breach.
 
