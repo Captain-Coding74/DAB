@@ -95,7 +95,9 @@ function Nav() {
     navigate("/");
   };
 
-  const navLink = "relative flex items-center gap-2 px-3 py-2 rounded-lg font-mono text-[11px] uppercase tracking-eyebrow text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition";
+  // v21.30: px-2 below sm — the Account link made a fourth icon, and at 390 px
+  // the row pushed sign-out 22 px past the edge (e2e/geometry.test.mjs).
+  const navLink = "relative flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg font-mono text-[11px] uppercase tracking-eyebrow text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 transition";
   const activeLink = "!text-gray-900 dark:!text-gray-100 before:content-[''] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-rule dark:before:bg-rule-dark";
 
   return (
