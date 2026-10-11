@@ -35,6 +35,24 @@ services:
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       # Optional: seals saved files with AES-256-GCM (see .env.example).
       STORAGE_ENCRYPTION_KEY: ${STORAGE_ENCRYPTION_KEY:-}
+      # v21.30: who runs DAB, as /privacy, /terms and /contact print it (PDPA
+      # s.23) — production warns at boot while the contact details are empty.
+      # Settings are passed one by one, so anything not listed here never
+      # reaches the container; empty means "use the default" (.env.example).
+      LEGAL_OPERATOR_NAME: ${LEGAL_OPERATOR_NAME:-}
+      LEGAL_CONTACT_EMAIL: ${LEGAL_CONTACT_EMAIL:-}
+      LEGAL_POSTAL_ADDRESS: ${LEGAL_POSTAL_ADDRESS:-}
+      LEGAL_HOSTING_PROVIDER: ${LEGAL_HOSTING_PROVIDER:-}
+      LEGAL_HOSTING_REGION: ${LEGAL_HOSTING_REGION:-}
+      # v21.30: retention periods in days; empty keeps the documented defaults.
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-}
+      DATASET_RETENTION_DAYS: ${DATASET_RETENTION_DAYS:-}
+      ANALYSIS_RETENTION_DAYS: ${ANALYSIS_RETENTION_DAYS:-}
+      TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-}
+      ACTIVITY_RETENTION_DAYS: ${ACTIVITY_RETENTION_DAYS:-}
+      PRIVACY_REQUEST_RETENTION_DAYS: ${PRIVACY_REQUEST_RETENTION_DAYS:-}
+      TRAFFIC_LOG_RETENTION_DAYS: ${TRAFFIC_LOG_RETENTION_DAYS:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
       S3_BUCKET: ${S3_BUCKET:-dab}
       # For the bundled MinIO, the same values as MINIO_ROOT_USER / MINIO_ROOT_PASSWORD.

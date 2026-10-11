@@ -40,6 +40,8 @@ cp .env.example .env
 #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
 # Recommended:
 #   STORAGE_ENCRYPTION_KEY           openssl rand -base64 32 (keep a copy somewhere safe)
+#   LEGAL_CONTACT_EMAIL, LEGAL_POSTAL_ADDRESS, LEGAL_HOSTING_PROVIDER, LEGAL_HOSTING_REGION
+#                                    printed on /privacy, /terms and /contact (PDPA s.23)
 docker compose up -d
 # http://localhost:3000
 ```
@@ -577,5 +579,6 @@ This is an npm **workspaces** monorepo. Run `npm install` **once at the root** �
 3. `NODE_ENV=production docker compose up -d` — Postgres + Redis wiring is already in `docker-compose.yml` (set `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` in `.env` first — there are no defaults); leave `DATABASE_URL`/`REDIS_URL` blank to run on SQLite + memory for a small launch.
    - Set `STORAGE_ENCRYPTION_KEY` (`openssl rand -base64 32`, and keep a copy) so saved files are encrypted at rest; files saved before it was set are encrypted in place with `npm run storage-encrypt -w backend` (try `-- --dry-run` first).
    - On a managed Postgres, set `DATABASE_SSL_CA` (your provider's CA certificate) or `DATABASE_SSL_VERIFY=1` so the database's TLS certificate is verified. Production logs a warning at boot while either protection is off.
+   - Set `LEGAL_CONTACT_EMAIL`, `LEGAL_POSTAL_ADDRESS`, `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION` (and `LEGAL_OPERATOR_NAME` if the operator is not the default): the Privacy Notice must name a way to reach you (PDPA s.23), and production warns at boot while the contact details are empty. Leave the `*_RETENTION_DAYS` settings at their defaults unless you change the Privacy Notice first — the notice states those periods. The owner's full list is in [`docs/privacy/README.md`](docs/privacy/README.md).
 4. Put TLS in front (Caddy: two lines, or your PaaS does it). Rate limits, helmet, and upload caps are already on.
 5. Watch what arrives: `npm run telemetry -w backend` — the segment table is the vertical decision.

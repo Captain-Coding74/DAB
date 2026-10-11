@@ -54,7 +54,7 @@ Each becomes a sub-processor the day it is used. Before that day: add it here, a
 
 | Setting | What it would hold | Notes |
 |---|---|---|
-| `DATABASE_URL` (Postgres) | Every table: accounts, analyses, logs, the traffic log | Use certificate verification (`DATABASE_SSL_*` settings in `.env.example`) |
+| `DATABASE_URL` (Postgres) | Every table: accounts, analyses, logs, the traffic log | Use certificate verification: `DATABASE_SSL_CA` or `DATABASE_SSL_VERIFY=1` (`.env.example`) |
 | `REDIS_URL` | Short-lived cache: profile including email (60 s), History rows (30–120 s), rate-limit counters keyed by IP address or user id (up to 15 minutes), the AI budget counter | If the provider persists to disk, its retention and encryption apply |
 | `STORAGE_DRIVER=s3` with `S3_ENDPOINT` | Uploaded files that users chose to save | Any S3-compatible service (AWS, Cloudflare R2, MinIO). Needs `@aws-sdk/client-s3` installed, which is not in the lockfile today |
 

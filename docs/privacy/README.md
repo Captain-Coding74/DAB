@@ -36,7 +36,9 @@ The operator's internal records under Thailand's Personal Data Protection Act B.
 - [ ] `LEGAL_CONTACT_EMAIL` and `LEGAL_POSTAL_ADDRESS` — PDPA s.23 requires them, and so do the two request channels. Production logs a warning at boot while either is empty, and the pages show a "being set up" line instead.
 - [ ] `LEGAL_HOSTING_PROVIDER` and `LEGAL_HOSTING_REGION` — printed in the Privacy Notice and the Terms' sub-processor list.
 - [ ] `STORAGE_ENCRYPTION_KEY` — encrypts stored files at rest (AES-256-GCM); production warns while it is unset. Keep a copy of the key somewhere other than the server: files encrypted with it cannot be read without it. The Privacy Notice describes encryption as "when the operator has enabled it", so this is what makes that sentence true for your deployment.
-- [ ] `DATABASE_SSL_*` — if you use Postgres, turn on certificate verification as described in `.env.example`.
+- [ ] `DATABASE_SSL_CA` (your provider's CA certificate, PEM text or a file path) or `DATABASE_SSL_VERIFY=1` (system CAs) — if you use Postgres, turn on certificate verification; production warns at boot while neither is set.
+- [ ] Run `npm run storage-encrypt -w backend` once after setting `STORAGE_ENCRYPTION_KEY`, to encrypt files saved before it was set (`-- --dry-run` counts them first).
+- [ ] Docker Compose: `JWT_SECRET`, `JWT_REFRESH_SECRET`, `POSTGRES_PASSWORD`, `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` have no defaults — set them in `.env` (see README, Docker).
 - [ ] `TRUST_PROXY` — must match the number of proxies in front of the server, or the traffic log and audit log record the wrong IP address.
 - [ ] `TELEMETRY_ADMINS` — only your own username, or unset. `METRICS_TOKEN` if a monitor reads `/api/metrics`.
 - [ ] Leave the `*_RETENTION_DAYS` settings at their defaults unless you first change the Privacy Notice (`retention-schedule.md` section 6).
@@ -50,10 +52,10 @@ The operator's internal records under Thailand's Personal Data Protection Act B.
 
 ### Gaps in the public pages found while writing these drafts
 
-- [ ] The Privacy Notice states no retention period for correspondence (requests, reports, feedback). Adopt the proposed periods in `retention-schedule.md` section 4 and add them.
+- [x] The Privacy Notice states no retention period for correspondence (requests, reports, feedback). Done in v21.30: the periods in `retention-schedule.md` section 4 are in the notice's retention table and on `/contact`.
 - [ ] The Privacy Notice's list of recipients does not name an email provider for the contact mailbox; ask counsel whether it should.
-- [ ] The Privacy Notice (section 3, "Saved datasets") does not say that the time a teacher confirmed the school's authority is kept with a saved class roster (`datasets.school_attested_at`). Add it to the list of what is kept with the file.
-- [ ] The notices promise announcements "in the app" (material changes, breaches, closing the service), but DAB has no announcement feature: today that means shipping a release with a banner.
+- [x] The Privacy Notice (section 3, "Saved datasets") does not say that the time a teacher confirmed the school's authority is kept with a saved class roster (`datasets.school_attested_at`). Done in v21.30.
+- [x] The notices promised announcements "in the app" (material changes, breaches, closing the service), but DAB has no announcement feature. Done in v21.30: they now promise a notice on the legal pages (linked from every page of the app), posted with its effective date in advance, and signed-in users must accept a material change before carrying on.
 - [ ] DAB cannot tell a share link's owner that their link was disabled, and has no password change or reset; both matter in a breach.
 
 ### Take to counsel

@@ -6,7 +6,7 @@ A personal-data breach is any security incident that leads to personal data bein
 
 **The clock.** The PDPC Notification on breach notification (B.E. 2565) requires notice to the Office of the Personal Data Protection Committee (PDPC) without delay and **within 72 hours of becoming aware**, unless the breach is unlikely to put anyone's rights and freedoms at risk. The PDPC's February 2025 clarification starts the clock when you reasonably believe, after a preliminary check, that a breach has occurred or is likely. If the risk to people is high, tell them too, without delay. Record the assessment even when you decide not to notify.
 
-What the public pages promise (`/privacy` section 11, `/terms` section 6): PDPC notice within 72 hours unless the breach is unlikely to put anyone at risk; affected users told without undue delay when the risk to them is high, "in the app and on this website"; users whose uploaded files are affected told without undue delay so they can meet their own duties.
+What the public pages promise (`/privacy` section 11, `/terms` section 6): PDPC notice within 72 hours unless the breach is unlikely to put anyone at risk; affected users told without undue delay when the risk to them is high, "in a notice on this website (the legal pages linked from every page of the app)"; users whose uploaded files are affected told without undue delay so they can meet their own duties.
 
 Roles: the operator leads every incident. Contacts are at the end.
 
@@ -76,7 +76,7 @@ Where DAB is only the processor (upload content), the users who uploaded the dat
 
 ## Step 5 — Tell the people affected (high risk)
 
-The Privacy Notice promises to tell users "in the app and on this website". **DAB has no announcement feature yet**: publish a release that shows a banner in the web app and a notice on `/welcome`, plus a page with the details. **Do not email users**: the Privacy Notice says the email address on an account is never used to send anything. If counsel advises email, update the notice first.
+The Privacy Notice promises a notice on the website — the legal pages, which every page of the app links from its footer. DAB has no in-app announcement feature, and the notice does not promise one: publish the notice on `/privacy` (or a page it links to) with the details, and point to it from `/welcome`. **Do not email users**: the Privacy Notice says the email address on an account is never used to send anything. If counsel advises email, update the notice first.
 
 > **What happened.** On [date] we found that [plain description]. It affected [what data] of [which users / about N accounts].
 >

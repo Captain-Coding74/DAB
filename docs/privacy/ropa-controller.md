@@ -80,13 +80,13 @@ Lawful bases use the PDPA s.24 numbering: contract (s.24(3)), legal obligation (
 | | |
 |---|---|
 | Data subjects | Anyone who signs up, signs in or out, analyses a file (try mode included), uploads a dataset, exports, creates or opens a share link, downloads their data or deletes their account |
-| Personal data | Event, user id (if signed in), IP address, time, and an optional reference to the item acted on |
+| Personal data | Event, user id (if signed in), IP address, time, and an optional reference: the dataset id (dataset analyse and upload of a new version), the share link's id (create and view) or the export format — never file content or a share token. Events: `register`, `login`, `logout`, `logout_all`, `analyze` (`POST /api/analyze` and `POST /api/datasets/:id/analyze`), `dataset_upload`, `export`, `share_create`, `share_view`, `data_export`, `account_delete` (`backend/src/services/trafficLog.js`) |
 | Where | `traffic_log` |
 | Purpose | Keep the computer traffic data the Act and the MDES traffic-data notification (B.E. 2564) require of service providers |
 | Lawful basis | Legal obligation |
 | Recipients | Competent officials, on a lawful request only. No API or screen exposes it |
 | Transfers abroad | Hosting region only |
-| Retention | 90 days, then deleted by the daily job. Kept after an account is deleted until its 90 days end |
+| Retention | 90 days, then deleted by the daily job (`TRAFFIC_LOG_RETENTION_DAYS`; a lower setting is raised to 90, the s.26 minimum). Kept after an account is deleted until its 90 days end |
 | Security | Only the database holds it; no API exposes it, so only someone with database access can read it |
 | Open question | Whether these fields meet the notification's annex (lawyer question 1 in `README.md`) |
 
@@ -97,7 +97,7 @@ The IP address in the traffic log and the audit log is derived through `TRUST_PR
 | | |
 |---|---|
 | Data subjects | Everyone who uses the site |
-| Personal data | For each request: a request id, the method, the URL with share-link tokens and `…token=` values replaced by `[redacted]` (`backend/src/logger.js`), the remote address, the status code. Records about analyses (rows, duration, quality score, saved id; `backend/src/routes/analysis.js`) and error records add the user id |
+| Personal data | For each request: a request id, the method, the URL with share-link tokens, `…token=` values and the dataset search box (`search=`, `q=`) replaced by `[redacted]` (`backend/src/logger.js`), the remote address, the status code. Records about analyses (rows, duration, quality score, saved id; `backend/src/routes/analysis.js`) and error records add the user id. Service logs carry no file names, column names or cell values (`logRedaction.test.js` checks every logger call) |
 | Where | The server's standard output, collected by the hosting provider |
 | Purpose | Run and debug the service; investigate security problems |
 | Lawful basis | Legitimate interests (LIA 1) |
@@ -164,7 +164,7 @@ In place in v21.30:
 - Upload checks by content as well as extension, a size limit (`MAX_UPLOAD_MB`), and a ZIP-bomb guard.
 - Metrics endpoint closed in production unless `METRICS_TOKEN` or an operator account is used. Production error responses carry no internal detail.
 - Logs redact credentials and share tokens.
-- Stored files encrypted at rest (AES-256-GCM) when the operator sets `STORAGE_ENCRYPTION_KEY`; new storage keys no longer contain the file name. Postgres certificate verification is available through the `DATABASE_SSL_*` settings.
+- Stored files encrypted at rest (AES-256-GCM) when the operator sets `STORAGE_ENCRYPTION_KEY`; new storage keys no longer contain the file name. Postgres certificate verification is available through `DATABASE_SSL_CA` (a CA certificate, as PEM text or a file path) or `DATABASE_SSL_VERIFY=1` (the system CAs); without either, the connection is encrypted but the certificate is not checked, and production warns at boot.
 - Automatic deletion (`retention-schedule.md`).
 
 Known limits, to weigh in a breach assessment:

@@ -77,7 +77,7 @@ Users can avoid the AI transfer completely by switching AI off.
 
 As `retention-schedule.md`. In short: an unsaved upload is not kept; analyses are deleted 365 days after creation; saved datasets when the user deletes them or after 365 days without activity; Trash after 30 days; everything an account owns when the account is deleted. Deleting a dataset deletes its analyses, chat, share links, comments and activity rows.
 
-If DAB stops, or closes an account for any reason other than a breach of the Terms, a risk to DAB or other people, or a legal requirement, the Terms (section 11) promise an in-app announcement at least 30 days ahead so users can download their data, and deletion afterwards as the Privacy Notice describes.
+If DAB stops, or closes an account for any reason other than a breach of the Terms, a risk to DAB or other people, or a legal requirement, the Terms (section 11) promise a notice on the legal pages (linked from every page of the app) at least 30 days ahead so users can download their data, and deletion afterwards as the Privacy Notice describes.
 
 ## Security measures
 

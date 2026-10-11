@@ -36,7 +36,7 @@ Notes:
 |---|---|
 | a dataset (or it expires from Trash or for inactivity) | its stored files and versions, its analyses, their chat, its share links, comments and activity rows |
 | an analysis (or it expires) | its chat and share links |
-| their account (at `/account`, password required; or the operator does it for an email or postal request with `node backend/src/scripts/privacy-request.mjs …` — see the script header for usage) | everything the account owns, immediately: files, datasets, analyses, chat, share links, comments, notifications, memberships. A workspace the user owned passes to its earliest-joined remaining admin, otherwise member; with nobody left it is deleted |
+| their account (at `/account`, password required; or the operator does it for an email or postal request with `node backend/src/scripts/privacy-request.mjs …` — see the script header for usage) | everything the account owns, immediately: files, datasets, analyses, chat, share links, comments (with the replies under them), notifications, memberships. A workspace the user owned stays with a remaining co-owner; otherwise it passes to its earliest-joined admin, else its earliest-joined member. Viewers never inherit: with no owner, admin or member left the workspace is deleted, and other people's datasets in it move to their personal space. A version the user added to someone else's dataset stays with that dataset's owner (uploader recorded as `erased-user`). Upload telemetry stays, with its user id cleared (`backend/src/db/accountErase.js`) |
 
 Kept after an account is deleted, as the Privacy Notice says:
 
@@ -65,12 +65,12 @@ These are outside the code. Fill in the period and keep the evidence (a screensh
 | Request logs (stdout): IP address, method, URL with share tokens removed, status | hosting provider | the host's log retention | **To confirm.** Choose the shortest setting that still lets you investigate a problem |
 | Backups or snapshots of the database and stored files | hosting provider (or database provider) | the host's backup policy | **To confirm.** It must let an erasure reach backups within 90 days |
 | Content sent to the AI | Anthropic PBC | Anthropic's retention policy | **To confirm** in the Anthropic account and its data-processing terms (`vendors.md`) |
-| Requests by email or post, and the replies | operator's mailbox and paper file | proposed: 3 years after the request is closed, matching the privacy-request log; copies of ID documents deleted as soon as identity is confirmed | **Proposed** — not yet stated in the Privacy Notice |
-| Reports about shared pages and the takedown register | operator's mailbox and register | proposed: 3 years after the report is closed | **Proposed** — not yet stated in the Privacy Notice |
-| Other email (feedback, files DAB cannot read) | operator's mailbox | proposed: 12 months | **Proposed** — not yet stated in the Privacy Notice |
+| Requests by email or post, and the replies | operator's mailbox and paper file | 3 years after the request is closed, matching the privacy-request log; copies of ID documents deleted as soon as identity is confirmed | Stated in the Privacy Notice (section 9) and on `/contact` — delete by hand |
+| Reports about shared pages and the takedown register | operator's mailbox and register | 3 years after the report is closed | Stated in the Privacy Notice (section 9) and on `/contact` — delete by hand |
+| Other email (feedback, files DAB cannot read) | operator's mailbox | 12 months | Stated in the Privacy Notice (section 9) and on `/contact` — delete by hand |
 | Breach register and evidence copies | operator | evidence: until the incident and any claim about it are closed; register: ask counsel | **Open question** |
 
-If the proposed periods are adopted, add a line for correspondence to the Privacy Notice's retention table, because PDPA s.23 asks for a retention period for each kind of data collected.
+The correspondence periods above are in the Privacy Notice's retention table (PDPA s.23 asks for a retention period for each kind of data collected). Nothing deletes them automatically: include the mailbox and the paper file in the monthly check (section 7).
 
 ## 5. Legal holds
 
