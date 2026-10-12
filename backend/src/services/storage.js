@@ -35,12 +35,12 @@
  * scripts/storage-encrypt.mjs ever touch the stored form.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile, readFile, unlink, rename, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile, unlink, rename, readdir, open as openFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serviceLogger } from "../logger.js";
-import { parseEncryptionKey, seal, open, isSealed } from "./storageCrypto.js";
+import { parseEncryptionKey, seal, open, isSealed, MAGIC } from "./storageCrypto.js";
 
 const log = serviceLogger("storage");
 
@@ -220,6 +220,46 @@ export async function* listKeys() {
     }
   };
   yield* walk(path.join(ROOT, "datasets"));
+}
+
+/* The first bytes of an object — enough to tell sealed from legacy plaintext. */
+async function readHead(key) {
+  if (DRIVER === "s3") {
+    const { GetObjectCommand } = await import("@aws-sdk/client-s3");
+    const c = await s3Client();
+    const r = await c.send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key, Range: `bytes=0-${MAGIC.length - 1}` }));
+    const chunks = [];
+    for await (const chunk of r.Body) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  }
+  const fh = await openFile(localPath(key), "r");
+  try {
+    const buf = Buffer.alloc(MAGIC.length);
+    const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+    return buf.subarray(0, bytesRead);
+  } finally { await fh.close(); }
+}
+
+/**
+ * How many stored objects are still legacy plaintext (v21.31). The Privacy
+ * Notice may say files are encrypted at rest only when this is 0: setting
+ * the key seals NEW writes, while files saved before it stay plaintext until
+ * storage-encrypt.mjs has sealed them (services/encryptionStatus.js).
+ */
+export async function countUnsealed() {
+  let n = 0;
+  for await (const key of listKeys()) {
+    let head;
+    try { head = await readHead(key); }
+    catch (err) {
+      // Deleted between the listing and the read (a user delete, the retention
+      // run): a file that is gone is not plaintext at rest.
+      if (err.code === "ENOENT" || err.name === "NoSuchKey") continue;
+      throw err;
+    }
+    if (!isSealed(head)) n++;
+  }
+  return n;
 }
 
 /**

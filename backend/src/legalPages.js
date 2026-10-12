@@ -21,6 +21,7 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 import { legalInfo } from "./services/legal.js";
+import { encryptionState } from "./services/encryptionStatus.js";
 import { serviceLogger } from "./logger.js";
 
 export const LEGAL_PAGES = ["privacy", "terms", "storage", "contact", "licenses"];
@@ -40,6 +41,22 @@ const NO_HOSTING = pending("Not published yet — the details are being set up."
 const NO_NAME    = pending("The operator's name is being set up — please check back soon.",
                            "กำลังตั้งค่าชื่อผู้ให้บริการ โปรดกลับมาตรวจสอบอีกครั้งเร็ว ๆ นี้");
 
+/* v21.31: the notice states what the running service does about encryption
+   at rest, not "when the operator has enabled it" — a reader could not tell
+   which, and a notice must not claim a measure that is not in place. The
+   state is checked, not assumed from the key (services/encryptionStatus.js):
+   files saved before the key stay plaintext until storage-encrypt runs. */
+const both = (en, th) => `<span lang="en">${en}</span><span lang="th">${th}</span>`;
+const ENCRYPTION = {
+  all:     both("Stored files are encrypted at rest (AES-256-GCM).",
+                "ไฟล์ที่จัดเก็บถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM)"),
+  // Also shown before the first check and after a failed one, so it hedges.
+  partial: both("Files saved since encryption was switched on are encrypted at rest (AES-256-GCM); some older files may not be encrypted yet.",
+                "ไฟล์ที่บันทึกหลังจากเปิดใช้การเข้ารหัสแล้วจะถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM) แต่ไฟล์เก่าบางส่วนอาจยังไม่ได้เข้ารหัส"),
+  off:     both("Stored files are not yet encrypted at rest by DAB itself.",
+                "ขณะนี้ตัว DAB เองยังไม่ได้เข้ารหัสไฟล์ที่จัดเก็บไว้"),
+};
+
 const clean = (v) => String(v ?? "").trim();
 /** A plain value, escaped, or its fallback. An address may span lines. */
 const textOr = (v, fallback) => (clean(v) ? escapeHtml(clean(v)).replace(/\r?\n/g, "<br>") : fallback);
@@ -52,7 +69,7 @@ const textOr = (v, fallback) => (clean(v) ? escapeHtml(clean(v)).replace(/\r?\n/
  * so it comes from LEGAL_HOSTING_TRANSFER_BASIS — read here, not in
  * services/legal.js, whose shape is fixed — and says "being set up" until then.
  */
-export function legalValues(info = legalInfo(), env = process.env) {
+export function legalValues(info = legalInfo(), env = process.env, encryption = encryptionState()) {
   const email = clean(info.contactEmail);
   return {
     OPERATOR_NAME:    textOr(info.operatorName, NO_NAME),
@@ -61,6 +78,7 @@ export function legalValues(info = legalInfo(), env = process.env) {
     HOSTING_PROVIDER: textOr(info.hostingProvider, NO_HOSTING),
     HOSTING_REGION:   textOr(info.hostingRegion, NO_HOSTING),
     HOSTING_TRANSFER_BASIS: textOr(env.LEGAL_HOSTING_TRANSFER_BASIS, NO_HOSTING),
+    STORAGE_ENCRYPTION: ENCRYPTION[encryption] ?? ENCRYPTION.partial,
     LEGAL_VERSION:    escapeHtml(info.version),
   };
 }

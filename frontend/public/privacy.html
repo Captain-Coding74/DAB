@@ -19,7 +19,7 @@
 <main id="main" class="wrap doc">
 <p class="eyebrow"><span lang="en">Data Analysis Bot · Legal</span><span lang="th">Data Analysis Bot · ข้อมูลทางกฎหมาย</span></p>
 <h1><span lang="en">Privacy Notice</span><span lang="th">ประกาศความเป็นส่วนตัว</span></h1>
-<p class="meta"><span lang="en">Version {{LEGAL_VERSION}} · Effective {{LEGAL_VERSION}} · Published in English and Thai. If the two differ, the Thai version prevails.</span><span lang="th">ฉบับวันที่ {{LEGAL_VERSION}} · มีผลใช้บังคับตั้งแต่ {{LEGAL_VERSION}} · จัดทำเป็นภาษาไทยและภาษาอังกฤษ หากสองฉบับขัดหรือแย้งกัน ให้ถือฉบับภาษาไทยเป็นหลัก</span></p>
+<p class="meta"><span lang="en">Version {{LEGAL_VERSION}} · Effective {{LEGAL_VERSION}} · Wording revised 2026-10-11 · Published in English and Thai. If the two differ, the Thai version prevails.</span><span lang="th">ฉบับวันที่ {{LEGAL_VERSION}} · มีผลใช้บังคับตั้งแต่ {{LEGAL_VERSION}} · ปรับปรุงถ้อยคำเมื่อ 2026-10-11 · จัดทำเป็นภาษาไทยและภาษาอังกฤษ หากสองฉบับขัดหรือแย้งกัน ให้ถือฉบับภาษาไทยเป็นหลัก</span></p>
 <p class="lead"><span lang="en">This notice explains what personal data Data Analysis Bot collects, why, who receives it, how long it is kept and what your rights are. It is our notice under section 23 of Thailand's Personal Data Protection Act.</span><span lang="th">ประกาศนี้อธิบายว่า Data Analysis Bot เก็บข้อมูลส่วนบุคคลอะไร เพื่ออะไร ใครได้รับข้อมูล เก็บไว้นานเท่าใด และคุณมีสิทธิอะไรบ้าง ประกาศนี้เป็นการแจ้งตามมาตรา 23 แห่งพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล</span></p>
 
 <nav class="toc" aria-labelledby="toc-h">
@@ -50,8 +50,8 @@
 <li><strong>Try mode</strong> (no account) reads your file in memory and throws it away. No AI. We keep only a shape-only telemetry record and a 90-day traffic-log entry, and our host logs the request.</li>
 <li><strong>Signed in</strong>, each analysis is saved to your History. Your original file is stored only if you press “Save dataset”. Copies that versions of DAB before October 2026 stored without asking are listed at <a href="/account">/account</a>, where you can delete them.</li>
 <li><strong>AI</strong> is provided by Anthropic PBC in the USA. It receives your question, column names and statistics — not the rows of your file unless you confirm an AI Edit, and never the values of columns detected as personal data. You can switch AI off.</li>
-<li><strong>No cookies</strong>, no analytics, no ads, no third-party scripts.</li>
-<li>Data is deleted on a fixed schedule, and you can download or delete all of it at <a href="/account">/account</a>.</li>
+<li><strong>No cookies</strong>, no ads, no third-party analytics or scripts.</li>
+<li>Data is deleted on a fixed schedule, and you can download or delete almost all of it at <a href="/account">/account</a>; <a href="#retention">section 9</a> lists the few records we must keep.</li>
 </ul>
 </div>
 <div lang="th">
@@ -60,8 +60,8 @@
 <li><strong>โหมดลองใช้</strong> (ไม่มีบัญชี) อ่านไฟล์ของคุณในหน่วยความจำแล้วทิ้งไป ไม่ใช้ AI เราเก็บไว้เพียงบันทึก telemetry ที่มีแค่รูปทรงของไฟล์ และบันทึกข้อมูลจราจรที่เก็บ 90 วัน และผู้ให้บริการโฮสติ้งบันทึกคำขอนั้นไว้</li>
 <li><strong>เมื่อเข้าสู่ระบบ</strong> ผลวิเคราะห์แต่ละครั้งจะถูกบันทึกไว้ในประวัติของคุณ ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกด “บันทึกชุดข้อมูล” เท่านั้น ส่วนสำเนาไฟล์ที่ DAB รุ่นก่อนเดือนตุลาคม 2569 เก็บไว้โดยไม่ได้ถาม ดูและลบได้ที่ <a href="/account">/account</a></li>
 <li><strong>AI</strong> ให้บริการโดย Anthropic PBC ในสหรัฐอเมริกา ซึ่งได้รับคำถาม ชื่อคอลัมน์ และค่าสถิติ — ไม่ได้รับแถวข้อมูลในไฟล์ เว้นแต่คุณยืนยันคำสั่งให้ AI แก้ไขข้อมูล และไม่ได้รับค่าในคอลัมน์ที่ระบบตรวจพบว่าเป็นข้อมูลส่วนบุคคลเลย คุณปิด AI ได้</li>
-<li><strong>ไม่ใช้คุกกี้</strong> ไม่มีระบบวิเคราะห์พฤติกรรมผู้ใช้ ไม่มีโฆษณา ไม่มีสคริปต์จากบุคคลที่สาม</li>
-<li>ข้อมูลถูกลบตามกำหนดเวลาที่แน่นอน และคุณดาวน์โหลดหรือลบข้อมูลทั้งหมดได้ที่ <a href="/account">/account</a></li>
+<li><strong>ไม่ใช้คุกกี้</strong> ไม่มีโฆษณา ไม่ใช้เครื่องมือวิเคราะห์การใช้งาน (analytics) ของบุคคลที่สาม และไม่มีสคริปต์จากบุคคลที่สาม</li>
+<li>ข้อมูลถูกลบตามกำหนดเวลาที่แน่นอน และคุณดาวน์โหลดหรือลบข้อมูลเกือบทั้งหมดได้ที่ <a href="/account">/account</a> ส่วนบันทึกไม่กี่รายการที่เราต้องเก็บไว้ระบุอยู่ใน<a href="#retention">ข้อ 9</a></li>
 </ul>
 </div>
 </section>
@@ -86,7 +86,7 @@
 <h3>Analyses (your History)</h3>
 <p>When you are signed in, each analysis is saved: the file name, your question, the AI report text, the numbers of rows and columns, column names, per-column statistics including the most frequent values (with detected identifiers such as citizen ID, phone and card numbers masked), chart data and the quality score. No IP address is stored with it.</p>
 <h3>Saved datasets</h3>
-<p>Your original file is stored only if you press “Save dataset” — an opt-in step with its own notice. Hypothesis tests and file versions need a saved dataset. <strong>Files stored before October 2026:</strong> versions of DAB before 21.30 also stored a copy of every file analysed while signed in, without asking. Those copies are kept like saved datasets: they are listed at <a href="/account">/account</a>, marked as stored automatically, where you can delete each one, and each is deleted automatically after 365 days without activity. If a file looks like a class roster (School Edition), saving also requires you to confirm “I am authorised by my school to process these students' data”. With the file we keep its name, size, column statistics, versions, tags, the access you grant to other users and, for a class roster, when you confirmed the school's authority. Stored files are encrypted at rest (AES-256-GCM) when the operator has enabled it. The original is kept exactly as you uploaded it: masking applies to what DAB shows, stores as statistics and sends to the AI, not to your file.</p>
+<p>Your original file is stored only if you press “Save dataset” — an opt-in step with its own notice. Hypothesis tests and file versions need a saved dataset. <strong>Files stored before October 2026:</strong> versions of DAB before 21.30 also stored a copy of every file analysed while signed in, without asking. Those copies are kept like saved datasets: they are listed at <a href="/account">/account</a>, marked as stored automatically, where you can delete each one, and each is deleted automatically after 365 days without activity. If a file looks like a class roster (School Edition), saving also requires you to confirm “I am authorised by my school to process these students' data”. With the file we keep its name, size, column statistics, versions, tags, the access you grant to other users and, for a class roster, when you confirmed the school's authority. {{STORAGE_ENCRYPTION}} The original is kept exactly as you uploaded it: masking applies to what DAB shows, stores as statistics and sends to the AI, not to your file.</p>
 <h3>Chat and the deep-dive agent</h3>
 <p>Your questions and the AI's answers are stored with the analysis they belong to.</p>
 <h3>Share links</h3>
@@ -123,7 +123,7 @@
 <h3>ผลวิเคราะห์ (ประวัติ)</h3>
 <p>เมื่อเข้าสู่ระบบ ผลวิเคราะห์แต่ละครั้งจะถูกบันทึก ได้แก่ ชื่อไฟล์ คำถามของคุณ ข้อความรายงานจาก AI จำนวนแถวและคอลัมน์ ชื่อคอลัมน์ ค่าสถิติรายคอลัมน์รวมถึงค่าที่พบบ่อยที่สุด (โดยปิดบังตัวระบุตัวตนที่ตรวจพบ เช่น เลขบัตรประชาชน เบอร์โทร และเลขบัตรเครดิต/เดบิต) ข้อมูลกราฟ และคะแนนคุณภาพ โดยไม่มีการเก็บหมายเลข IP ไว้กับผลวิเคราะห์</p>
 <h3>ชุดข้อมูลที่บันทึก</h3>
-<p>ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกด “บันทึกชุดข้อมูล” เท่านั้น ซึ่งเป็นขั้นตอนที่คุณเลือกเองและมีคำชี้แจงกำกับ การทดสอบสมมติฐานและการเก็บไฟล์หลายเวอร์ชันต้องใช้ชุดข้อมูลที่บันทึกแล้ว <strong>ไฟล์ที่ถูกเก็บก่อนเดือนตุลาคม 2569:</strong> DAB รุ่นก่อน 21.30 เก็บสำเนาของทุกไฟล์ที่วิเคราะห์ขณะเข้าสู่ระบบไว้ด้วย โดยไม่ได้ถาม สำเนาเหล่านั้นถูกเก็บเช่นเดียวกับชุดข้อมูลที่บันทึก: แสดงอยู่ที่ <a href="/account">/account</a> พร้อมหมายเหตุว่าถูกเก็บโดยอัตโนมัติ ซึ่งคุณลบได้ทีละไฟล์ และแต่ละไฟล์จะถูกลบอัตโนมัติเมื่อไม่มีการใช้งานครบ 365 วัน หากไฟล์มีลักษณะเป็นรายชื่อนักเรียนในห้อง (School Edition) การบันทึกต้องให้คุณยืนยันด้วยว่าได้รับอนุญาตจากโรงเรียนให้ประมวลผลข้อมูลของนักเรียนเหล่านี้ เราเก็บชื่อไฟล์ ขนาด ค่าสถิติของคอลัมน์ เวอร์ชัน แท็ก สิทธิ์ที่คุณให้ผู้ใช้อื่น และสำหรับรายชื่อนักเรียน คือเวลาที่คุณยืนยันว่าได้รับอนุญาตจากโรงเรียน ไว้คู่กับไฟล์ ไฟล์ที่จัดเก็บจะถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM) เมื่อผู้ให้บริการเปิดใช้งาน ไฟล์ต้นฉบับถูกเก็บตามที่คุณอัปโหลดทุกประการ: การปิดบังข้อมูลมีผลกับสิ่งที่ DAB แสดง เก็บเป็นค่าสถิติ และส่งให้ AI ไม่ใช่กับไฟล์ของคุณ</p>
+<p>ไฟล์ต้นฉบับจะถูกเก็บก็ต่อเมื่อคุณกด “บันทึกชุดข้อมูล” เท่านั้น ซึ่งเป็นขั้นตอนที่คุณเลือกเองและมีคำชี้แจงกำกับ การทดสอบสมมติฐานและการเก็บไฟล์หลายเวอร์ชันต้องใช้ชุดข้อมูลที่บันทึกแล้ว <strong>ไฟล์ที่ถูกเก็บก่อนเดือนตุลาคม 2569:</strong> DAB รุ่นก่อน 21.30 เก็บสำเนาของทุกไฟล์ที่วิเคราะห์ขณะเข้าสู่ระบบไว้ด้วย โดยไม่ได้ถาม สำเนาเหล่านั้นถูกเก็บเช่นเดียวกับชุดข้อมูลที่บันทึก: แสดงอยู่ที่ <a href="/account">/account</a> พร้อมหมายเหตุว่าถูกเก็บโดยอัตโนมัติ ซึ่งคุณลบได้ทีละไฟล์ และแต่ละไฟล์จะถูกลบอัตโนมัติเมื่อไม่มีการใช้งานครบ 365 วัน หากไฟล์มีลักษณะเป็นรายชื่อนักเรียนในห้อง (School Edition) การบันทึกต้องให้คุณยืนยันด้วยว่าได้รับอนุญาตจากโรงเรียนให้ประมวลผลข้อมูลของนักเรียนเหล่านี้ เราเก็บชื่อไฟล์ ขนาด ค่าสถิติของคอลัมน์ เวอร์ชัน แท็ก สิทธิ์ที่คุณให้ผู้ใช้อื่น และสำหรับรายชื่อนักเรียน คือเวลาที่คุณยืนยันว่าได้รับอนุญาตจากโรงเรียน ไว้คู่กับไฟล์ {{STORAGE_ENCRYPTION}} ไฟล์ต้นฉบับถูกเก็บตามที่คุณอัปโหลดทุกประการ: การปิดบังข้อมูลมีผลกับสิ่งที่ DAB แสดง เก็บเป็นค่าสถิติ และส่งให้ AI ไม่ใช่กับไฟล์ของคุณ</p>
 <h3>แชทและ agent เจาะลึก</h3>
 <p>คำถามของคุณและคำตอบของ AI ถูกเก็บไว้กับผลวิเคราะห์ที่เกี่ยวข้อง</p>
 <h3>ลิงก์แชร์</h3>
@@ -153,7 +153,7 @@
 <tr><td>What is kept</td><td>Telemetry record; 90-day traffic-log entry</td><td>The analysis in your History (section 3); telemetry; traffic log</td><td>Everything under “Signed in”, plus the file, its versions and statistics</td></tr>
 <tr><td>AI</td><td>Never</td><td>Question, column names and statistics — unless you tick “Statistics only — don't send to AI”</td><td>The same; the dataset's owner can also switch AI off for it</td></tr>
 </tbody></table></div>
-<p><strong>Personal-data detection.</strong> DAB looks for personal data automatically: Thai citizen IDs, phone numbers, names, birth dates, student IDs, email addresses, payment-card numbers, bank-account numbers, passport numbers, postal addresses and LINE or other social-media IDs, plus sensitive data under PDPA section 26 — health or medical data, religion, ethnicity or race, disability, criminal records, sexual orientation, political opinions, trade-union membership and biometric data — which is recognised from column headers. The values of every detected column are left out of what is sent to the AI, and their most frequent values are left off share pages. Detection can miss things, such as sensitive data under an unclear header, so remove personal data you do not need before uploading.</p>
+<p><strong>Personal-data detection.</strong> DAB looks for personal data automatically: Thai citizen IDs, phone numbers, names, birth dates, student IDs, email addresses, payment-card numbers, bank-account numbers, passport numbers, postal addresses and LINE or other social-media IDs, plus sensitive data under PDPA section 26 — health or medical data, religion, ethnicity or race, disability, criminal records, sexual behaviour, political opinions, trade-union membership and biometric data — which is recognised from column headers. The values of every detected column are left out of what is sent to the AI, and their most frequent values are left off share pages. Detection can miss things, such as sensitive data under an unclear header, so remove personal data you do not need before uploading.</p>
 </div>
 <div lang="th">
 <h2>4. เราจัดการไฟล์ของคุณอย่างไร</h2>
@@ -354,7 +354,7 @@
 <li>The site is served over HTTPS (TLS), provided by our hosting provider.</li>
 <li>Passwords are stored as bcrypt hashes. Sessions use short-lived tokens: 15 minutes, renewed by a 7-day refresh token that changes on every use and is stored on the server only as a hash.</li>
 <li>Sign-in and other requests are rate-limited. Uploads are limited in size and checked by their content, not just their file extension.</li>
-<li>Saved files are encrypted at rest (AES-256-GCM) when the operator has enabled it.</li>
+<li>{{STORAGE_ENCRYPTION}}</li>
 <li>Strict browser security rules apply, and DAB loads no scripts, fonts or other resources from third parties.</li>
 </ul>
 <p>No system is perfectly secure. We work to protect your data but cannot guarantee that it will never be lost, changed or accessed without permission.</p>
@@ -365,7 +365,7 @@
 <li>เว็บไซต์ให้บริการผ่าน HTTPS (TLS) ซึ่งจัดให้โดยผู้ให้บริการโฮสติ้ง</li>
 <li>รหัสผ่านถูกเก็บในรูปค่าแฮช bcrypt เซสชันใช้โทเค็นอายุสั้น 15 นาที ต่ออายุด้วย refresh token อายุ 7 วันที่เปลี่ยนใหม่ทุกครั้งที่ใช้ และเซิร์ฟเวอร์เก็บไว้เพียงค่าแฮช</li>
 <li>มีการจำกัดอัตราการเข้าสู่ระบบและคำขออื่น ๆ ไฟล์ที่อัปโหลดถูกจำกัดขนาดและตรวจจากเนื้อหาจริง ไม่ใช่แค่นามสกุลไฟล์</li>
-<li>ไฟล์ที่บันทึกจะถูกเข้ารหัสขณะจัดเก็บ (AES-256-GCM) เมื่อผู้ให้บริการเปิดใช้งาน</li>
+<li>{{STORAGE_ENCRYPTION}}</li>
 <li>ใช้กฎความปลอดภัยของเบราว์เซอร์อย่างเข้มงวด และ DAB ไม่โหลดสคริปต์ ฟอนต์ หรือทรัพยากรอื่นจากบุคคลที่สาม</li>
 </ul>
 <p>ไม่มีระบบใดปลอดภัยได้สมบูรณ์ เราพยายามปกป้องข้อมูลของคุณ แต่ไม่อาจรับประกันได้ว่าข้อมูลจะไม่สูญหาย ถูกแก้ไข หรือถูกเข้าถึงโดยไม่ได้รับอนุญาตเลย</p>
@@ -450,11 +450,11 @@
 <section id="cookies">
 <div lang="en">
 <h2>14. Cookies and browser storage</h2>
-<p>DAB sets no cookies and uses no analytics, advertising or tracking tools. It loads nothing from third parties. It keeps six small entries in your browser's localStorage, for your session, username, theme, language and the app tour. The <a href="/storage">Storage notice</a> lists each one and how to clear them.</p>
+<p>DAB sets no cookies, uses no advertising or tracking tools, and uses no third-party analytics tools; its own upload statistics are described in <a href="#collect">section 3</a>. It loads nothing from third parties. It keeps six small entries in your browser's localStorage, for your session, username, theme, language and the app tour. The <a href="/storage">Storage notice</a> lists each one and how to clear them.</p>
 </div>
 <div lang="th">
 <h2>14. คุกกี้และการจัดเก็บในเบราว์เซอร์</h2>
-<p>DAB ไม่ใช้คุกกี้ และไม่ใช้เครื่องมือวิเคราะห์พฤติกรรมผู้ใช้ โฆษณา หรือการติดตามใด ๆ ไม่โหลดสิ่งใดจากบุคคลที่สาม และเก็บรายการขนาดเล็ก 6 รายการไว้ใน localStorage ของเบราว์เซอร์ สำหรับเซสชัน ชื่อผู้ใช้ ธีม ภาษา และทัวร์แนะนำแอป ดูรายการทั้งหมดและวิธีล้างข้อมูลได้ที่<a href="/storage">ประกาศการจัดเก็บในเบราว์เซอร์</a></p>
+<p>DAB ไม่ใช้คุกกี้ ไม่ใช้เครื่องมือโฆษณาหรือเครื่องมือติดตาม (tracker) ใด ๆ และไม่ใช้เครื่องมือวิเคราะห์การใช้งาน (analytics) ของบุคคลที่สาม ส่วนสถิติการอัปโหลดของ DAB เองอธิบายไว้ใน<a href="#collect">ข้อ 3</a> DAB ไม่โหลดสิ่งใดจากบุคคลที่สาม และเก็บรายการขนาดเล็ก 6 รายการไว้ใน localStorage ของเบราว์เซอร์ สำหรับเซสชัน ชื่อผู้ใช้ ธีม ภาษา และทัวร์แนะนำแอป ดูรายการทั้งหมดและวิธีล้างข้อมูลได้ที่<a href="/storage">ประกาศการจัดเก็บในเบราว์เซอร์</a></p>
 </div>
 </section>
 
@@ -462,12 +462,12 @@
 <div lang="en">
 <h2>15. Changes to this notice</h2>
 <p>When we change this notice, the new version is posted on this page with its date, and takes effect from that date. After a material change, signed-in users are asked to accept the new version before carrying on; anyone who does not want to can still download or delete their data at <a href="/account">/account</a>, which stays open to them. Changes are never retroactive: data we already hold will not be used in new ways without your agreement.</p>
-<p class="meta">Version {{LEGAL_VERSION}} · Effective {{LEGAL_VERSION}}</p>
+<p class="meta">Version {{LEGAL_VERSION}} · Effective {{LEGAL_VERSION}} · Wording revised 2026-10-11</p>
 </div>
 <div lang="th">
 <h2>15. การเปลี่ยนแปลงประกาศนี้</h2>
 <p>เมื่อเราเปลี่ยนแปลงประกาศนี้ ฉบับใหม่จะถูกเผยแพร่ที่หน้านี้พร้อมวันที่ และมีผลตั้งแต่วันนั้น หากเป็นการเปลี่ยนแปลงสาระสำคัญ ผู้ใช้ที่เข้าสู่ระบบจะถูกขอให้ยอมรับฉบับใหม่ก่อนใช้งานต่อ ผู้ที่ไม่ต้องการยอมรับยังดาวน์โหลดหรือลบข้อมูลของตนได้ที่ <a href="/account">/account</a> ซึ่งยังเปิดให้ใช้ได้ การเปลี่ยนแปลงไม่มีผลย้อนหลัง ข้อมูลที่เราเก็บไว้แล้วจะไม่ถูกนำไปใช้ในรูปแบบใหม่โดยไม่ได้รับความเห็นชอบจากคุณ</p>
-<p class="meta">ฉบับวันที่ {{LEGAL_VERSION}} · มีผลใช้บังคับตั้งแต่ {{LEGAL_VERSION}}</p>
+<p class="meta">ฉบับวันที่ {{LEGAL_VERSION}} · มีผลใช้บังคับตั้งแต่ {{LEGAL_VERSION}} · ปรับปรุงถ้อยคำเมื่อ 2026-10-11</p>
 </div>
 </section>
 </main>

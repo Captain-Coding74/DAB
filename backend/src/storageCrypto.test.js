@@ -14,7 +14,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseEncryptionKey, seal, open, isSealed, MAGIC, warnStorageUnencrypted } from "./services/storageCrypto.js";
@@ -184,6 +184,47 @@ describe("sealing existing objects in place (storage-encrypt.mjs)", () => {
   test("refuses to run without a key", async () => {
     const plain = await storageWith(undefined);
     await assert.rejects(plain.sealInPlace("datasets/x/1.csv"), /set STORAGE_ENCRYPTION_KEY/);
+  });
+});
+
+/* v21.31: the Privacy Notice says files are encrypted only when a check
+   finds nothing in the clear — not merely because the key is set. */
+describe("encryption-at-rest check (services/encryptionStatus.js)", () => {
+  /** A storage instance over its own empty objects directory, so the count is exact. */
+  async function isolated(rawKey, dir) {
+    const before = process.env.SQLITE_DIR;
+    process.env.SQLITE_DIR = dir;
+    try { return await storageWith(rawKey); }
+    finally { if (before === undefined) delete process.env.SQLITE_DIR; else process.env.SQLITE_DIR = before; }
+  }
+
+  test("countUnsealed counts plaintext objects and reaches 0 once they are sealed", async () => {
+    const dir = path.join(ROOT, "..", `enc-check-${randomUUID()}`);
+    const plain = await isolated(undefined, dir);
+    const keyed = await isolated(K1.toString("base64"), dir);
+    const old = freshKey(plain);
+    await plain.put(old, PLAIN);               // saved before the key was set
+    const fresh = freshKey(keyed);
+    await keyed.put(fresh, PLAIN);             // saved after: sealed on write
+    assert.equal(await keyed.countUnsealed(), 1);
+    await keyed.sealInPlace(old);
+    assert.equal(await keyed.countUnsealed(), 0);
+    await keyed.remove(old); await keyed.remove(fresh);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("the notice's state: off without a key, partial until a clean check, all after one", async () => {
+    const { encryptionState, checkEncryptionAtRest } = await import(`./services/encryptionStatus.js?instance=${++n}`);
+    assert.equal(encryptionState(false), "off");
+    assert.equal(encryptionState(true), "partial", "not checked yet: never claim more than was verified");
+    const zero = async () => 0;
+    assert.equal(await checkEncryptionAtRest({ keySet: true, countObjects: async () => 2, countRows: zero }), "partial");
+    assert.equal(await checkEncryptionAtRest({ keySet: true, countObjects: zero, countRows: async () => 1 }), "partial", "pre-v21.1 copies in the database count too");
+    assert.equal(await checkEncryptionAtRest({ keySet: true, countObjects: zero, countRows: zero }), "all");
+    assert.equal(encryptionState(true), "all");
+    assert.equal(await checkEncryptionAtRest({ keySet: true, countObjects: async () => { throw new Error("bucket down"); }, countRows: zero }), "partial");
+    assert.equal(encryptionState(true), "partial", "a failed check falls back to the cautious wording");
+    assert.equal(await checkEncryptionAtRest({ keySet: false }), "off");
   });
 });
 

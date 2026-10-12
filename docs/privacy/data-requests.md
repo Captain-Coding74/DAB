@@ -10,7 +10,7 @@ What the public pages promise (`/privacy#rights`, `/contact#requests`): requests
 
 | Channel | What it covers | Verified by |
 |---|---|---|
-| `/account` (self-service, signed in) | Download all my data (JSON); delete my account (password required) | The password. These requests log themselves in `privacy_requests` |
+| `/account` (self-service, signed in) | Download my data (JSON; the traffic log is sent on request); delete my account (password required) | The password. These requests log themselves in `privacy_requests` |
 | Email to `LEGAL_CONTACT_EMAIL` | Everything | Section 4 |
 | Post (registered mail accepted) to `LEGAL_POSTAL_ADDRESS` | Everything | Section 4 |
 
@@ -113,13 +113,13 @@ Replace everything in [brackets]. Send the English or the Thai version, matching
 >
 > Thank you for your request of [date] about your personal data at Data Analysis Bot (DAB) (reference [request id]). We will reply by [date 30 days after we received it], free of charge.
 >
-> The quickest way is to sign in at [site]/account, where you can download all your data or delete your account yourself, straight away. If you cannot sign in, or would rather we do it, please reply with your username, the email address on the account if you added one, roughly when you created the account, and the name of one dataset, workspace or analysis in it, so we can check the request comes from the account holder. Please do not send a copy of an ID card unless we ask for one. If we do not hear back within 15 days we will close the request; you can make it again at any time.
+> The quickest way is to sign in at [site]/account, where you can download your data (everything except your traffic-log entries, which we send you on request) or delete your account yourself, straight away. If you cannot sign in, or would rather we do it, please reply with your username, the email address on the account if you added one, roughly when you created the account, and the name of one dataset, workspace or analysis in it, so we can check the request comes from the account holder. Please do not send a copy of an ID card unless we ask for one. If we do not hear back within 15 days we will close the request; you can make it again at any time.
 
 > เรียน คุณ[ชื่อ หรือชื่อผู้ใช้]
 >
 > ขอบคุณสำหรับคำขอเกี่ยวกับข้อมูลส่วนบุคคลของคุณที่ Data Analysis Bot (DAB) เมื่อวันที่ [วันที่] (เลขอ้างอิง [รหัสคำขอ]) เราจะตอบกลับภายในวันที่ [วันที่ครบ 30 วันนับจากวันที่ได้รับคำขอ] โดยไม่มีค่าใช้จ่าย
 >
-> วิธีที่เร็วที่สุดคือเข้าสู่ระบบที่ [เว็บไซต์]/account ซึ่งคุณดาวน์โหลดข้อมูลทั้งหมดหรือลบบัญชีได้ด้วยตนเองทันที หากเข้าสู่ระบบไม่ได้ หรือต้องการให้เราดำเนินการให้ โปรดตอบกลับพร้อมแจ้งชื่อผู้ใช้ อีเมลที่ผูกกับบัญชี (หากเคยระบุไว้) ช่วงเวลาโดยประมาณที่สร้างบัญชี และชื่อชุดข้อมูล พื้นที่ทำงาน หรือผลวิเคราะห์ในบัญชีอย่างน้อยหนึ่งรายการ เพื่อให้เรายืนยันได้ว่าคำขอนี้มาจากเจ้าของบัญชีจริง โปรดอย่าส่งสำเนาบัตรประชาชนมา เว้นแต่เราจะขอ หากเราไม่ได้รับคำตอบภายใน 15 วัน เราจะปิดคำขอนี้ไว้ก่อน และคุณยื่นคำขอใหม่ได้ทุกเมื่อ
+> วิธีที่เร็วที่สุดคือเข้าสู่ระบบที่ [เว็บไซต์]/account ซึ่งคุณดาวน์โหลดข้อมูลของคุณ (ครบทุกอย่าง ยกเว้นรายการในบันทึกข้อมูลจราจรทางคอมพิวเตอร์ ซึ่งเราจะส่งให้เมื่อคุณขอ) หรือลบบัญชีได้ด้วยตนเองทันที หากเข้าสู่ระบบไม่ได้ หรือต้องการให้เราดำเนินการให้ โปรดตอบกลับพร้อมแจ้งชื่อผู้ใช้ อีเมลที่ผูกกับบัญชี (หากเคยระบุไว้) ช่วงเวลาโดยประมาณที่สร้างบัญชี และชื่อชุดข้อมูล พื้นที่ทำงาน หรือผลวิเคราะห์ในบัญชีอย่างน้อยหนึ่งรายการ เพื่อให้เรายืนยันได้ว่าคำขอนี้มาจากเจ้าของบัญชีจริง โปรดอย่าส่งสำเนาบัตรประชาชนมา เว้นแต่เราจะขอ หากเราไม่ได้รับคำตอบภายใน 15 วัน เราจะปิดคำขอนี้ไว้ก่อน และคุณยื่นคำขอใหม่ได้ทุกเมื่อ
 
 **B — Your copy**
 

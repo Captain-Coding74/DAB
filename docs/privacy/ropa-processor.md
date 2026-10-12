@@ -29,7 +29,7 @@ Whatever the controller's file is about. Typical cases:
 
 The Terms (section 5) ask users not to upload PDPA s.26 sensitive data without a lawful basis, and never to upload payment-card numbers. DAB cannot prevent it, so assume it may be present.
 
-**Detection.** DAB looks for personal data in each upload: Thai citizen ID, phone, name, birth date and student ID; email, payment-card number, bank-account number, passport number, postal address, LINE or other social-media ID; and s.26 data recognised from the column header (health or medical, religion, ethnicity or race, disability, criminal record, sexual orientation, political opinion, trade-union membership, biometric). A detected column carries a `sensitive` marker with its kind. Detection can miss data, especially sensitive data under an unclear header.
+**Detection.** DAB looks for personal data in each upload: Thai citizen ID, phone, name, birth date and student ID; email, payment-card number, bank-account number, passport number, postal address, LINE or other social-media ID; and s.26 data recognised from the column header (health or medical, religion, ethnicity or race, disability, criminal record, sexual behaviour, political opinion, trade-union membership, biometric). A detected column carries a `sensitive` marker with its kind. Detection can miss data, especially sensitive data under an unclear header.
 
 ## Processing operations
 
@@ -85,7 +85,7 @@ As in `ropa-controller.md` ("Security measures"), plus, for upload content:
 
 - personal-data detection, masking in the user's own view of identifiers such as citizen IDs and phone numbers, and the AI and share-page rules above;
 - the original file is stored only when the user opts in;
-- stored files encrypted at rest (AES-256-GCM) when `STORAGE_ENCRYPTION_KEY` is set; storage keys do not contain the file name;
+- stored files encrypted at rest (AES-256-GCM) once `STORAGE_ENCRYPTION_KEY` is set — new files on write, older ones when `storage-encrypt` seals them; the server checks at boot and daily (`services/encryptionStatus.js`) and logs "stored files are not all encrypted yet" with counts while any remain; storage keys do not contain the file name;
 - access to a stored dataset needs ownership or an explicit permission; workspace membership alone grants none.
 
 ## Duties to controllers
