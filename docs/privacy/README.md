@@ -86,6 +86,7 @@ Further questions raised by these drafts:
 | In a high-risk breach, may DAB email affected users, although the Privacy Notice says the email address is never used to send anything? | `breach-response.md` step 5 |
 | Should a hashed acceptance record outlive a deleted account for the limitation period, and how long should the breach register and correspondence be kept? | `legitimate-interests.md` LIA 4; `retention-schedule.md` section 4 |
 | Is 365 days a defensible period for the security audit log, or should it be shorter? | `legitimate-interests.md` LIA 1 |
+| On a self-run server (v21.32, Oracle): the notice says deleting an account erases its data immediately, but nightly encrypted backups keep a copy for up to 30 days. How should the notice state the backup period? Its lines on request logs ("kept by our hosting provider") and HTTPS ("provided by our hosting provider") also assume a managed host. Is the backup store (an S3 bucket in Bangkok) a recipient to name, although it holds only archives it cannot decrypt? | `docs/deploy/oracle-always-free.md` steps 12.1 and 12.7; `retention-schedule.md` section 4 |
 
 ### Keep running
 

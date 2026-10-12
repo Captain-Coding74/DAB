@@ -77,7 +77,7 @@ Console: *Billing & Cost Management → Upgrade and Manage Payment → Upgrade t
 Why, when the aim is to pay nothing:
 
 - **Idle reclamation.** Oracle stops Always Free VMs that look idle: over 7 days, 95th-percentile CPU use under 20%, network use under 20%, and, on Arm shapes, memory use under 20%. A low-traffic DAB meets the CPU and network conditions most weeks. A stopped VM takes the site *and* its nightly jobs down, and nothing warns you. 2026 guides say PAYG accounts are exempt. **No Oracle page read for the research says so**, so treat the exemption as likely, not certain.
-- PAYG accounts can open support tickets. Free-only accounts get forums only, and no service-level agreement (SLA).
+- PAYG accounts can open support tickets. Free-only accounts get forums only. Either way, Oracle's FAQ says the Free Tier comes with no service-level agreement (SLA).
 - PAYG bills only usage *above* the Always Free allowances, with no minimum. The catch is that the card becomes chargeable for a mistake (a third OCPU, a sixth volume backup, a paid shape). The budget alert and the quotas below guard against that. You cannot downgrade back to free-only.
 
 ### 2.2 A USD 1 budget alert
@@ -297,7 +297,7 @@ The `sed` line generates the three secrets in place. They never go through your 
 | `LEGAL_CONTACT_EMAIL`, `LEGAL_POSTAL_ADDRESS` | a mailbox you read, and a postal address | required by PDPA s.23. Use `"line 1\nline 2"` for several lines |
 | `LEGAL_HOSTING_PROVIDER` | `"Oracle Cloud Infrastructure"` | add the Oracle company your account's agreement names if counsel wants it named. The research found an agreement with Oracle America, Inc. |
 | `LEGAL_HOSTING_REGION` | `"Singapore (ap-singapore-1)"` | |
-| `LEGAL_HOSTING_TRANSFER_BASIS` | **leave empty until counsel answers** | the PDPA s.28 exception or s.29 safeguard for keeping data in Singapore. The research found that Oracle's data processing agreement covers processing, but its transfer annex has no clause for Thailand, Singapore or ASEAN, so whether it serves as a s.29 safeguard is untested. The fallback, a s.28 exception, is a legal judgement too. Until it is set, the pages say "being set up", which is true. Do not write your own wording here |
+| `LEGAL_HOSTING_TRANSFER_BASIS` | **leave empty until counsel answers** | the PDPA s.28 exception or s.29 safeguard for keeping data in Singapore. The research found that Oracle's data processing agreement covers processing, but its transfer annex has no clause for Thailand, Singapore or ASEAN, so whether it serves as a s.29 safeguard is untested. The fallback, a s.28 exception, is a legal judgement too. The DPA also lets Oracle access the data from any country "as necessary" for support and incident work, and the research suggested the notice say so: take that to counsel as well. Until it is set, the pages say "being set up", which is true. Do not write your own wording here |
 | `*_RETENTION_DAYS` | leave unset | the defaults are the periods the Privacy Notice states |
 
 Then **save a copy of the finished `.env` in your password manager.** A restore onto a new machine needs the same `STORAGE_ENCRYPTION_KEY`. The nightly backup also includes `.env` (encrypted), but a second copy in your own hands costs nothing.
@@ -554,7 +554,8 @@ On a **new** VM, set up steps 5–8 first, and use the backup's `env` file as `.
 ### 12.7 Retention, and what the Privacy Notice must say
 
 - Backups live 30 days in the bucket (the lifecycle rule) and 7 days on the VM. An account deleted today is gone from every backup within about a month (S3 runs lifecycle expiry in the background, sometimes a day late). The PDPC's deletion Notification asks for erasure to reach backups within 90 days (`docs/privacy/retention-schedule.md`).
-- **The Privacy Notice should state the backup retention period.** That is counsel question RE2. Until counsel answers, record the facts in `retention-schedule.md` §4: the *Backups* row (nightly, encrypted, 30 days, provider and region) and the *Request logs* row (Docker keeps at most 5 × 10 MB of DAB's request log, rotated by `compose.yml`).
+- **The Privacy Notice should state the backup retention period.** How to word it is a question for counsel, listed under *Take to counsel* in `docs/privacy/README.md`. Until counsel answers, record the facts in `retention-schedule.md` §4: the *Backups* row (nightly, encrypted, 30 days, provider and region) and the *Request logs* row (Docker keeps at most 5 × 10 MB of DAB's request log, rotated by `compose.yml`).
+- Take two more lines of the notice to counsel with that question. Both assume a host that runs the server for you. The notice says request logs are "kept by our hosting provider for as long as its log retention allows", but here Docker on your VM keeps them, capped by size. It also says HTTPS is "provided by our hosting provider", but here it is Caddy, which you run. Do not change the notice's text yourself.
 - Each backup is a full copy, so the bucket holds about 30 × the data size. 266 MB of data made a 238 MB archive in the local test, because uploads are already encrypted and do not compress. At the research's 3 GB estimate, that is about 90 GB, or about USD 2 a month in Bangkok. If that matters, keep fewer days.
 - Oracle's own boot volume backups are optional and do not survive a suspended account. Always Free allows **5**. Do not attach Oracle's predefined backup policies (Bronze, Silver, Gold), which keep more than five, and the extra ones are billed.
 
