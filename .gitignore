@@ -2,6 +2,9 @@
 .env
 .env.local
 .env.*.local
+# v21.32: deploy/oracle/backup.env (backup.sh's settings) may hold PING_URL,
+# which backup.sh treats as a credential.
+backup.env
 
 # Dependencies
 node_modules/

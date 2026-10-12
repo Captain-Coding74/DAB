@@ -420,7 +420,7 @@ Any S3-compatible store works with the same script, such as Cloudflare R2 or Bac
 In the AWS console:
 
 1. **S3 → Create bucket**, region Asia Pacific (Thailand) `ap-southeast-7`, a name such as `dab-backups-<something-unique>`. Keep *Block all public access* on and versioning off.
-2. On the bucket: *Management → Create lifecycle rule*, prefix `oracle/`, *Expire current versions of objects* after **30 days**. Expiry happens here rather than on the server, so the server's key never needs permission to delete (next point).
+2. On the bucket: *Management → Create lifecycle rule*, prefix `oracle/`, with two actions: *Expire current versions of objects* after **30 days**, and *Delete expired object delete markers or incomplete multipart uploads* → *Delete incomplete multipart uploads* after **1 day**. Expiry happens here rather than on the server, so the server's key never needs permission to delete (next point). That is also why the second action is needed: rclone sends an archive over 200 MB in parts, and if the upload is cut off, this key cannot abort it. S3 keeps, and bills, the parts already sent until a rule removes them.
 3. **IAM → Users → Create user** `dab-backup`, with no console access. Attach this inline policy (put your bucket name in):
    ```json
    {
@@ -459,13 +459,23 @@ You can add a second public key on its own line, for example one held by someone
 ```sh
 sudo apt install -y age rclone
 read -rp "Access key ID: " AK; read -rsp "Secret access key: " SK; echo
-sudo rclone config create offsite s3 provider=AWS access_key_id="$AK" secret_access_key="$SK" \
-  region=ap-southeast-7 location_constraint=ap-southeast-7 acl=private no_check_bucket=true
+sudo install -d -m 700 /root/.config/rclone
+sudo sh -c 'umask 077 && cat > /root/.config/rclone/rclone.conf' <<EOF
+[offsite]
+type = s3
+provider = AWS
+access_key_id = $AK
+secret_access_key = $SK
+region = ap-southeast-7
+location_constraint = ap-southeast-7
+acl = private
+no_check_bucket = true
+EOF
 unset AK SK
 sudo rclone lsf offsite:BUCKET/oracle && echo "rclone can reach the bucket"
 ```
 
-`no_check_bucket=true` stops rclone trying to create the bucket, which the key may not do. The keys end up in `/root/.config/rclone/rclone.conf`, readable by root only (`sudo rclone config file` prints the path). `dab-backup.service` looks there.
+The keys go into the file through standard input, never on a command line. sudo records every command line it runs, arguments included, in `/var/log/auth.log` and the journal, which the `ubuntu` user can read (it is in the `adm` group). So `sudo rclone config create … secret_access_key=…` would leave the key in the logs for weeks (tested on Ubuntu 24.04). The file is readable by root only, and `dab-backup.service` looks for it there (`sudo rclone config file` prints the path). This replaces any rclone settings root already had, and a new VM has none. `no_check_bucket = true` stops rclone trying to create the bucket, which the key may not do.
 
 ```sh
 cat > ~/dab/backup.env <<'EOF'
@@ -652,11 +662,11 @@ Tested locally on 12 October 2026, with Docker 29.3 and Compose 5.1, using the v
 - `STORAGE_ENCRYPTION_KEY` added after the first upload, then `storage-encrypt` (dry run and real) and a restart. The Privacy Notice went from "not yet encrypted" to "partly" to "encrypted at rest", and the stored file started with DAB's encryption header.
 - Data survived `docker compose down` and `up`, and the downloaded file matched the upload byte for byte.
 - The same stack on the **arm64** image: health, sign-up, upload, encryption, backup and restore all passed.
-- `backup.sh` (shellcheck clean): to a local rclone remote and to an S3 emulator (moto) enforcing the step 12.1 IAM policy. The 238 MB archive went up as a multipart upload. The key could not delete, which was tested. The emulator needed `force_path_style`, `provider=Other`, and `--s3-no-head` (it rejects a request real S3 accepts), so the exact `provider=AWS` setup was not run against AWS itself. Also tested: dead-man's-switch pings, local and remote retention, refusal of a private key or a missing remote, a stopped container, cleanup after SIGTERM, a fresh install with no uploads, and no secret in the output.
+- `backup.sh` (shellcheck clean): to a local rclone remote and to an S3 emulator (moto) enforcing the step 12.1 IAM policy. The 238 MB archive went up as a multipart upload. The key could not delete, which was tested. The emulator needed `force_path_style`, `provider=Other`, and `--s3-no-head` (it rejects a request real S3 accepts), so the exact `provider=AWS` setup was not run against AWS itself. Step 12.3's rclone commands were run on Ubuntu 24.04 with its rclone 1.60.1: the file parses, only root can read it, and the key appears in no log under `/var/log`. That rclone version also reached AWS's real Bangkok endpoint (`s3.ap-southeast-7.amazonaws.com` answered "InvalidAccessKeyId" to a made-up key). Also tested: dead-man's-switch pings, local and remote retention, refusal of a private key or a missing remote, a stopped container, cleanup after SIGTERM, a fresh install with no uploads, and no secret in the output.
 - `restore.sh`: an encrypted archive into fresh volumes as the drill does it, a Railway-style export over existing data (moved aside, not deleted, then 2,514 legacy files encrypted), and a damaged archive (refused before anything was touched). After each restore, sign-in worked and the restored files matched the uploads.
 - Memory sizing (step 4): measured with 25 MB CSV and 19.6 MB and 24.9 MB `.xlsx` uploads, under memory limits standing in for 2, 3, 4 and 6 GB VMs (heaps of 0.7, 1.25, 1.5, 1.75 and 2 GB), one at a time and two at once, and with the health check timed during a parse. The test machine was x86, so parse times on an Ampere A1 core will differ.
 - Firewall (steps 5.4 and 16): Oracle's iptables rules were reproduced and tested against a client in a separate network namespace. Results: packets dropped before they reached the VM (standing in for a missing security-list rule) gave a timeout, Oracle's REJECT gave "No route to host", the guide's rule with Caddy stopped gave "Connection refused", and Docker-published ports worked even without the rule. The `iptables` and `netfilter-persistent` commands were run on Ubuntu 24.04 with an approximation of Oracle's `rules.v4`.
 - Step 5's apt commands (unattended-upgrades, Docker's repository, Docker CE, the Compose plugin, age, rclone) were run in an **arm64 Ubuntu 24.04** container. `dab-backup.service` and `.timer` passed `systemd-analyze verify`.
 - Updates and rollback (step 13), through a local registry holding a two-platform tag.
 
-**Not tested**, because they need the real services: everything in the Oracle console (steps 1–4, the quota statements, the budget, idle reclamation, capacity errors), Oracle's actual Ubuntu image and agent memory use, Let's Encrypt issuing a real certificate, AWS S3 and IAM themselves, the Railway CLI, and Docker Hub pulls of your image.
+**Not tested**, because they need the real services: everything in the Oracle console (steps 1–4, the quota statements, the budget, idle reclamation, capacity errors), Oracle's actual Ubuntu image and agent memory use, Let's Encrypt issuing a real certificate, AWS S3 and IAM with a real key, the Railway CLI, and Docker Hub pulls of your image.
