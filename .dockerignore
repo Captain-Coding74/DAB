@@ -10,3 +10,11 @@ coverage
 *.log
 # the offline media kits (tools/hero-bg, tools/walkthrough) are never part of the image
 tools
+# v21.32: secrets never ride into an image. COPY backend ./backend would take a
+# developer's backend/.env along, and loadEnv.js would load it in production;
+# CI builds from a clean checkout, but a local `docker build && docker push`
+# does not. .env.example files stay (they hold no secrets).
+**/.env
+**/.env.*
+!**/.env.example
+**/backup.env

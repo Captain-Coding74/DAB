@@ -40,6 +40,10 @@ measured locally on a 4-CPU x86 machine, not yet on GitHub's runners.
   Deploy pushes one two-platform manifest per tag, built from the same
   cache. In a fresh builder that imported the cache, every step was a hit
   (11 s).
+- **No secrets in the build context.** `.dockerignore` now leaves out every
+  `.env` and `.env.*` except the `.env.example` files, and `backup.env`.
+  `COPY backend ./backend` used to take a developer's `backend/.env` into a
+  locally built image, where `loadEnv.js` would load it.
 - **A tested guide for running DAB free on Oracle.**
   `docs/deploy/oracle-always-free.md` takes DAB from sign-up to backups on
   one Ampere A1 VM in Singapore, using the files in `deploy/oracle/`:
