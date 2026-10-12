@@ -3,6 +3,44 @@
 Refinement releases. Feature history before v20.5 lives in the ADRs and the
 metrics ledger (`metrics/history.jsonl`).
 
+## [21.32] — 2026-10-12 "Arm"
+The Docker image now builds for linux/arm64 as well as linux/amd64, so the
+same tags run on Oracle Cloud's Always Free Ampere A1 VMs, which are Arm.
+Nothing changes on an x86 host. In the amd64 image, `/app` is byte-for-byte
+what v21.31 shipped (only the copy of `backend/Dockerfile` differs). All
+7,616 entries keep their owner and mode, and the user, healthcheck and
+command are the same. A data volume written by the v21.31 image keeps its
+users and accepts new writes under both new images. Timings below were
+measured locally on a 4-CPU x86 machine, not yet on GitHub's runners.
+- **No emulated npm.** npm ci and the Vite build run on the build machine's
+  own platform. The backend's production dependencies are installed for the
+  target with `npm ci --os=linux --cpu=<arch> --libc=musl --ignore-scripts`,
+  which changes only libsql's native binary (`@libsql/linux-arm64-*` in
+  place of `linux-x64-*`). The arm64 `node_modules` is identical to what
+  an emulated install produced. Building arm64 the old way, under QEMU,
+  took 3 min 18 s from cold: npm ci 68 s + 84 s, Vite 100 s. Both
+  platforms now build in 32–38 s from cold; amd64 alone used to take 41 s.
+  After a backend-only change, both rebuild in 4–5 s with nothing emulated.
+  An architecture other than amd64 or arm64 is refused at build time. The
+  legacy builder (`DOCKER_BUILDKIT=0`) still works and builds for its own
+  platform.
+- **Smaller image.** The copies now set their owner (`COPY --chown`). The
+  `chown -R /app` that used to run after them copied every file into a
+  second 132 MB layer. Each platform's image is now 95 MB compressed (was
+  129 MB); unpacked, amd64 is 404 MB (was 570 MB).
+- **CI checks that the Arm image runs.** Docker Build builds both platforms
+  (`push: false`, gha cache). `scripts/docker-smoke.sh` then starts each
+  image, arm64 under QEMU, and checks four things: libsql loads for the
+  right CPU and answers `select 1`; the server starts in production mode
+  and `/api/health` answers 200; `/` serves the UI; and an anonymous
+  `POST /api/analyze` of `thai_shop.csv` answers 200. Simulated locally,
+  the job's work takes 64 s with a warm cache (it took 30 s before) and
+  100 s from cold (it took 50 s). Most of the increase is the arm64 smoke
+  test, at 21–26 s. The job still runs beside the tests, not before them.
+  Deploy pushes one two-platform manifest per tag, built from the same
+  cache. In a fresh builder that imported the cache, every step was a hit
+  (11 s).
+
 ## [21.31] — 2026-10-11 "Notice wording"
 Wording slips in the Privacy Notice, the Storage notice and the Contact
 page, found while checking the notice line by line for counsel. None
