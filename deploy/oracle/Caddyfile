@@ -1,0 +1,62 @@
+# deploy/oracle/Caddyfile — v21.32: HTTPS in front of DAB on the Oracle VM.
+#
+# Caddy gets and renews a Let's Encrypt certificate for {$DOMAIN} by itself.
+# For that, the domain's A record must point at this VM, and TCP 80 and 443
+# must be open in BOTH the VCN security list and iptables (guide, steps 3, 5
+# and 6). It also redirects http:// to https://. With DOMAIN=localhost it
+# uses its own local CA instead, which is how this file was tested.
+#
+# Security headers are NOT set here. The app sends them itself (helmet in
+# backend/src/app.js: CSP, HSTS, frame-ancestors, nosniff, referrer policy),
+# so they are the same behind any proxy and in the tests. Setting them here
+# too would send two copies, and browsers enforce two CSP headers as the
+# intersection of both.
+{
+	servers {
+		# HTTP/1.1 and HTTP/2 only. Caddy also serves HTTP/3 over UDP 443 and
+		# advertises it in Alt-Svc, but the firewall steps open TCP only, so
+		# browsers would keep trying a port that never answers.
+		protocols h1 h2
+
+		timeouts {
+			# Caddy streams an upload to Node as it arrives, and Node gives up
+			# on a request it has not fully received within 300 s (Node's
+			# requestTimeout default). The two limits match, so a client that
+			# slow gets Caddy's 504 instead of a connection Node drops part-way.
+			# Five minutes is enough for a 25 MB upload (MAX_UPLOAD_MB) at
+			# about 0.7 Mbit/s. read_body limits only the upload. Tested: a
+			# response streamed for longer than the limit is not cut, and the
+			# AI chat streams its answer (text/event-stream) for as long as
+			# the model writes. There is no write timeout, for the same reason.
+			read_body 5m
+		}
+	}
+}
+
+{$DOMAIN} {
+	# The built UI (JavaScript, CSS, HTML) is compressed, because Express
+	# sends it uncompressed. The API is not compressed, for two reasons.
+	# Its responses carry tokens and personal data next to text a user typed,
+	# which is the setting for compression side-channel attacks such as
+	# BREACH. And the chat stream must reach the browser chunk by chunk.
+	@ui not path /api/*
+	encode @ui zstd gzip
+
+	# No request-size limit here. DAB enforces its own: 25 MB per file
+	# (multer), 1 MB per JSON body, and up to 10 files per multi-file upload.
+	# A smaller limit here would break that last route.
+	reverse_proxy dab:3000 {
+		transport http {
+			# Node closes an idle keep-alive connection after 5 s (Node's
+			# keepAliveTimeout default). Caddy keeps idle connections for
+			# 2 minutes by default and could send the next request down one
+			# Node has just closed. For an upload that fails with a 502,
+			# because a request with a body is not retried. Caddy drops idle
+			# connections first.
+			keepalive 4s
+		}
+	}
+
+	# Do not name the server software in every response.
+	header -Server
+}

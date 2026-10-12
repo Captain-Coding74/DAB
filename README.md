@@ -55,6 +55,9 @@ docker compose exec postgres psql -U dab -c "ALTER USER dab PASSWORD '<your POST
 docker compose up -d
 ```
 
+### On a server: Oracle Cloud Always Free (v21.32)
+[`docs/deploy/oracle-always-free.md`](docs/deploy/oracle-always-free.md) runs DAB at no cost on one Arm VM in Oracle's Singapore region, using the published image, Caddy for HTTPS, and a nightly encrypted backup kept outside Oracle. Its files are in [`deploy/oracle/`](deploy/oracle/): `compose.yml`, `Caddyfile`, `.env.example`, `backup.sh`, `restore.sh` and a systemd timer.
+
 ---
 
 ## Features

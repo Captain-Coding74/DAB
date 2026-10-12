@@ -40,6 +40,26 @@ measured locally on a 4-CPU x86 machine, not yet on GitHub's runners.
   Deploy pushes one two-platform manifest per tag, built from the same
   cache. In a fresh builder that imported the cache, every step was a hit
   (11 s).
+- **A tested guide for running DAB free on Oracle.**
+  `docs/deploy/oracle-always-free.md` takes DAB from sign-up to backups on
+  one Ampere A1 VM in Singapore, using the files in `deploy/oracle/`:
+  - `compose.yml` runs DAB and Caddy, with DAB's data in one named volume
+    and DAB not published to the internet.
+  - `Caddyfile` gives automatic HTTPS. Security headers stay with helmet.
+  - `.env.example` lists the production settings.
+  - `backup.sh` makes a nightly `VACUUM INTO` copy plus `objects/`,
+    encrypted with age to a public key and sent off Oracle with rclone.
+  - `restore.sh` moves the old data aside instead of deleting it.
+  - A systemd timer runs the backup.
+  The VM size, 1 OCPU and 4 GB, is measured, not estimated. A 24.9 MB
+  `.xlsx` peaks at 2.05 GB, and Node's heap is half the memory. On 2 GB, as
+  the hosting research had estimated, that upload crashed Node with "heap
+  out of memory". The symptoms in the troubleshooting table were reproduced
+  against a copy of Oracle's iptables rules. For example, a missing
+  security-list rule makes connections time out, and Oracle's own REJECT
+  rule gives "No route to host". Backup and restore were tested on amd64
+  and arm64, and against an S3 emulator enforcing an upload-only key. The
+  Oracle console steps could not be tested and are marked so.
 
 ## [21.31] — 2026-10-11 "Notice wording"
 Wording slips in the Privacy Notice, the Storage notice and the Contact

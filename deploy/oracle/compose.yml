@@ -1,0 +1,86 @@
+# deploy/oracle/compose.yml — v21.32: DAB on one Oracle Cloud Always Free
+# Ampere A1 VM, behind Caddy. Step-by-step: docs/deploy/oracle-always-free.md.
+#
+# Not the repo-root docker-compose.yml, on purpose. That one builds from
+# source and runs Postgres, Redis and MinIO beside the app. Here the VM pulls
+# the published image (the arm64 half of the multi-platform tag CI pushes)
+# and DAB keeps everything in ONE named volume: SQLite at
+# /app/backend/data/app.db and uploaded files under /app/backend/data/objects.
+# That one directory is what backup.sh copies off Oracle each night, and the
+# three extra services would spend memory and patching for nothing at DAB's
+# size.
+#
+# Settings come from .env beside this file (start from .env.example). Compose
+# reads it twice: to fill ${DAB_IMAGE} and ${DOMAIN} below, and, through
+# env_file, as the app's environment.
+name: dab
+
+# Docker's default json-file log never rotates, and an unrotated request log
+# is the likeliest way to fill the boot volume. It also holds client IP
+# addresses, which docs/privacy/retention-schedule.md §4 asks to keep for the
+# shortest time that still allows an investigation: at most 5 × 10 MB per
+# container, newest kept.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  dab:
+    image: ${DAB_IMAGE:?set DAB_IMAGE in .env, e.g. yourname/dab:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Pinned here as well as in .env. A .env copied from a development
+      # machine must not switch production checks off, and the proxy count is
+      # a fact of THIS file: exactly one proxy (Caddy) sits in front, so req.ip
+      # (the traffic log, the audit log, the login limiter) comes from the
+      # X-Forwarded-For value Caddy sets. Caddy drops the client's own copy of
+      # that header, so a client cannot forge its address.
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+    volumes:
+      # A NAMED volume, not a host directory. Docker fills a new, empty named
+      # volume from the image's /app/backend/data, owner included (appuser),
+      # so the non-root server can write to it from the first boot. A
+      # bind-mounted directory would arrive owned by root and the first
+      # upload would fail.
+      - dab-data:/app/backend/data
+    # No `ports:`. DAB listens on the compose network only. The internet
+    # reaches it through Caddy, which is why TRUST_PROXY=1 above is safe.
+    #
+    # No `healthcheck:` either. The image's own HEALTHCHECK (GET /api/health)
+    # applies as it is, and Caddy waits for it below.
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      dab:
+        # `up -d` fails with "dab is unhealthy" when the app cannot start (a
+        # missing JWT secret, a malformed STORAGE_ENCRYPTION_KEY) instead of
+        # reporting success while every page answers 502.
+        condition: service_healthy
+    ports:
+      # TCP only. The guide opens TCP 80 and 443 in the VCN security list and
+      # in iptables. HTTP/3 (UDP 443) is switched off in the Caddyfile to
+      # match.
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env, e.g. dab.example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account. Losing this volume only means
+      # Caddy asks Let's Encrypt again, but repeated losses run into its rate
+      # limits, so it is a volume and not container scratch space.
+      - caddy_data:/data
+      - caddy_config:/config
+    logging: *logging
+
+volumes:
+  dab-data:
+  caddy_data:
+  caddy_config:

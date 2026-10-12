@@ -1,0 +1,21 @@
+# deploy/oracle/dab-backup.service — v21.32: runs backup.sh once; started each
+# night by dab-backup.timer. Install (guide, step 12):
+#   sudo cp dab-backup.service dab-backup.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now dab-backup.timer
+# Logs: journalctl -u dab-backup.service
+#
+# The path assumes the files were copied to /home/ubuntu/dab, as in the guide.
+[Unit]
+Description=DAB backup: database and files, encrypted and copied off Oracle
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/dab/backup.sh
+# Runs as root: it talks to Docker and writes /var/backups/dab. HOME is set
+# so rclone finds /root/.config/rclone/rclone.conf (made by `sudo rclone config`).
+Environment=HOME=/root
+# Gives way to the site: a 1-OCPU VM should keep answering while it runs.
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,15 @@
+# deploy/oracle/dab-backup.timer — v21.32: start dab-backup.service nightly.
+# 02:30 Bangkok time, clear of DAB's own jobs (retention 03:17, encryption
+# check 03:41) and of the 04:30 automatic-reboot window. The zone is written
+# out, so the schedule holds whatever the server's clock zone is.
+[Unit]
+Description=Nightly DAB backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Bangkok
+# A night the VM was off is caught up at the next boot.
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target
